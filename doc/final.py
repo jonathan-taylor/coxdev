@@ -13,57 +13,63 @@
 #     name: python3
 # ---
 
-# +
 import numpy as np
 import pandas as pd
 
-rng = np.random.default_rng(0)
-# -
-
-# ## Since `stop` is when the status is recorded, I've renamed `stop` as `event` here
+# # A small dataset (with ties)
 #
-# ## `status` refers to the status of the individual at the `event` / `stop` time
+# - Event times (or "stop" times) $t_i$.
+#
+# - Start times: $s_i$.
 
-n = 30
-ties = True
-start = rng.integers(0, 6, size=n) 
-event = (start + rng.integers(2, 6, size=n) + (1 - ties) * rng.standard_exponential(n) * 0.01).astype(int)
-status = rng.choice([0,1], size=n, replace=True)
-data = pd.DataFrame({'start':start,
-                     'event':event,
-                     'status':status})
-data.to_csv('dataset.csv')
-data
+data_df = pd.read_csv('dataset.csv', index_col='index')[:20]
+data_df
+n = data_df.shape[0]
 
-order = False
-if order:
-    event_order = np.argsort(event)
-    event = event[event_order]
-    start = start[event_order]
-    status = status[event_order]
+# ## Key sequences
+#
+# We will jointly sort `start` and `event` by stacking the times into
+# a data frame with 60 rows instead of 30.
+#
+# We will sort this on `(time, status, is_start)` with `status==1` occurring before
+# `status==0`.
 
-df = pd.DataFrame({'start':start, 'event':event, 'status':status})
+stacked_df = pd.DataFrame({'time':np.hstack([data_df['start'], data_df['event']]),
+                           'status':np.hstack([np.zeros_like(data_df['start']), 
+                                               data_df['status']]),
+                           'is_start':np.hstack([np.ones(n, int), np.zeros(n, int)]),
+                           'index':np.hstack([np.arange(n), np.arange(n)])})
+stacked_df
 
-df.iloc[:20]
+# From this joint sort we will define several key sequences of length 30.
+#
+# - `event_order`: sorts event times into increasing order (according to this joint sort)
+# - `start_order`: sorts start times into increasing order (according to this joint sort)
+# - `first`: for a failure time, which may have ties, this is the first entry of `event_order` in this set of ties -- the entries of `first` that are not failure times are not used, but they are defined consistently in that no ties of non-failure times are material to the computations.
+# - `last`: analogous to `first` but the last time
+# - `event_map`: for the $i$-th event time, this is the number of start times stricly less than this event time: $\text{event\_map}[i] = \# \{j: s_j < t_i\}$.
+# - `start_map`: for the $i$-th start time, this is the number of event times less than or equal to $s_i$:
+#   $\text{start\_map}[i] = \# \{j: t_j \leq s_i\}$.
+#
+# **These sequences are computed once.**
 
-stacked_df = pd.DataFrame({'time':np.hstack([start, event]),
-                           'status':np.hstack([np.zeros_like(start), status]),
-                           'start?':np.hstack([np.ones(n), np.zeros(n)]),
-                           'idx':np.hstack([np.arange(n), np.arange(n)])})
-stacked_df[:20]
+# ### Computing the key sequences
+#
+# We sort the stacked data frame, placing "failures" (`status==1`) in front, and `start` times following `event` times.
+#
+# - This sorted data frame makes it easy to compute `start_order` and `event_order`.
+# - Computing `first` requires keeping track of successive `event` times that have `status==1`, continuing to append a current beginning of the tie sequence until a change is detected.
+# - Computing `event_map` and `start_map` requires keeping track of the current number of events (or starts) and appending this to `start_map` or `event_map`. This will yield `start_map` (in start order) and `event_map` (in event order). These can reordered to the original index. Later, we will set everything to event order.
 
-stacked_df.iloc[(n-10):(n+10)]
-
-sorted_df = stacked_df.sort_values(by=['time', 'status', 'start?'], ascending=[True,False,True])
-sorted_df[:20]
+sorted_df = stacked_df.sort_values(by=['time', 'status', 'is_start'], ascending=[True,False,True])
+sorted_df
 
 
-# +
-def sort_start_event(sorted_df, sample_weight=None):
+def sort_start_event(original_df, sorted_df):
     event_count, start_count = 0, 0
     event_order, start_order = [], []
-    start_cum_count, event_cum_count = [], []
-    event_first = []
+    start_map, event_map = [], []
+    first = []
     event_idx = []
     last_row = None
     which_event = -1
@@ -72,358 +78,526 @@ def sort_start_event(sorted_df, sample_weight=None):
     ties = {}    
     for _r in range(sorted_df.shape[0]):
         row = sorted_df.iloc[_r]
-        _r += 1
-        if row['start?'] == 1: # a start time
-            start_order.append(row['idx'])
-            start_cum_count.append(event_count)
+        if row['is_start'] == 1: # a start time
+            start_order.append(row['index'])
+            start_map.append(event_count)
             start_count += 1
         else: # an event / stop time
-            if row['status']:
+            if row['status'] == 1:
                 # if it's an event and the time is same as last row 
                 # it is the same event
                 # else it's the next "which_event"
                 
                 if (last_row is not None and 
-                    row['time'] != last_row['time']): # index of next death
+                    row['time'] != last_row['time']): # index of next `status==1`
                     first_event += num_successive_event
                     num_successive_event = 1
                     which_event += 1
                 else:
                     num_successive_event += 1
                     
-                event_first.append(first_event)
+                first.append(first_event)
             else:
                 first_event += num_successive_event
                 num_successive_event = 1
-                event_first.append(first_event) # this event time was not an failure time
+                first.append(first_event) # this event time was not an failure time
 
-            event_idx.append(which_event)
-            event_cum_count.append(start_count)
-            event_order.append(row['idx'])
+            event_map.append(start_count)
+            event_order.append(row['index'])
             event_count += 1
         last_row = row
 
-    event_first = np.array(event_first)
+    first = np.array(first)
     start_order = np.array(start_order).astype(int)
     event_order = np.array(event_order).astype(int)
-    start_cum_count = np.array(start_cum_count)
-    event_cum_count = np.array(event_cum_count)
-    event_idx = np.array(event_idx)
+    start_map = np.array(start_map)
+    event_map = np.array(event_map)
 
-    start_cum_count_cp = start_cum_count.copy()
-    start_cum_count[start_order] = start_cum_count_cp
-    start_cum_count # original ordering
+    # reset start_map to original order
+    start_map_cp = start_map.copy()
+    start_map[start_order] = start_map_cp
 
-    event_cum_count_cp = event_cum_count.copy()
-    event_cum_count[event_order] = event_cum_count_cp
-    event_cum_count # original ordering
+    preprocessed_df = pd.DataFrame({'status':original_df['status'],
+                                    'first':first,
+                                    'start_map':start_map[event_order].astype(int), 
+                                    'event_map':event_map.astype(int) # already in event order
+                                    }, index=event_order)
+    print(preprocessed_df.index)
 
-    final = pd.DataFrame({'event':event[event_order],
-                          'start':start[event_order],
-                          'status':status[event_order],
-                          'event_first':event_first,
-                          'start_idx':start_cum_count[event_order].astype(int), # this is how many (sorted) event times
-                                                            # this individual is not in the risk set 
-                          'event_idx':event_cum_count[event_order].astype(int)
-                          
-                          })
-
-    if sample_weight is None:
-        sample_weight = np.ones(final.shape[0])
+    # compute `last`
     
-    final['sample_weight'] = sample_weight[event_order]
-
-    # we also need the largest index in a cluster of tied failure times
-    
-    event_last = []
+    last = []
     last_event = n-1
-    for i, f in enumerate(final['event_first'][::-1]):
-        event_last.append(last_event)
-        
+    for i, f in enumerate(preprocessed_df['first'][::-1]):
+        last.append(last_event)
+        # immediately following a last event, `first` will agree with np.arange
         if f - (n - 1 - i) == 0:
             last_event = f - 1        
 
-    final['event_last'] = event_last[::-1]
-    
-    loglik_sat = 0
-    df = final[['event_first', 'status', 'sample_weight']]
-    for v, df in final[['event_first', 'status', 'sample_weight']].groupby('event_first'):
-        if df['status'].sum() > 0:
-            W = (df['sample_weight'] * df['status']).sum()
-            loglik_sat -= W * np.log(W)
-
+    preprocessed_df.insert(2, 'last', last[::-1])
     
 
-    return final, event_order, start_order, loglik_sat
+    return preprocessed_df, event_order, start_order
 
-final, event_order, start_order, loglik_sat = sort_start_event(sorted_df)
-final
-# -
+(preproc, 
+ event_order, 
+ start_order) = sort_start_event(data_df, sorted_df)
+preproc # note that preproc.index == event_order
 
-final['event_first'] - np.arange(n)
+# Let's add the sorted `event`, `start` and `status` so we can go through some of these
+# calculations.
 
-final.iloc[:20]
+preproc['event'] = data_df['event'][event_order]
+preproc['start'] = data_df['start'][event_order]
+preproc
 
-# Let's look at row `5` above (really the 6-th row of course). The value of `5` for `start_idx` means that this individual's `start` time was
-# such that they were not in the risk set for the first 5 event times. Indeed, the `start` time is `6` and the 5-th largest event time is `6`, the 6-th largest (which is this row) is `7`. So there are 5 event times less than or equal to 6.
+# Let's look at row with index `11` above. The value of `7` for `start_map` means that this individual's `start` time was
+# such that they were not in the risk set for the first 7 event times. Indeed, the `start` time is `4` and there are 7 event times less than or equal to 4.
+#
+# The value of `event_map` is 20. This means there were 20 start times less than the event time which is `6`.
 #
 
-final[lambda df: df['event'] <= final.loc[5, 'start']]
+(data_df['start'] < 6).sum()
 
-# Let's look at row `16`. The `start_idx` there is `3`. 
-
-final[lambda df: df['event'] <= final.loc[16, 'start']]
-
-# ## `event_idx`
-#
-# This is how many start times (not counting ties) occured strictly before this event time. 
-# Let's look at row 8 now. The value of `22` for `event_idx` indicates there are 22 start times less than 9. Alternatively, there are 3 start times greater than or equal to 9. These must be removed from the risk set. This can be done by subtracting `S[22]` (where `S` is the reversed cumsum with respect to start time of $w_j e^{\eta_j}$).
-
-(final['start'] < final.loc[8,'event']).sum()
-
-# ## `event_first`
-#
-# This vector indexes the events in such a way that, with tied failure times, the index is the *first* time in this sort that a failure occurs.
-#
-# Let's look at row `12` for `event_first`. Row `12` is a failure time with a time of `10`. There are three failures at this time, indices `[11,12,13]`. These three rows
-# have `event_first=11`. The rows of `event_first` that do not count as failure times will not be important for evaluation (at least for Breslow's method). 
-#
 # # Evaluation
 #
-# Let's put in some weights and some linear predictor.
+# ## Saturated log-likelihood
+#
+# First, let's compute the log-likelihood. This is also a pre-processing step.
 
-weight = rng.uniform(1, 2, size=n)
-eta = linear_predictor = rng.standard_normal(size=n)
-eta -= eta.mean()
+sat_df = preproc[['first', 'status']].copy() # in event order
+sat_df['sample_weight'] = data_df['weight'][event_order]
+loglik_sat = 0
+for _, df in sat_df[['first', 'status', 'sample_weight']].groupby('first'):
+    if df['status'].sum() > 0:
+        W = (df['sample_weight'] * df['status']).sum()
+        loglik_sat -= W * np.log(W)
 
-# # Sort by event time
 
-weight_e = weight[event_order]
-eta_e = eta[event_order]
-final['exp_eta_w'] = weight_e * np.exp(eta_e)
-final['weight'] = weight_e
+# ## Efron's tie breaking method
+#
+# For this, we need yet another array of shape `(n,)`. This vector can be
+# computed without `eta`. When there are no ties, this vector is identically 0.
+#
+
+den = preproc['last'] + 1 - preproc['first']
+preproc['scaling'] = (np.arange(n) - preproc['first']) / den
+
+# The columns in `preproc` are:
+
+preproc.columns
+
+# The data frame `preproc` can be computed without reference to `eta`. Its columns
+# will be the arguments to the core `C` computation.
+
+# With all of the above preprocessing done, we can now define the relevant
+# reversed cumsums in the risk sum: `E` for event, `S` for start and `M` for (scaled) mean:
+# $$
+# \begin{aligned}
+# E_i(\eta) &= \sum_{j:j \geq i} w_j e^{\eta_j} \\
+# &= \sum_{j:t_j \geq t_i} w_j e^{\eta_j} \\
+# S_i(\eta) &= \sum_{j: s_j > t_i} w_j e^{\eta_j} \\
+# M_i(\eta) &= \text{scaling}(i)  \cdot \left(E_{\text{first}(i)}(\eta) - E_{\text{last}(i)+1}(\eta)\right) \\
+# &\overset{\text{def}}{=} \sigma_E(i)  \cdot \left(E_{\text{first}(i)}(\eta) - E_{\text{last}(i)+1}(\eta)\right).
+# \end{aligned}
+# $$
+# The risk sums for start / event data with Efron's tie-breaking are
+# $$
+# R_i(\eta) = E_{\text{first}(i)}(\eta) - S_i(\eta) - M_i(\eta).
+# $$
+#
+# Introducing indicators $\delta_S$ for whether start times are present (otherwise equal to $-\infty)$ and 
+# $\delta_E$ for whether we use Efron's tie correction, we can include all 4 cases with the risk sum
+# $$
+# R_i(\eta) = E_i(\eta) - \delta_S \cdot S_i(\eta) - \delta_E \cdot M_i(\eta).
+# $$
+#
+# The log-likelihood (in all four cases) is defined to be
+# $$
+# \ell(\eta) = \sum_i w_i d_i \left(\eta_i - \log(R_i(\eta))\right)
+# $$
+
+# The following derivatives are useful for computing the gradient and Hessian of the log-likelihood:
+# $$
+# \begin{aligned}
+# \frac{\partial}{\partial \eta_k} E_i(\eta) &= w_k e^{\eta_k} \cdot 1_{\{k \geq \text{first}(i)\}} \\
+# &= w_k e^{\eta_k} \cdot 1_{\{i \leq \text{last}(k)\}} \\
+# \frac{\partial}{\partial \eta_k} S_i(\eta) &= w_k e^{\eta_k}  \cdot 1_{\{s_k > t_i\}} \\
+# &= w_k e^{\eta_k} \cdot 1_{\{i < \text{start\_map}(k)\}} \\
+# &= w_k e^{\eta_k} \cdot 1_{\{i \leq \text{start\_map}(k)-1\}} \\
+# \frac{\partial}{\partial \eta_k} M_i(\eta) &= w_k e^{\eta_k} \cdot \text{scaling}_i \cdot 1_{[\text{first}(i), \text{last}(i)]}(k) \\
+# &\overset{\text{def}}{=} w_k e^{\eta_k} \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq  \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)
+# \end{aligned}
+# $$
+#
+
+# ### Gradient
+#
+# Let's compute the derivative 
+# $$
+# \begin{aligned}
+# \frac{\partial}{\partial \eta_k} \ell(\eta) &= 
+# w_k d_k - w_k e^{\eta_k} \cdot \sum_{i=1}^n w_i d_i \cdot \frac{1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k)-1 \}}
+# - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)}{R_i(\eta)}
+# \end{aligned}
+# $$
+#
+# We see this can be expressed cumsums of the sequences
+# $$
+# \frac{w_i d_i}{R_i(\eta)}, \qquad \frac{w_i d_i \sigma_E(i)}{R_i(\eta)}.
+# $$
+#
+# Define
+# $$
+# {\cal C}_{rs}(\eta)[i] = \sum_{j=1}^i \frac{w_i d_i \sigma_E(i)^s}{R_i(\eta)^r}.
+# $$
+
+# Our derivative above is
+# $$
+# w_k d_k - w_k e^{\eta_k} \left({\cal C}_{10}(\eta)[\text{last}(k)] - \delta_S \cdot {\cal C}_{10}(\eta)[\text{start\_map}(k)-1] - \delta_E \cdot \left({\cal C}_{11}(\eta)[\text{last}(k)] - {\cal C}_{11}(\eta)[\text{first}(k)-1] \right) \right)
+# $$
+
+# ### Hessian
+#
+# Let's compute the second
+# derivative
+# $$
+# \frac{\partial^2}{\partial \eta_l \eta_k} \ell(\eta)
+# $$
+# consists of two terms. The first is the diagonal
+# $$
+# T_{1,kl}(\eta) = - \delta_{lk} w_ke^{\eta_k} \left({\cal C}_{10}(\eta)[\text{last}(k)] - \delta_S \cdot {\cal C}_{10}(\eta)[\text{start\_map}(k)-1] - \delta_E \cdot \left({\cal C}_{11}(\eta)[\text{last}(k)] - {\cal C}_{11}(\eta)[\text{first}(k)-1] \right) \right)
+# $$
+
+# The second is
+# $$
+# \begin{aligned}
+# T_{2,kl}(\eta) &= \sum_{i=1}^n w_i d_i \biggl[\frac{\left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k) -1\}}
+# - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)\right) }{R_i(\eta)} \\
+#  & \qquad \qquad \times \frac{\left(1_{\{i \leq \text{last}(l)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(l) -1\}}
+# - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(l)\}} - 1_{\{i \leq \text{first}(l)-1\}}\right)\right) }{R_i(\eta)}
+#   \biggr]
+# \end{aligned}
+# $$
+
+# Without belaboring the expansion just yet, it is clear that this can be expressed in terms of
+# $$
+# \left({\cal C}_{rs}(\eta)\right)_{1 \leq r \leq 2, 1 \leq s \leq r}.
+# $$
+#
+# ### Diagonal of Hessian
+#
+# The diagonal terms $T_{2,kk}(\eta)$ are
+# $$
+# \begin{aligned}
+# T_{2,kk}(\eta) &= \sum_{i=1}^n w_i d_i \frac{\left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k)-1 \}}
+# - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)\right)^2 }{R_i(\eta)^2} 
+# \end{aligned}
+# $$
+#
+#
+#
+
+# #### Expansion
+#
+# Let's expand the numerator in $T_{2,kl}(\eta)$ which will tell us which indices of the
+# relevant cumsums to use.
+# $$
+# \begin{aligned}
+# N_{kl} &= \left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k)-1 \}}
+# - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)\right) \\
+# & \qquad \times \left(1_{\{i \leq \text{last}(l)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(l)-1 \}}
+# - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(l)\}} - 1_{\{i \leq \text{first}(l)-1\}}\right)\right)
+# \end{aligned}
+# $$ 
+#
+# It will be handy to use a symbolic manipulation tool for this as there are many terms.
 
 # +
-weight_s = weight[start_order]
-eta_s = eta[start_order]
+from sympy import Symbol, Function, simplify, expand
 
-start_cumsum = np.cumsum((weight_s * np.exp(eta_s))[::-1])[::-1]
-event_cumsum = np.cumsum((weight_e * np.exp(eta_e))[::-1])[::-1]
-final['event_cumsum'] = event_cumsum
-start_cumsum[22]
+last_ = Function('last')
+start_ = Function('start')
+first_ = Function('first')
+k = Symbol('k')
+l = Symbol('l')
+s_E = Symbol('sigma_E')
+d_E = Symbol('delta_E')
+d_S = Symbol('delta_S')
+
+E_k = last_(k) - d_S * start_(k-1) - d_E * s_E * (last_(k) - first_(k-1))
 # -
 
-exp_eta_w = np.exp(eta) * weight
-np.sum(exp_eta_w[start >= 9])
+diag_prod = expand(E_k * E_k)
+diag_prod.as_ordered_terms()
 
-# The contribution for row 8 is therefore
-
-final['event_cumsum'][final['event_first'][8]] - start_cumsum[final['event_idx'][8]]
-
-np.sum(exp_eta_w[(event >= final['event'][8]) * (start < final['event'][8])])
-
-# ## Check
+# This list of terms can be used to deduce which ${\cal C}_{rs}(\eta)$ are needed
+# to compute the diagonal. Of course we use the logic that `delta_E**2=delta_E`,
+# `delta_S**2=delta_S` and whenever we see terms like $\text{last}(k)*\text{first}(k-1)$ or
+# similar this becomes
+# $$
+# 1_{\{i \leq \min(\text{last}(k), \text{first}(k)-1)\}} = 1_{\{i \leq \text{first}(k)-1\}}.
+# $$
 #
+# If we were clever, we could try to take the above symbolic representation and turn it into 
+# correct LaTeX but it is not too painful to do by hand.
+
+# #### Simplification: right censored with Breslow's method
+#
+# By setting $\delta_S$ or $\delta_E$ to 0, these expressions symplify considerably.
+# Let's try setting $\delta_S=\delta_E=0$. This is right-censored data with Breslow's tie-breaking.
+# This has no $\sigma_E$ in it, so we know we only need ${\cal C}_{10}$ and ${\cal C}_{20}$ to compute it.
+
+diag_prod.subs(d_E,0).subs(d_S,0).as_ordered_terms()
+
+# From this we deduce that the diagonal entries for right-censored data with
+# Breslow's tie breaking are:
+# $$
+# T_{2,kk}(\eta) = {\cal C}_{20}(\eta)[\text{last}(k)]
+# $$
+
+# #### Simplification: start times with Breslow's method
+#
+# Let's do Breslow's tie breaking with start times.
+
+diag_prod.subs(d_E,0).subs(d_S, 1).as_ordered_terms()
+
+# As $\text{start}(k) \leq \text{last}(k)$ we see that, in this case
+# $$
+# T_{2,kk}(\eta) = C_{20}(\eta)[\text{last}(k)] - C_{20}(\eta)[\text{start}(k)-1].
+# $$
+
+# #### Simplification: right-censored with Efron's tie-breaking:
+
+diag_prod.subs(d_S,0).subs(d_E, 1).as_ordered_terms()
+
+# This has powers $\sigma_E^{\{0,1,2\}}$ so we will need all 5 ${\cal C}_{rs}$ cumsums to evaluate
+# it and the gradient.
+# For this case,
+# $$
+# \begin{aligned}
+# T_{2,kk}(\eta) &= {\cal C}_{22}(\eta)[\text{first}(k)-1] \\
+# & -2 \cdot {\cal C}_{22}(\eta)[\text{first}(k)-1] \\
+# & + {\cal C}_{22}(\eta)[\text{last}(k)] \\
+# & + 2 \cdot {\cal C}_{21}(\eta)[\text{first}(k)-1] \\
+# & -2 \cdot {\cal C}_{21}(\eta)[\text{last}(k)] \\
+# & + {\cal C}_{20}(\eta)[\text{last}(k)] \\
+# &= ({\cal C}_{22}(\eta)[\text{last}(k)] - {\cal C}_{22}(\eta)[\text{first}(k)-1]) \\
+# & - 2 \cdot ({\cal C}_{21}(\eta)[\text{last}(k)] - {\cal C}_{21}(\eta)[\text{first}(k)-1]) \\
+# & + {\cal C}_{20}(\eta)[\text{last}(k)] \\
+# \end{aligned}
+# $$
+
+# #### General case
+
+diag_prod.subs(d_S,1).subs(d_E, 1).as_ordered_terms()
+
+# This will have a few more terms than previous. Let's just see which they are.
 #
 
-by_hand, using_indices = [], []
-for _r in final.index:
-    row = final.loc[_r]
-    v = int(row['event_idx'])
-    
-    if row['status'] == 1: # only compute at failure times
-        if v < n:
-            using_indices.append(final['event_cumsum'][row['event_first']] - start_cumsum[v])
-        else:
-            using_indices.append(final['event_cumsum'][row['event_first']])
-        by_hand.append(np.sum(exp_eta_w[(event >= row['event']) * (start < row['event'])]))
+full = set(diag_prod.subs(d_S,1).subs(d_E, 1).as_ordered_terms())
+partial = set(diag_prod.subs(d_S,0).subs(d_E, 1).as_ordered_terms())
+assert partial.issubset(full)
 
-np.allclose(np.array(by_hand), np.array(using_indices))
+full.difference(partial)
 
-# +
-efron = True
-def log_like(eta, 
-             sample_weight, 
-             final_df, 
-             event_order, 
+# By appending these terms to those above,  and we note  that $\text{start}(k)-1 \leq \text{first}(k)-1$ (Why? Because $s_k$ is strictly less than $t_k$ and $t_{\text{first}(k)-1}$ is the event time immediately preceeding $t_k$.)
+# Therefore
+# $$
+# \begin{aligned}
+# T_{2,kk}(\eta)  &= ({\cal C}_{22}(\eta)[\text{last}(k)] - {\cal C}_{22}(\eta)[\text{first}(k)-1]) \\
+# & - 2 \cdot ({\cal C}_{21}(\eta)[\text{last}(k)] - {\cal C}_{21}(\eta)[\text{first}(k)-1]) \\
+# & + {\cal C}_{20}(\eta)[\text{last}(k)] \\
+# & - 2 \cdot {\cal C}_{20}(\eta)[\text{start}(k)-1] \\
+# & - 2 \cdot {\cal C}_{21}(\eta)[\text{start}(k)-1] \\
+# & + 2 \cdot {\cal C}_{21}(\eta)[\text{start}(k)-1] \\
+# & + {\cal C}_{20}(\eta)[\text{start}(k)-1] \\
+# &=  ({\cal C}_{22}(\eta)[\text{last}(k)] - {\cal C}_{22}(\eta)[\text{first}(k)-1]) \\
+# & - 2 \cdot ({\cal C}_{21}(\eta)[\text{last}(k)] - {\cal C}_{21}(\eta)[\text{first}(k)-1]) \\
+# & + {\cal C}_{20}(\eta)[\text{last}(k)] - {\cal C}_{20}(\eta)[\text{start}(k)-1]
+# \end{aligned}
+# $$
+
+assert np.all(preproc['start'] <= preproc['first'])
+
+# #### Off-diagonal Hessian entries
+#
+# We can similarly deduce how to evaluate off-diagonal entries of the Hessian, though
+# we have not implemented all of these yet.
+
+E_l = last_(l) - d_S * start_(l) - d_E * s_E * (last_(l) - first_(l-1))
+prod = expand(E_k * E_l)
+prod.as_ordered_terms()
+
+
+# ## Evaluation
+# Below is the evaluation in `python` code that is similar to what the `C` code will look like.
+
+def log_like(eta,           # eta is in native order 
+             sample_weight, # sample_weight is in native order
+             event_order,   
              start_order,
-             efron=efron):
+             status,        # everything below in event order
+             event,
+             start,
+             first,
+             last,
+             scaling,
+             event_map,
+             start_map,
+             norm_scaling,
+             loglik_sat,
+             have_start_times=True,
+             efron=False):
+
+    # be sure they're arrays so that no weird pandas indexing is used
+    eta = np.asarray(eta)
+    sample_weight = np.asarray(sample_weight)
+    event_order = np.asarray(event_order)   
+    start_order = np.asarray(start_order)
+    status = np.asarray(status)
+    event = np.asarray(event)
+    start = np.asarray(start)
+    first = np.asarray(first)
+    last = np.asarray(last)
+    scaling = np.asarray(scaling)
+    event_map = np.asarray(event_map)
+    start_map = np.asarray(start_map)
+    
+    _status = (status==1)
+    
     eta = eta - eta.mean()
+    
+    # compute the event ordered reversed cumsum
     eta_event = eta[event_order]
     w_event = sample_weight[event_order]
-
     exp_eta_w_event = w_event * np.exp(eta_event)
-    exp_eta_w_start = np.hstack([(sample_weight * np.exp(eta))[start_order], 0])
+    event_cumsum = np.hstack([np.cumsum(exp_eta_w_event[::-1])[::-1], 0]) # length=n+1 for when last=n-1
 
-    event_cumsum = np.hstack([np.cumsum(exp_eta_w_event[::-1])[::-1], 0])
-    start_cumsum = np.cumsum(exp_eta_w_start[::-1])[::-1]
-
-    diffs = event_cumsum[final_df['event_first']] - start_cumsum[final_df['event_idx']]
+    # compute the start oredered reversed cumsum, if necessary
+    # then compute the cumsums (or difference of cumsums) for Breslow approximation
+    
+    if have_start_times:
+        exp_eta_w_start = np.hstack([(sample_weight * np.exp(eta))[start_order], 0]) # length=n+1
+        start_cumsum = np.cumsum(exp_eta_w_start[::-1])[::-1]  # length=n+1
+        risk_sums = event_cumsum[first] - start_cumsum[event_map]
+    else:
+        risk_sums = event_cumsum[first]
+        
+    # compute the Efron correction, adjusting risk_sum if necessary
+    
+    efron = False
     if efron == True:
-        n = final_df.shape[0]
-        num = (event_cumsum[np.asarray(final_df['event_first'])[:-1]] - 
-               event_cumsum[np.asarray(final_df['event_last'])[:-1]+1])
-        den = np.asarray(final_df['event_last'])[:-1] + 1 - np.asarray(final_df['event_first'])[:-1]
-        efron_means = num / den
-        scaling = np.arange(n-1) - np.asarray(final_df['event_first'])[:-1]
-        print(scaling)
-        print(den)
-        diffs[:-1] -= efron_means * scaling
-        print(efron_means)
-    log_terms = np.log(np.array(diffs)) * w_event * (final_df['status'] == 1)
-    loglik = (w_event * eta_event * (final_df['status']==1)).sum() - np.sum(log_terms)
+        # XXXXX is last term handled correctly?
+        n = eta.shape[0]
+        num = (event_cumsum[first] - 
+               event_cumsum[last+1])
+        risk_sums -= num * scaling
+    
+    log_terms = np.log(np.array(risk_sums)) * w_event * _status
+    loglik = (w_event * eta_event * _status).sum() - np.sum(log_terms)
 
-    recip = np.asarray(final_df['status'] * w_event / diffs)
-    recip_cumsum = np.hstack([0, np.cumsum(recip)])
+    # cumsums for gradient and Hessian
     
-    G_term = recip_cumsum[final_df['event_last']+1] - recip_cumsum[final_df['start_idx']]
+    # length of cumsums is n+1
+    # 0 is prepended for first(k)-1, start(k)-1 lookups
+    # a 1 is added to all indices
+
+    A_10 = _status * w_event / risk_sums
+    C_10 = np.hstack([0, np.cumsum(A_10)]) 
     
-    grad = np.asarray(w_event * (final_df['status'] == 1) - exp_eta_w_event * G_term)
+    A_20 = _status * w_event / risk_sums**2
+    C_20 = np.hstack([0, np.cumsum(A_20)]) # length=n+1
+
+    # if there are no ties, scaling should be identically 0
+    # don't bother with cumsums below 
+
+    efron = efron and norm_scaling > 0 # could check norm scaling before calling....
+    if not efron:
+        if have_start_times:
+            T_1_term = C_10[last+1] - C_10[start_map]   # +1 for start_map? depends on how  
+                                                         # a tie between a start time and an event time
+                                                         # if that means the start individual is excluded
+                                                         # we should add +1, otherwise there should be
+                                                         # no +1 in the [start_map+1] above
+            T_2_term = C_20[last+1] - C_20[start_map]
+        else:
+            T_1_term = C_10[last+1]
+            T_2_term = C_20[last+1]
+    else:
+        # compute the other necessary cumsums
+        
+        A_11 = _status * w_event * scaling / risk_sums
+        C_11 = np.hstack([0, np.cumsum(A_11)]) # length=n+1
+
+        A_21 = _status * w_event * scaling / risk_sums
+        C_21 = np.hstack([0, np.cumsum(A_21)]) # length=n+1
+
+        A_22 = _status * w_event * scaling / risk_sums
+        C_22 = np.hstack([0, np.cumsum(A_22)]) # length=n+1
+
+        T_1_term = (C_10[last+1] - 
+                    (C_11[last+1] - C_11[first]))
+        T_2_term = ((C_22[last+1] - C_22[first]) 
+                    - 2 * (C_21[last+1] - C_21[first]) + 
+                    C_20[last+1])
+        if have_start_times:
+            T_1_term -= C_10[start_map]
+            T_2_term -= C_20[first]
+    
+    grad = w_event * _status - exp_eta_w_event * T_1_term
     grad_cp = grad.copy()
     grad[event_order] = grad_cp
 
-    # now the Hessian
+    # now the diagonal of the Hessian
 
-    recip2 = np.asarray(final_df['status'] * w_event / diffs**2)
-    recip2_cumsum = np.hstack([0, np.cumsum(recip2)])
-
-    G2_term = recip2_cumsum[final_df['event_last']+1] - recip2_cumsum[final_df['start_idx']]
-    
-    diag_hess = exp_eta_w_event**2 * G2_term - exp_eta_w_event * G_term
+    diag_hess = exp_eta_w_event**2 * T_2_term - exp_eta_w_event * T_1_term
     diag_hess_cp = diag_hess.copy()
     diag_hess[event_order] = diag_hess_cp
-    
-    return loglik, grad, diag_hess
 
-loglik, G, H = log_like(eta, weight, final, event_order, start_order)
-# -
+    deviance = 2 * (loglik_sat - loglik)
+    return deviance, -2 * grad, -2 * diag_hess
 
-
-final
-
-# +
-import jax.numpy as jnp
-from jax import grad
-def log_like_jax(eta, sample_weight, final_df, event_order, start_order, efron=efron):
-    eta = eta - jnp.mean(eta)
-    eta_event = eta[event_order]
-    w_event = sample_weight[event_order]
-
-    exp_eta_w_event = w_event * jnp.exp(eta_event)
-    exp_eta_w_start = jnp.hstack([(sample_weight * jnp.exp(eta))[start_order], 0])
-
-    event_cumsum = jnp.cumsum(exp_eta_w_event[::-1])[::-1]
-    start_cumsum = jnp.cumsum(exp_eta_w_start[::-1])[::-1]
-
-    diffs = (event_cumsum[np.asarray(final_df['event_first'])] - 
-             start_cumsum[np.asarray(final_df['event_idx'])])
-    if efron == True:
-        num = (event_cumsum[np.asarray(final_df['event_first'])[:-1]] - 
-               event_cumsum[np.asarray(final_df['event_last'])[:-1]+1])
-        den = np.asarray(final_df['event_last'])[:-1] + 1 - np.asarray(final_df['event_first'])[:-1]
-        efron_means = num / den
-        
-        diffs = diffs.at[:-1].add(- efron_means)
-    log_terms = jnp.log(jnp.array(diffs)) * w_event * np.asarray(final_df['status'] == 1)
-    
-    #log_terms = (jnp.log(jnp.array(diffs)) * w_event)[np.asarray(final_df['status']) == 1]
-
-    loglik = (w_event * eta_event)[np.asarray(final_df['status'])==1].sum() - np.sum(log_terms)
-
-    return loglik
-    
-def logL(eta):
-    return log_like_jax(eta, weight, final, event_order, start_order)
-logL(eta), loglik
-# -
-
-grad_logL = grad(logL)
-G_jax = grad_logL(eta)
-
-G_jax[:10] - G[:10]
+eta = data_df['eta'] # in native order
+dev, G, H = log_like(eta,
+                     data_df['weight'],
+                     event_order,
+                     start_order,
+                     preproc['status'],
+                     preproc['event'],
+                     preproc['start'],
+                     preproc['first'],
+                     preproc['last'],
+                     preproc['scaling'],
+                     preproc['event_map'],
+                     preproc['start_map'],
+                     np.linalg.norm(preproc['scaling']),
+                     loglik_sat,
+                     efron=False)
 
 import rpy2
 # %load_ext rpy2.ipython
-# %R -i start,event,status,weight,eta
+start = data_df['start']
+event = data_df['event']
+status = data_df['status']
+weight = data_df['weight']
+# %R -i start,event,status,eta,weight
 
-# + magic_args="-o G_R" language="R"
+# + magic_args="-o G_R,H_R,D_R" language="R"
 # library(survival)
 # library(glmnet)
-# y_s = Surv(start, event, status)
-# G_R = glmnet:::coxgrad3(eta, y_s, as.numeric(weight), std.weights=FALSE, diag.hessian=TRUE)
+# Y = Surv(start, event, status)
+# D_R = glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE)
+# # glmnet computes grad and hessian of the log-likelihood, not deviance
+# # need to multiply by -2 to get grad and hessian of deviance
+# G_R = glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
+# H_R = attr(G_R, 'diag_hessian')
+# G_R = -2 * G_R
+# H_R = -2 * H_R
 # -
 
-G_jax
+np.linalg.norm(G-G_R)/ np.linalg.norm(G)
 
-G
+np.linalg.norm(H-H_R) / np.linalg.norm(H)
 
-np.linalg.norm(G - G_jax) / np.linalg.norm(G), np.linalg.norm(G - G_R) / np.linalg.norm(G)
-
-# # Run with no ties
-
-ties = False
-start = rng.integers(0, 10, size=n) 
-event = start + rng.integers(0, 10, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
-status = rng.choice([0,1], size=n, replace=True)
-
-stacked_df = pd.DataFrame({'time':np.hstack([start, event]),
-                           'status':np.hstack([np.zeros_like(start), status]),
-                           'start?':np.hstack([np.ones(n), np.zeros(n)]),
-                           'idx':np.hstack([np.arange(n), np.arange(n)])})
-sorted_df = stacked_df.sort_values(by=['time', 'status', 'start?'], ascending=[True,False,True])
-sorted_df[:20]
-final, event_order, start_order, loglik_sat = sort_start_event(sorted_df, weight)
-loglik, G, H = log_like(eta, weight, final, event_order, start_order)
-2 * (loglik_sat - loglik)
-final
-
-# + magic_args="-i start,event,status,weight,eta -o G_R,H_R" language="R"
-# y_s = Surv(start, event, status)
-# G_R = glmnet:::coxgrad3(eta, y_s, as.numeric(weight), std.weights=FALSE, diag.hessian=TRUE)
-# H_R = attr(G_R, "diag_hessian")
-# G_R
-# -
-
-np.linalg.norm(G - G_R) / np.linalg.norm(G)
-
-np.linalg.norm(H_R - H) / np.linalg.norm(H)
-
-G_jax = grad_logL(eta)
-np.linalg.norm(G - G_jax) / np.linalg.norm(G), np.linalg.norm(G-G_R) / np.linalg.norm(G)
-
-final
-
-# ## Right censored case
-#
-
-start = -np.inf * np.ones(n)
-stacked_df = pd.DataFrame({'time':np.hstack([start, event]),
-                           'status':np.hstack([np.zeros_like(start), status]),
-                           'start?':np.hstack([np.ones(n), np.zeros(n)]),
-                           'idx':np.hstack([np.arange(n), np.arange(n)])})
-sorted_df = stacked_df.sort_values(by=['time', 'status', 'start?'], ascending=[True,False,True])
-sorted_df[:20]
-final, event_order, start_order, loglik_sat = sort_start_event(sorted_df, weight)
-loglik, G, H = log_like(eta, weight, final, event_order, start_order)
-2 * (loglik_sat - loglik)
-
-# + magic_args="-i start,event,status,weight,eta -o G_R,H_R" language="R"
-# y_s = Surv(event, status)
-# print(glmnet:::coxnet.deviance2(pred=as.numeric(eta), y=y_s, weights=weight, std.weights=FALSE))
-# G_R = glmnet:::coxgrad2(eta, y_s, as.numeric(weight), std.weights=FALSE, diag.hessian=TRUE)
-# H_R = attr(G_R, "diag_hessian")
-# -
-
-np.linalg.norm(G - G_R) / np.linalg.norm(G)
-
-np.linalg.norm(H_R - H) / np.linalg.norm(H)
-
-from glmnet import coxdev
-rc = coxdev.CoxRightCensored(event, status, sample_weight=weight)
-r = rc(eta, compute_gradient=True, compute_diag_hessian=True)
-r.deviance
-np.linalg.norm(r.grad - 2 *G) / np.linalg.norm(r.grad)
-
-np.linalg.norm(r.diag_hessian - 2 * H) / np.linalg.norm(r.diag_hessian)
-
-
+np.fabs(dev - D_R)
