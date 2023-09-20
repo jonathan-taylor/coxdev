@@ -13,8 +13,15 @@
 #     name: python3
 # ---
 
+# +
 import numpy as np
 import pandas as pd
+
+from coxdev import _cox_dev
+from coxdev import CoxDeviance
+                       
+
+# -
 
 # # A small dataset (with ties)
 #
@@ -117,7 +124,8 @@ def sort_start_event(original_df, sorted_df):
     start_map_cp = start_map.copy()
     start_map[start_order] = start_map_cp
 
-    preprocessed_df = pd.DataFrame({'status':original_df['status'],
+    status_event = np.asarray(original_df['status'])[event_order]
+    preprocessed_df = pd.DataFrame({'status':status_event,
                                     'first':first,
                                     'start_map':start_map[event_order].astype(int), 
                                     'event_map':event_map.astype(int) # already in event order
@@ -163,7 +171,7 @@ preproc
 #
 # ## Saturated log-likelihood
 #
-# First, let's compute the log-likelihood. This is also a pre-processing step.
+# First, let's compute the saturated log-likelihood. This is also a pre-processing step.
 
 sat_df = preproc[['first', 'status']].copy() # in event order
 sat_df['sample_weight'] = data_df['weight'][event_order]
@@ -433,6 +441,8 @@ prod.as_ordered_terms()
 # ## Evaluation
 # Below is the evaluation in `python` code that is similar to what the `C` code will look like.
 
+# +
+
 def log_like(eta,           # eta is in native order 
              sample_weight, # sample_weight is in native order
              event_order,   
@@ -445,7 +455,6 @@ def log_like(eta,           # eta is in native order
              scaling,
              event_map,
              start_map,
-             norm_scaling,
              loglik_sat,
              have_start_times=True,
              efron=False):
@@ -486,7 +495,6 @@ def log_like(eta,           # eta is in native order
         
     # compute the Efron correction, adjusting risk_sum if necessary
     
-    efron = False
     if efron == True:
         # XXXXX is last term handled correctly?
         n = eta.shape[0]
@@ -512,7 +520,6 @@ def log_like(eta,           # eta is in native order
     # if there are no ties, scaling should be identically 0
     # don't bother with cumsums below 
 
-    efron = efron and norm_scaling > 0 # could check norm scaling before calling....
     if not efron:
         if have_start_times:
             T_1_term = C_10[last+1] - C_10[start_map]   # +1 for start_map? depends on how  
@@ -558,8 +565,11 @@ def log_like(eta,           # eta is in native order
     deviance = 2 * (loglik_sat - loglik)
     return deviance, -2 * grad, -2 * diag_hess
 
+
+# -
+
 eta = data_df['eta'] # in native order
-dev, G, H = log_like(eta,
+dev, G, H = _cox_dev(eta,
                      data_df['weight'],
                      event_order,
                      start_order,
@@ -571,9 +581,9 @@ dev, G, H = log_like(eta,
                      preproc['scaling'],
                      preproc['event_map'],
                      preproc['start_map'],
-                     np.linalg.norm(preproc['scaling']),
                      loglik_sat,
-                     efron=False)
+                     efron=False,
+                     have_start_times=True)
 
 import rpy2
 # %load_ext rpy2.ipython
@@ -601,3 +611,5 @@ np.linalg.norm(G-G_R)/ np.linalg.norm(G)
 np.linalg.norm(H-H_R) / np.linalg.norm(H)
 
 np.fabs(dev - D_R)
+
+
