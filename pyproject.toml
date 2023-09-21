@@ -10,7 +10,7 @@ license = {file = "LICENSE.txt"}
 keywords = []
 authors = [
     {name = "Jonathan Taylor", email="jonathan.taylor@stanford.edu" },
-    {name = "Trevor Hastie", email="hastie@stanford.edu" }
+    {name = "Trevor Hastie", email="hastie@stanford.edu" },
     {name = "Narasimhan Balasubrimanian", email="naras@stanford.edu" }
     ]  
 maintainers = [
