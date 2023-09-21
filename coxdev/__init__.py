@@ -54,17 +54,16 @@ class CoxDeviance(object):
         # compute the saturated log-likelihood
 
         if loglik_sat is None:
-            # _last, _first = self._preproc['last'], self._preproc['first']
-            # sample_weight = np.asarray(sample_weight)
-            # W_status = np.cumsum(np.hstack([0, sample_weight[self._event_order] * self._preproc['status']]))
-            # sums = W_status[_last+1] - W_status[_first]
-            # loglik_sat = 0
-            # prev_first = -1
-            # for f, s in zip(_first, sums):
-            #     if s > 0 and f != prev_first:
-            #         loglik_sat -= s * np.log(s)
-            #     prev_first = f
+            _last, _first = self._preproc['last'], self._preproc['first']
+            sample_weight = np.asarray(sample_weight)
+            W_status = np.cumsum(np.hstack([0, sample_weight[self._event_order] * self._preproc['status']]))
+            sums = W_status[_last+1] - W_status[_first]
             loglik_sat = 0
+            prev_first = -1
+            for f, s in zip(_first, sums):
+                if s > 0 and f != prev_first:
+                    loglik_sat -= s * np.log(s)
+                prev_first = f
             
         return _cox_dev(np.asarray(linear_predictor),
                         np.asarray(sample_weight),
@@ -332,4 +331,4 @@ def _cox_dev(eta,           # eta is in native order
     diag_hess[event_order] = diag_hess_cp
 
     deviance = 2 * (loglik_sat - loglik)
-    return deviance, -2 * grad, -2 * diag_hess
+    return loglik_sat, deviance, -2 * grad, -2 * diag_hess

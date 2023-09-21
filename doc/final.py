@@ -571,21 +571,21 @@ def log_like(eta,           # eta is in native order
 
 eta = data_df['eta'] # in native order
 print(loglik_sat)
-dev, G, H = _cox_dev(eta,
-                     data_df['weight'],
-                     event_order,
-                     start_order,
-                     preproc['status'],
-                     preproc['event'],
-                     preproc['start'],
-                     preproc['first'],
-                     preproc['last'],
-                     preproc['scaling'],
-                     preproc['event_map'],
-                     preproc['start_map'],
-                     loglik_sat,
-                     efron=False,
-                     have_start_times=True)
+_, dev, G, H = _cox_dev(eta,
+                        data_df['weight'],
+                        event_order,
+                        start_order,
+                        preproc['status'],
+                        preproc['event'],
+                        preproc['start'],
+                        preproc['first'],
+                        preproc['last'],
+                        preproc['scaling'],
+                        preproc['event_map'],
+                        preproc['start_map'],
+                        loglik_sat,
+                        efron=False,
+                        have_start_times=True)
 
 import rpy2
 # %load_ext rpy2.ipython
@@ -620,8 +620,8 @@ coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='breslow')
-dev_, G_, H_ = coxdev_(eta, 
-                       weight)
+_, dev_, G_, H_ = coxdev_(eta, 
+                          weight)
 
 np.fabs(dev - dev_)
 
@@ -632,7 +632,7 @@ np.linalg.norm(H-H_) / np.linalg.norm(H)
 # ## Larger data sets
 
 ties = True
-n = 50000
+n = 100000
 rng = np.random.default_rng(0)
 start = rng.integers(0, 10, size=n) 
 event = start + rng.integers(0, 10, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
@@ -658,14 +658,15 @@ coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='breslow')
-[coxdev_(eta, weight) for _ in range(400)]
+loglik_sat, dev, G, H = coxdev_(eta, weight)
+[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
 
 coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='breslow')
-dev_, G_, H_ = coxdev_(eta, 
-                       weight)
+_, dev_, G_, H_ = coxdev_(eta, 
+                          weight)
 
 np.fabs(dev_ - D_R)
 
@@ -679,7 +680,8 @@ np.linalg.norm(H_-H_R) / np.linalg.norm(H)
 coxdev_ = CoxDeviance(event,
                       status,
                       tie_breaking='breslow')
-[coxdev_(eta, weight) for _ in range(400)]
+loglik_sat, dev, G, H = coxdev_(eta, weight)
+[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
 
 # + magic_args="-i event,status,start,eta,weight -o G_R,H_R,D_R " language="R"
 # Y = Surv(event, status)
@@ -693,5 +695,25 @@ coxdev_ = CoxDeviance(event,
 # G_R = -2 * G_R
 # H_R = -2 * H_R
 # -
+
+# ## Efron's tie breaking
+#
+
+# %%timeit
+coxdev_ = CoxDeviance(event,
+                      status,
+                      tie_breaking='efron')
+loglik_sat, dev, G, H = coxdev_(eta, weight)
+[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
+
+# ### With start time
+
+# %%timeit
+coxdev_ = CoxDeviance(event,
+                      status,
+                      start=start,
+                      tie_breaking='efron')
+loglik_sat, dev, G, H = coxdev_(eta, weight)
+[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
 
 
