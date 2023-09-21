@@ -1,5 +1,5 @@
 from dataclasses import dataclass, InitVar
-from typing import Literal
+from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,7 @@ class CoxDeviance(object):
 
     event: InitVar(np.ndarray)
     status: InitVar(np.ndarray)
-    start: InitVar(np.ndarray)
+    start: InitVar(np.ndarray)=None
     tie_breaking: Literal['efron', 'breslow'] = 'efron'
     
     def __post_init__(self,
@@ -54,17 +54,18 @@ class CoxDeviance(object):
         # compute the saturated log-likelihood
 
         if loglik_sat is None:
-            sample_weight = np.asarray(sample_weight)
-            sat_df = self._preproc[['first', 'status']] # recall, this is in event order
-            sat_df.insert(2, 'sample_weight', sample_weight[self._event_order])
+            # _last, _first = self._preproc['last'], self._preproc['first']
+            # sample_weight = np.asarray(sample_weight)
+            # W_status = np.cumsum(np.hstack([0, sample_weight[self._event_order] * self._preproc['status']]))
+            # sums = W_status[_last+1] - W_status[_first]
+            # loglik_sat = 0
+            # prev_first = -1
+            # for f, s in zip(_first, sums):
+            #     if s > 0 and f != prev_first:
+            #         loglik_sat -= s * np.log(s)
+            #     prev_first = f
             loglik_sat = 0
-            for _, df in sat_df[['first', 'status', 'sample_weight']].groupby('first'):
-                if df['status'].sum() > 0:
-                    W = (df['sample_weight'] * df['status']).sum()
-                    loglik_sat -= W * np.log(W)
-
-        # compute scaling vector for Efron's tie breaking method
-    
+            
         return _cox_dev(np.asarray(linear_predictor),
                         np.asarray(sample_weight),
                         self._event_order,
@@ -92,6 +93,20 @@ def _preprocess(start,
     status = np.asarray(status)
     nevent = status.shape[0]
     
+    # second column of stacked_array is 1-status...
+    stacked_time = np.hstack([start, event])
+    stacked_status_c = np.hstack([np.ones(nevent, int), 1-status]) # complement of status
+    stacked_is_start = np.hstack([np.ones(nevent, int), np.zeros(nevent, int)])
+    stacked_index = np.hstack([np.arange(nevent), np.arange(nevent)])
+
+    argsort = np.lexsort((stacked_is_start,
+                          stacked_status_c,
+                          stacked_time))
+    sorted_time = stacked_time[argsort]
+    sorted_status = 1 - stacked_status_c[argsort]
+    sorted_is_start = stacked_is_start[argsort]
+    sorted_index = stacked_index[argsort]
+    
     stacked_df = pd.DataFrame({'time':np.hstack([start, event]),
                                'status':np.hstack([np.zeros_like(start), 
                                                    status]),
@@ -113,20 +128,23 @@ def _preprocess(start,
     first_event = -1
     num_successive_event = 1
     ties = {}    
-    for _r in range(sorted_df.shape[0]):
-        row = sorted_df.iloc[_r]
-        if row['is_start'] == 1: # a start time
-            start_order.append(row['index'])
+    for row in zip(sorted_time,
+                   sorted_status,
+                   sorted_is_start,
+                   sorted_index):
+        (_time, _status, _is_start, _index) = row
+        if _is_start == 1: # a start time
+            start_order.append(_index)
             start_map.append(event_count)
             start_count += 1
         else: # an event / stop time
-            if row['status'] == 1:
+            if _status == 1:
                 # if it's an event and the time is same as last row 
                 # it is the same event
                 # else it's the next "which_event"
                 
                 if (last_row is not None and 
-                    row['time'] != last_row['time']): # index of next `status==1`
+                    _time != last_row[0]): # index of next `status==1`
                     first_event += num_successive_event
                     num_successive_event = 1
                     which_event += 1
@@ -140,13 +158,13 @@ def _preprocess(start,
                 first.append(first_event) # this event time was not an failure time
 
             event_map.append(start_count)
-            event_order.append(row['index'])
+            event_order.append(_index)
             event_count += 1
         last_row = row
 
     first = np.array(first)
-    start_order = np.array(start_order).astype(int)
-    event_order = np.array(event_order).astype(int)
+    start_order = np.array(start_order, int)
+    event_order = np.array(event_order, int)
     start_map = np.array(start_map, int)
     event_map = np.array(event_map, int)
 
@@ -154,30 +172,38 @@ def _preprocess(start,
     start_map_cp = start_map.copy()
     start_map[start_order] = start_map_cp
 
-    preprocessed_df = pd.DataFrame({'status':status[event_order],
-                                    'first':first,
-                                    'start_map':start_map[event_order].astype(int), 
-                                    'event_map':event_map.astype(int) # already in event order
-                                    }, index=event_order)
+    # set to event order
+
+    _status = status[event_order]
+    _first = first
+    _start_map = start_map[event_order]
+    _event_map = event_map
 
     # compute `last`
     
     last = []
     last_event = nevent-1
-    for i, f in enumerate(preprocessed_df['first'][::-1]):
+    for i, f in enumerate(_first[::-1]):
         last.append(last_event)
         # immediately following a last event, `first` will agree with np.arange
         if f - (nevent - 1 - i) == 0:
             last_event = f - 1        
+    _last = np.array(last[::-1])
+    _event = event[event_order]
+    _start = event[start_order]
 
-    preprocessed_df.insert(2, 'last', last[::-1])
-    
-    preproc = preprocessed_df # shorthand
-    preproc['event'] = event[event_order]
-    preproc['start'] = start[event_order]
+    den = _last + 1 - _first
 
-    den = preproc['last'] + 1 - preproc['first']
-    preproc['scaling'] = (np.arange(nevent) - preproc['first']) / den
+    _scaling = (np.arange(nevent) - _first) / den
+
+    preproc = {'start':_start,
+               'event':_event,
+               'first':_first,
+               'last':_last,
+               'scaling':_scaling,
+               'start_map':_start_map,
+               'event_map':_event_map,
+               'status':_status}
 
     return preproc, event_order, start_order
 
@@ -307,47 +333,3 @@ def _cox_dev(eta,           # eta is in native order
 
     deviance = 2 * (loglik_sat - loglik)
     return deviance, -2 * grad, -2 * diag_hess
-
-# eta = data_df['eta'] # in native order
-# dev, G, H = log_like(eta,
-#                      data_df['weight'],
-#                      event_order,
-#                      start_order,
-#                      preproc['status'],
-#                      preproc['event'],
-#                      preproc['start'],
-#                      preproc['first'],
-#                      preproc['last'],
-#                      preproc['scaling'],
-#                      preproc['event_map'],
-#                      preproc['start_map'],
-#                      np.linalg.norm(preproc['scaling']),
-#                      loglik_sat,
-#                      efron=False)
-
-# import rpy2
-# # %load_ext rpy2.ipython
-# start = data_df['start']
-# event = data_df['event']
-# status = data_df['status']
-# weight = data_df['weight']
-# # %R -i start,event,status,eta,weight
-
-# # + magic_args="-o G_R,H_R,D_R" language="R"
-# # library(survival)
-# # library(glmnet)
-# # Y = Surv(start, event, status)
-# # D_R = glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE)
-# # # glmnet computes grad and hessian of the log-likelihood, not deviance
-# # # need to multiply by -2 to get grad and hessian of deviance
-# # G_R = glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
-# # H_R = attr(G_R, 'diag_hessian')
-# # G_R = -2 * G_R
-# # H_R = -2 * H_R
-# # -
-
-# np.linalg.norm(G-G_R)/ np.linalg.norm(G)
-
-# np.linalg.norm(H-H_R) / np.linalg.norm(H)
-
-# np.fabs(dev - D_R)

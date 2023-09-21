@@ -632,7 +632,7 @@ np.linalg.norm(H-H_) / np.linalg.norm(H)
 # ## Larger data sets
 
 ties = True
-n = 300
+n = 50000
 rng = np.random.default_rng(0)
 start = rng.integers(0, 10, size=n) 
 event = start + rng.integers(0, 10, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
@@ -641,13 +641,10 @@ weight = rng.uniform(1, 2, size=n)
 eta = rng.standard_normal(n)
 
 # + magic_args="-i event,status,start,eta,weight -o G_R,H_R,D_R " language="R"
-# library(survival)
-# library(glmnet)
 # Y = Surv(start, event, status)
-# print(length(Y))
 # eta = as.numeric(eta)
 # weight = as.numeric(weight)
-# print(system.time(for (i in 1:20) {c(glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE),
+# print(system.time(for (i in 1:400) {c(glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE),
 #                     glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE))}))
 # D_R = glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE)
 # G_R = glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
@@ -661,8 +658,7 @@ coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='breslow')
-dev_, G_, H_ = coxdev_(eta, 
-                       weight)
+[coxdev_(eta, weight) for _ in range(400)]
 
 coxdev_ = CoxDeviance(event,
                       status,
@@ -677,19 +673,25 @@ np.linalg.norm(G_-G_R) / np.linalg.norm(G)
 
 np.linalg.norm(H_-H_R) / np.linalg.norm(H)
 
-# %%prun
-coxdev_ = CoxDeviance(event,
-                      status,
-                      start=start,
-                      tie_breaking='breslow')
+# ## Right censored 
 
 # %%timeit
-[coxdev_(eta, weight) for _ in range(20)]
+coxdev_ = CoxDeviance(event,
+                      status,
+                      tie_breaking='breslow')
+[coxdev_(eta, weight) for _ in range(400)]
 
-# %%prun
-dev_, G_, H_ = coxdev_(eta, 
-                       weight)
-
-
+# + magic_args="-i event,status,start,eta,weight -o G_R,H_R,D_R " language="R"
+# Y = Surv(event, status)
+# eta = as.numeric(eta)
+# weight = as.numeric(weight)
+# print(system.time(for (i in 1:400) {c(glmnet:::coxnet.deviance2(pred=eta, y=Y, weight=weight, std.weights=FALSE),
+#                     glmnet:::coxgrad2(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE))}))
+# D_R = glmnet:::coxnet.deviance2(pred=eta, y=Y, weight=weight, std.weights=FALSE)
+# G_R = glmnet:::coxgrad2(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
+# H_R = attr(G_R, 'diag_hessian')
+# G_R = -2 * G_R
+# H_R = -2 * H_R
+# -
 
 
