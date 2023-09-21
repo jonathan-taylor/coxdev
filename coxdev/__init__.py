@@ -1,6 +1,9 @@
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
 
+from . import _version
+__version__ = _version.get_versions()['version']
+
 import numpy as np
 
 @dataclass
