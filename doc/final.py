@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from coxdev import _cox_dev
+from coxdev import _preprocess
 from coxdev import CoxDeviance
                        
 
@@ -569,6 +570,7 @@ def log_like(eta,           # eta is in native order
 # -
 
 eta = data_df['eta'] # in native order
+print(loglik_sat)
 dev, G, H = _cox_dev(eta,
                      data_df['weight'],
                      event_order,
@@ -587,10 +589,10 @@ dev, G, H = _cox_dev(eta,
 
 import rpy2
 # %load_ext rpy2.ipython
-start = data_df['start']
-event = data_df['event']
-status = data_df['status']
-weight = data_df['weight']
+start = data_df['start'].copy()
+event = data_df['event'].copy()
+status = data_df['status'].copy()
+weight = data_df['weight'].copy()
 # %R -i start,event,status,eta,weight
 
 # + magic_args="-o G_R,H_R,D_R" language="R"
@@ -606,10 +608,88 @@ weight = data_df['weight']
 # H_R = -2 * H_R
 # -
 
+np.fabs(dev - D_R)
+
 np.linalg.norm(G-G_R)/ np.linalg.norm(G)
 
 np.linalg.norm(H-H_R) / np.linalg.norm(H)
 
-np.fabs(dev - D_R)
+# ## Using `CoxDeviance`
+
+coxdev_ = CoxDeviance(event,
+                      status,
+                      start=start,
+                      tie_breaking='breslow')
+dev_, G_, H_ = coxdev_(eta, 
+                       weight)
+
+np.fabs(dev - dev_)
+
+np.linalg.norm(G-G_)/ np.linalg.norm(G)
+
+np.linalg.norm(H-H_) / np.linalg.norm(H)
+
+# ## Larger data sets
+
+ties = True
+n = 300
+rng = np.random.default_rng(0)
+start = rng.integers(0, 10, size=n) 
+event = start + rng.integers(0, 10, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
+status = rng.choice([0,1], size=n, replace=True)
+weight = rng.uniform(1, 2, size=n)
+eta = rng.standard_normal(n)
+
+# + magic_args="-i event,status,start,eta,weight -o G_R,H_R,D_R " language="R"
+# library(survival)
+# library(glmnet)
+# Y = Surv(start, event, status)
+# print(length(Y))
+# eta = as.numeric(eta)
+# weight = as.numeric(weight)
+# print(system.time(for (i in 1:20) {c(glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE),
+#                     glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE))}))
+# D_R = glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE)
+# G_R = glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
+# H_R = attr(G_R, 'diag_hessian')
+# G_R = -2 * G_R
+# H_R = -2 * H_R
+# -
+
+# %%timeit
+coxdev_ = CoxDeviance(event,
+                      status,
+                      start=start,
+                      tie_breaking='breslow')
+dev_, G_, H_ = coxdev_(eta, 
+                       weight)
+
+coxdev_ = CoxDeviance(event,
+                      status,
+                      start=start,
+                      tie_breaking='breslow')
+dev_, G_, H_ = coxdev_(eta, 
+                       weight)
+
+np.fabs(dev_ - D_R)
+
+np.linalg.norm(G_-G_R) / np.linalg.norm(G)
+
+np.linalg.norm(H_-H_R) / np.linalg.norm(H)
+
+# %%prun
+coxdev_ = CoxDeviance(event,
+                      status,
+                      start=start,
+                      tie_breaking='breslow')
+
+# %%timeit
+[coxdev_(eta, weight) for _ in range(20)]
+
+# %%prun
+dev_, G_, H_ = coxdev_(eta, 
+                       weight)
+
+
 
 

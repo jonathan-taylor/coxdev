@@ -29,31 +29,58 @@ class CoxDeviance(object):
 
         (self._preproc,
          self._event_order,
-         self._start_order,
-         self._loglik_sat) = _preprocess(start,
+         self._start_order) = _preprocess(start,
                                          event,
                                          status)
-        self._efron = self.efron and np.linalg.norm(self._preproc['scaling']) > 0
+        self._efron = self.tie_breaking == 'efron' and np.linalg.norm(self._preproc['scaling']) > 0
+
+        self._status = np.asarray(self._preproc['status'])
+        self._event = np.asarray(self._preproc['event'])
+        self._start = np.asarray(self._preproc['start'])
+        self._first = np.asarray(self._preproc['first'])
+        self._last = np.asarray(self._preproc['last'])
+        self._scaling = np.asarray(self._preproc['scaling'])
+        self._event_map = np.asarray(self._preproc['event_map'])
+        self._start_map = np.asarray(self._preproc['start_map'])
 
     def __call__(self,
                  linear_predictor,
-                 sample_weight):
+                 sample_weight=None,
+                 loglik_sat=None):
 
-        return _log_like(np.asarray(linear_predictor),
-                         np.asarray(sample_weight),
-                         self._event_order,
-                         self._start_order,
-                         self._preproc['status'],
-                         self._preproc['event'],
-                         self._preproc['start'],
-                         self._preproc['first'],
-                         self._preproc['last'],
-                         self._preproc['scaling'],
-                         self._preproc['event_map'],
-                         self._preproc['start_map'],
-                         self._loglik_sat,
-                         efron=self._efron,
-                         have_start_times=self._have_start_times)
+        if sample_weight is None:
+            sample_weight = np.ones_like(linear_predictor)
+
+        # compute the saturated log-likelihood
+
+        if loglik_sat is None:
+            sample_weight = np.asarray(sample_weight)
+            sat_df = self._preproc[['first', 'status']] # recall, this is in event order
+            sat_df.insert(2, 'sample_weight', sample_weight[self._event_order])
+            loglik_sat = 0
+            for _, df in sat_df[['first', 'status', 'sample_weight']].groupby('first'):
+                if df['status'].sum() > 0:
+                    W = (df['sample_weight'] * df['status']).sum()
+                    loglik_sat -= W * np.log(W)
+
+        # compute scaling vector for Efron's tie breaking method
+    
+        return _cox_dev(np.asarray(linear_predictor),
+                        np.asarray(sample_weight),
+                        self._event_order,
+                        self._start_order,
+                        self._status,
+                        self._event,
+                        self._start,
+                        self._first,
+                        self._last,
+                        self._scaling,
+                        self._event_map,
+                        self._start_map,
+                        loglik_sat,
+                        efron=self._efron,
+                        have_start_times=self._have_start_times,
+                        asarray=False)
 
 
 def _preprocess(start,
@@ -63,12 +90,13 @@ def _preprocess(start,
     start = np.asarray(start)
     event = np.asarray(event)
     status = np.asarray(status)
+    nevent = status.shape[0]
     
     stacked_df = pd.DataFrame({'time':np.hstack([start, event]),
                                'status':np.hstack([np.zeros_like(start), 
                                                    status]),
-                               'is_start':np.hstack([np.ones(n, int), np.zeros(n, int)]),
-                               'index':np.hstack([np.arange(n), np.arange(n)])})
+                               'is_start':np.hstack([np.ones(nevent, int), np.zeros(nevent, int)]),
+                               'index':np.hstack([np.arange(nevent), np.arange(nevent)])})
 
     sorted_df = stacked_df.sort_values(by=['time', 'status', 'is_start'], ascending=[True,False,True])
     sorted_df
@@ -135,11 +163,11 @@ def _preprocess(start,
     # compute `last`
     
     last = []
-    last_event = n-1
+    last_event = nevent-1
     for i, f in enumerate(preprocessed_df['first'][::-1]):
         last.append(last_event)
         # immediately following a last event, `first` will agree with np.arange
-        if f - (n - 1 - i) == 0:
+        if f - (nevent - 1 - i) == 0:
             last_event = f - 1        
 
     preprocessed_df.insert(2, 'last', last[::-1])
@@ -148,22 +176,10 @@ def _preprocess(start,
     preproc['event'] = event[event_order]
     preproc['start'] = start[event_order]
 
-    # compute the saturated log-likelihood
-
-    sat_df = preproc[['first', 'status']] # recall, this is in event order
-    sat_df['sample_weight'] = weight[event_order]
-    loglik_sat = 0
-    for _, df in sat_df[['first', 'status', 'sample_weight']].groupby('first'):
-        if df['status'].sum() > 0:
-            W = (df['sample_weight'] * df['status']).sum()
-            loglik_sat -= W * np.log(W)
-
-    # compute scaling vector for Efron's tie breaking method
-
     den = preproc['last'] + 1 - preproc['first']
-    preproc['scaling'] = (np.arange(n) - preproc['first']) / den
+    preproc['scaling'] = (np.arange(nevent) - preproc['first']) / den
 
-    return preproc, event_order, start_order, loglik_sat
+    return preproc, event_order, start_order
 
 # Evaluation in `python` code that is similar to what the `C` code will look like.
 
@@ -181,21 +197,24 @@ def _cox_dev(eta,           # eta is in native order
              start_map,
              loglik_sat,
              have_start_times=True,
-             efron=False):
+             efron=False,
+             asarray=True):
 
     # be sure they're arrays so that no weird pandas indexing is used
-    eta = np.asarray(eta)
-    sample_weight = np.asarray(sample_weight)
-    event_order = np.asarray(event_order)   
-    start_order = np.asarray(start_order)
-    status = np.asarray(status)
-    event = np.asarray(event)
-    start = np.asarray(start)
-    first = np.asarray(first)
-    last = np.asarray(last)
-    scaling = np.asarray(scaling)
-    event_map = np.asarray(event_map)
-    start_map = np.asarray(start_map)
+
+    if asarray:
+        eta = np.asarray(eta)
+        sample_weight = np.asarray(sample_weight)
+        event_order = np.asarray(event_order)   
+        start_order = np.asarray(start_order)
+        status = np.asarray(status)
+        event = np.asarray(event)
+        start = np.asarray(start)
+        first = np.asarray(first)
+        last = np.asarray(last)
+        scaling = np.asarray(scaling)
+        event_map = np.asarray(event_map)
+        start_map = np.asarray(start_map)
     
     _status = (status==1)
     
