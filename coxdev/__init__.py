@@ -2,7 +2,6 @@ from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
 
 import numpy as np
-import pandas as pd
 
 @dataclass
 class CoxDeviance(object):
@@ -106,15 +105,6 @@ def _preprocess(start,
     sorted_is_start = stacked_is_start[argsort]
     sorted_index = stacked_index[argsort]
     
-    stacked_df = pd.DataFrame({'time':np.hstack([start, event]),
-                               'status':np.hstack([np.zeros_like(start), 
-                                                   status]),
-                               'is_start':np.hstack([np.ones(nevent, int), np.zeros(nevent, int)]),
-                               'index':np.hstack([np.arange(nevent), np.arange(nevent)])})
-
-    sorted_df = stacked_df.sort_values(by=['time', 'status', 'is_start'], ascending=[True,False,True])
-    sorted_df
-
     # do the joint sort
 
     event_count, start_count = 0, 0
