@@ -5,6 +5,16 @@ from . import _version
 __version__ = _version.get_versions()['version']
 
 import numpy as np
+from joblib import hash
+
+@dataclass
+class CoxDevianceResult(object):
+
+    loglik_sat: float
+    deviance: float
+    gradient: Optional[np.ndarray]
+    diag_hessian: Optional[np.ndarray]
+    __hash_args__: str
 
 @dataclass
 class CoxDeviance(object):
@@ -47,15 +57,16 @@ class CoxDeviance(object):
 
     def __call__(self,
                  linear_predictor,
-                 sample_weight=None,
-                 loglik_sat=None):
+                 sample_weight=None):
 
         if sample_weight is None:
             sample_weight = np.ones_like(linear_predictor)
 
-        # compute the saturated log-likelihood
+        cur_hash = hash([linear_predictor, sample_weight])
+        if not hasattr(self, "_result") or self._result.__hash_args__ != cur_hash:
 
-        if loglik_sat is None:
+            # compute the saturated log-likelihood
+
             _last, _first = self._preproc['last'], self._preproc['first']
             sample_weight = np.asarray(sample_weight)
             W_status = np.cumsum(np.hstack([0, sample_weight[self._event_order] * self._preproc['status']]))
@@ -67,23 +78,25 @@ class CoxDeviance(object):
                     loglik_sat -= s * np.log(s)
                 prev_first = f
             
-        return _cox_dev(np.asarray(linear_predictor),
-                        np.asarray(sample_weight),
-                        self._event_order,
-                        self._start_order,
-                        self._status,
-                        self._event,
-                        self._start,
-                        self._first,
-                        self._last,
-                        self._scaling,
-                        self._event_map,
-                        self._start_map,
-                        loglik_sat,
-                        efron=self._efron,
-                        have_start_times=self._have_start_times,
-                        asarray=False)
-
+            _result = _cox_dev(np.asarray(linear_predictor),
+                               np.asarray(sample_weight),
+                               self._event_order,
+                               self._start_order,
+                               self._status,
+                               self._event,
+                               self._start,
+                               self._first,
+                               self._last,
+                               self._scaling,
+                               self._event_map,
+                               self._start_map,
+                               loglik_sat,
+                               efron=self._efron,
+                               have_start_times=self._have_start_times,
+                               asarray=False)
+            self._result = CoxDevianceResult(*(_result + (cur_hash,)))
+            
+        return self._result
 
 def _preprocess(start,
                 event,

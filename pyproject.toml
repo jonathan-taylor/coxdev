@@ -1,7 +1,8 @@
 [project]
 name = "coxdev"
 version = "0.1.0"
-dependencies = ["numpy>=1.7.1"
+dependencies = ["numpy>=1.7.1",
+	        "joblib"
                ]
 description  = "Library for computing Cox deviance"
 readme = "README.md"
