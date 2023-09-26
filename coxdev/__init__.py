@@ -96,6 +96,8 @@ class CoxDeviance(object):
                                asarray=False)
             self._result = CoxDevianceResult(*(_result + (cur_hash,)))
             
+        # XXXXX should return the risk sums
+        # useful for computing hessian
         return self._result
 
 def _preprocess(start,
