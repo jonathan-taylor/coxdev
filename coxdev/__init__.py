@@ -298,11 +298,14 @@ def _cox_dev(eta,           # eta is in native order
 
     if not efron:
         if have_start_times:
-            T_1_term = C_10[last+1] - C_10[start_map]   # +1 for start_map? depends on how  
-                                                         # a tie between a start time and an event time
-                                                         # if that means the start individual is excluded
-                                                         # we should add +1, otherwise there should be
-                                                         # no +1 in the [start_map+1] above
+
+            # +1 for start_map? depends on how  
+            # a tie between a start time and an event time
+            # if that means the start individual is excluded
+            # we should add +1, otherwise there should be
+            # no +1 in the [start_map+1] above
+
+            T_1_term = C_10[last+1] - C_10[start_map]
             T_2_term = C_20[last+1] - C_20[start_map]
         else:
             T_1_term = C_10[last+1]
