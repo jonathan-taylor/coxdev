@@ -66,9 +66,11 @@ def _hessian(eta,           # eta is in native order
             risk_sums = event_cumsum[first]
         
     # XXXX check indices
+    # XXXXXX needs multiply by w_id_i
     after_1st_cumsum = (right_vector_rc[first] - right_vector_rc[event_map]) / risk_sums**2
     if efron:
         after_1st_cumsum -= scaling * (right_vector_rc[first] - right_vector_rc[last])
+
 
     # 0 prepended for similar reason to computing diagonal of hessian
     cumsum_2nd_0 = np.cumsum(np.hstack([0, after_1st_cumsum]))
