@@ -43,25 +43,13 @@ n = data_df.shape[0]
 - `event_map`: for the $i$-th event time, this is the number of start times stricly less than this event time: $\text{event\_map}[i] = \# \{j: s_j < t_i\}$.
 - `start_map`: for the $i$-th start time, this is the number of event times less than or equal to $s_i$:
   $\text{start\_map}[i] = \# \{j: t_j \leq s_i\}$.
-
-+++
-
-## Inverse properties
-
-Note
-$$
-\begin{aligned}
-i < \text{event\_map}(k) & \iff  \text{start\_map}(i) < k \\
-k \geq \text{first\_map}(i) & \iff  \text{last\_map}(k) \geq  i \\
-\end{aligned}
-$$
-
+- `first_start[i] = `first[start_map[i]]`: it seems that `first_start` is identical to `start_map`. Hmmm....
 
 ```{code-cell} ipython3
 from sympy import Symbol, Function, simplify, expand
 
 last_ = Function('last')
-start_ = Function('start')
+start_ = Function('first_start')
 first_ = Function('first')
 k = Symbol('k')
 l = Symbol('l')
@@ -84,6 +72,7 @@ prod = expand(E_k * E_l)
 
 ## Breslow with start times
 
+
 ```{code-cell} ipython3
 prod.subs(d_S, 1).subs(d_E, 0).as_ordered_terms()
 ```
@@ -94,7 +83,7 @@ $$
 $$
 This is
 $$
-\sum_{i=1}^n \frac{1}{R_i(\eta)^2} \left(1_{\{r \geq \text{first}(i)\}} - 1_{\{r > \text{event\_map}(i)\}} \right)\left(1_{\{c \geq \text{first}(i)\}} - 1_{\{c > \text{event\_map}(i)\}} \right)
+w_kw_le^{\eta_k+\eta_l}\sum_{i=1}^n \frac{w_id_i}{R_i(\eta)^2} \left(1_{\{i \leq \text{last}(k)\}} - 1_{\{i < \text{first\_start}(k)\}} \right)\left(1_{\{c \geq \text{first}(i)\}} - 1_{\{c > \text{event\_map}(i)\}} \right)
 $$
 
 +++
@@ -107,7 +96,7 @@ $$
 
 +++
 
-Let's define the reversed cumsum
+Let's define the reversed cumsum (in start orderXXXXXXXXXXXXXX)
 $$
 {\cal S}(\zeta)[i] = \sum_{j:j\geq i} \zeta_j, 1 \leq i \leq n.
 $$

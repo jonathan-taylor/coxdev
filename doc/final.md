@@ -15,9 +15,11 @@ kernelspec:
 ```{code-cell} ipython3
 import numpy as np
 import pandas as pd
+import inspect
 
-from coxdev import _cox_dev
-from coxdev import _preprocess
+from coxdev import (_cox_dev,
+                    _compute_sat_loglik,
+                    _preprocess)
 from coxdev import CoxDeviance
                        
 ```
@@ -189,11 +191,12 @@ First, let's compute the saturated log-likelihood. This is also a pre-processing
 ```{code-cell} ipython3
 sat_df = preproc[['first', 'status']].copy() # in event order
 sat_df['sample_weight'] = data_df['weight'][event_order]
-loglik_sat = 0
+loglik_sat2 = 0
 for _, df in sat_df[['first', 'status', 'sample_weight']].groupby('first'):
     if df['status'].sum() > 0:
         W = (df['sample_weight'] * df['status']).sum()
-        loglik_sat -= W * np.log(W)
+        loglik_sat2 -= W * np.log(W)
+loglik_sat2
 ```
 
 ## Efron's tie breaking method
@@ -252,8 +255,9 @@ $$
 \frac{\partial}{\partial \eta_k} E_i(\eta) &= w_k e^{\eta_k} \cdot 1_{\{k \geq \text{first}(i)\}} \\
 &= w_k e^{\eta_k} \cdot 1_{\{i \leq \text{last}(k)\}} \\
 \frac{\partial}{\partial \eta_k} S_i(\eta) &= w_k e^{\eta_k}  \cdot 1_{\{s_k > t_i\}} \\
-&= w_k e^{\eta_k} \cdot 1_{\{i < \text{start\_map}(k)\}} \\
-&= w_k e^{\eta_k} \cdot 1_{\{i \leq \text{start\_map}(k)-1\}} \\
+&= w_k e^{\eta_k} \cdot 1_{\{\text{last}(i) < \text{start\_map}(k)\}} \\
+&= w_k e^{\eta_k} \cdot 1_{\{i < \text{first}(\text{start\_map}(k))\}} \\
+&\overset{def}{=} w_k e^{\eta_k} \cdot 1_{\{i < \text{first\_start}(k))\}} \\
 \frac{\partial}{\partial \eta_k} M_i(\eta) &= w_k e^{\eta_k} \cdot \text{scaling}_i \cdot 1_{[\text{first}(i), \text{last}(i)]}(k) \\
 &\overset{\text{def}}{=} w_k e^{\eta_k} \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq  \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)
 \end{aligned}
@@ -261,13 +265,22 @@ $$
 
 +++
 
+### Difference between `start_map` and `first_start`?
+
+There seems to be no difference (see below where we have tried to find an example).
+
+```{code-cell} ipython3
+preproc['first_start'] = np.asarray(preproc['first'])[np.asarray(preproc['start_map'])]
+preproc[['start_map', 'first_start']]
+```
+
 ### Gradient
 
 Let's compute the derivative 
 $$
 \begin{aligned}
 \frac{\partial}{\partial \eta_k} \ell(\eta) &= 
-w_k d_k - w_k e^{\eta_k} \cdot \sum_{i=1}^n w_i d_i \cdot \frac{1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k)-1 \}}
+w_k d_k - w_k e^{\eta_k} \cdot \sum_{i=1}^n w_i d_i \cdot \frac{1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{first\_start}(k)-1 \}}
 - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)}{R_i(\eta)}
 \end{aligned}
 $$
@@ -286,7 +299,7 @@ $$
 
 Our derivative above is
 $$
-w_k d_k - w_k e^{\eta_k} \left({\cal C}_{10}(\eta)[\text{last}(k)] - \delta_S \cdot {\cal C}_{10}(\eta)[\text{start\_map}(k)-1] - \delta_E \cdot \left({\cal C}_{11}(\eta)[\text{last}(k)] - {\cal C}_{11}(\eta)[\text{first}(k)-1] \right) \right)
+w_k d_k - w_k e^{\eta_k} \left({\cal C}_{10}(\eta)[\text{last}(k)] - \delta_S \cdot {\cal C}_{10}(\eta)[\text{first\_start}(k)-1] - \delta_E \cdot \left({\cal C}_{11}(\eta)[\text{last}(k)] - {\cal C}_{11}(\eta)[\text{first}(k)-1] \right) \right)
 $$
 
 +++
@@ -300,7 +313,7 @@ $$
 $$
 consists of two terms. The first is the diagonal
 $$
-T_{1,kl}(\eta) = - \delta_{lk} w_ke^{\eta_k} \left({\cal C}_{10}(\eta)[\text{last}(k)] - \delta_S \cdot {\cal C}_{10}(\eta)[\text{start\_map}(k)-1] - \delta_E \cdot \left({\cal C}_{11}(\eta)[\text{last}(k)] - {\cal C}_{11}(\eta)[\text{first}(k)-1] \right) \right)
+T_{1,kl}(\eta) = - \delta_{lk} w_ke^{\eta_k} \left({\cal C}_{10}(\eta)[\text{last}(k)] - \delta_S \cdot {\cal C}_{10}(\eta)[\text{first\_start}(k)-1] - \delta_E \cdot \left({\cal C}_{11}(\eta)[\text{last}(k)] - {\cal C}_{11}(\eta)[\text{first}(k)-1] \right) \right)
 $$
 
 +++
@@ -308,9 +321,9 @@ $$
 The second is
 $$
 \begin{aligned}
-T_{2,kl}(\eta) &= \sum_{i=1}^n w_i d_i \biggl[\frac{\left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k) -1\}}
+T_{2,kl}(\eta) &= \sum_{i=1}^n w_i d_i \biggl[\frac{\left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{first\_start}(k) -1\}}
 - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)\right) }{R_i(\eta)} \\
- & \qquad \qquad \times \frac{\left(1_{\{i \leq \text{last}(l)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(l) -1\}}
+ & \qquad \qquad \times \frac{\left(1_{\{i \leq \text{last}(l)\}} - \delta_S \cdot 1_{\{i \leq \text{first\_start}(l) -1\}}
 - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(l)\}} - 1_{\{i \leq \text{first}(l)-1\}}\right)\right) }{R_i(\eta)}
   \biggr]
 \end{aligned}
@@ -328,12 +341,10 @@ $$
 The diagonal terms $T_{2,kk}(\eta)$ are
 $$
 \begin{aligned}
-T_{2,kk}(\eta) &= \sum_{i=1}^n w_i d_i \frac{\left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k)-1 \}}
+T_{2,kk}(\eta) &= \sum_{i=1}^n w_i d_i \frac{\left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{first\_start}(k)-1 \}}
 - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)\right)^2 }{R_i(\eta)^2} 
 \end{aligned}
 $$
-
-
 
 +++
 
@@ -343,9 +354,9 @@ Let's expand the numerator in $T_{2,kl}(\eta)$ which will tell us which indices 
 relevant cumsums to use.
 $$
 \begin{aligned}
-N_{kl} &= \left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(k)-1 \}}
+N_{kl} &= \left(1_{\{i \leq \text{last}(k)\}} - \delta_S \cdot 1_{\{i \leq \text{first\_start}(k)-1 \}}
 - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(k)\}} - 1_{\{i \leq \text{first}(k)-1\}}\right)\right) \\
-& \qquad \times \left(1_{\{i \leq \text{last}(l)\}} - \delta_S \cdot 1_{\{i \leq \text{start\_map}(l)-1 \}}
+& \qquad \times \left(1_{\{i \leq \text{last}(l)\}} - \delta_S \cdot 1_{\{i \leq \text{first\_start}(l)-1 \}}
 - \delta_E \cdot \sigma_E(i) \cdot \left( 1_{\{i \leq \text{last}(l)\}} - 1_{\{i \leq \text{first}(l)-1\}}\right)\right)
 \end{aligned}
 $$ 
@@ -356,7 +367,7 @@ It will be handy to use a symbolic manipulation tool for this as there are many 
 from sympy import Symbol, Function, simplify, expand
 
 last_ = Function('last')
-start_ = Function('start')
+start_ = Function('first_start')
 first_ = Function('first')
 k = Symbol('k')
 l = Symbol('l')
@@ -411,9 +422,9 @@ Let's do Breslow's tie breaking with start times.
 diag_prod.subs(d_E,0).subs(d_S, 1).as_ordered_terms()
 ```
 
-As $\text{start}(k) \leq \text{last}(k)$ we see that, in this case
+As $\text{first\_start}(k) \leq \text{last}(k)$ we see that, in this case
 $$
-T_{2,kk}(\eta) = C_{20}(\eta)[\text{last}(k)] - C_{20}(\eta)[\text{start}(k)-1].
+T_{2,kk}(\eta) = C_{20}(\eta)[\text{last}(k)] - C_{20}(\eta)[\text{first\_start}(k)-1].
 $$
 
 +++
@@ -461,26 +472,24 @@ assert partial.issubset(full)
 full.difference(partial)
 ```
 
-By appending these terms to those above,  and we note  that $\text{start}(k)-1 \leq \text{first}(k)-1$ (Why? Because $s_k$ is strictly less than $t_k$ and $t_{\text{first}(k)-1}$ is the event time immediately preceeding $t_k$.)
+By appending these terms to those above,  and we note  that $\text{first\_start}(k)-1 \leq \text{first}(k)-1$ (Why? Because $\text{start}(k)<k$ and $\text{first}$ is non-decreasing.) 
 Therefore
 $$
 \begin{aligned}
 T_{2,kk}(\eta)  &= ({\cal C}_{22}(\eta)[\text{last}(k)] - {\cal C}_{22}(\eta)[\text{first}(k)-1]) \\
 & - 2 \cdot ({\cal C}_{21}(\eta)[\text{last}(k)] - {\cal C}_{21}(\eta)[\text{first}(k)-1]) \\
 & + {\cal C}_{20}(\eta)[\text{last}(k)] \\
-& - 2 \cdot {\cal C}_{20}(\eta)[\text{start}(k)-1] \\
-& - 2 \cdot {\cal C}_{21}(\eta)[\text{start}(k)-1] \\
-& + 2 \cdot {\cal C}_{21}(\eta)[\text{start}(k)-1] \\
-& + {\cal C}_{20}(\eta)[\text{start}(k)-1] \\
+& - 2 \cdot {\cal C}_{20}(\eta)[\text{first\_start}(k)-1] \\
+& - 2 \cdot {\cal C}_{21}(\eta)[\text{first\_start}(k)-1] \\
+& + 2 \cdot {\cal C}_{21}(\eta)[\text{first\_start}(k)-1] \\
+& + {\cal C}_{20}(\eta)[\text{first\_start}(k)-1] \\
 &=  ({\cal C}_{22}(\eta)[\text{last}(k)] - {\cal C}_{22}(\eta)[\text{first}(k)-1]) \\
 & - 2 \cdot ({\cal C}_{21}(\eta)[\text{last}(k)] - {\cal C}_{21}(\eta)[\text{first}(k)-1]) \\
-& + {\cal C}_{20}(\eta)[\text{last}(k)] - {\cal C}_{20}(\eta)[\text{start}(k)-1]
+& + {\cal C}_{20}(\eta)[\text{last}(k)] - {\cal C}_{20}(\eta)[\text{first\_start}(k)-1]
 \end{aligned}
 $$
 
-```{code-cell} ipython3
-assert np.all(preproc['start'] <= preproc['first'])
-```
++++
 
 #### Off-diagonal Hessian entries
 
@@ -494,136 +503,31 @@ prod.as_ordered_terms()
 ```
 
 ## Evaluation
+
+Here we compute the saturated log-likelihood.
+
+```{code-cell} ipython3
+print(inspect.getsource(_compute_sat_loglik))
+```
+
+```{code-cell} ipython3
+loglik_sat = _compute_sat_loglik(preproc['first'],
+                                 preproc['last'],
+                                 data_df['weight'],
+                                 event_order,
+                                 preproc['status'])
+
+loglik_sat
+```
+
 Below is the evaluation in `python` code that is similar to what the `C` code will look like.
 
 ```{code-cell} ipython3
-
-def log_like(eta,           # eta is in native order 
-             sample_weight, # sample_weight is in native order
-             event_order,   
-             start_order,
-             status,        # everything below in event order
-             event,
-             start,
-             first,
-             last,
-             scaling,
-             event_map,
-             start_map,
-             loglik_sat,
-             have_start_times=True,
-             efron=False):
-
-    # be sure they're arrays so that no weird pandas indexing is used
-    eta = np.asarray(eta)
-    sample_weight = np.asarray(sample_weight)
-    event_order = np.asarray(event_order)   
-    start_order = np.asarray(start_order)
-    status = np.asarray(status)
-    event = np.asarray(event)
-    start = np.asarray(start)
-    first = np.asarray(first)
-    last = np.asarray(last)
-    scaling = np.asarray(scaling)
-    event_map = np.asarray(event_map)
-    start_map = np.asarray(start_map)
-    
-    _status = (status==1)
-    
-    eta = eta - eta.mean()
-    
-    # compute the event ordered reversed cumsum
-    eta_event = eta[event_order]
-    w_event = sample_weight[event_order]
-    exp_eta_w_event = w_event * np.exp(eta_event)
-    event_cumsum = np.hstack([np.cumsum(exp_eta_w_event[::-1])[::-1], 0]) # length=n+1 for when last=n-1
-
-    # compute the start oredered reversed cumsum, if necessary
-    # then compute the cumsums (or difference of cumsums) for Breslow approximation
-    
-    if have_start_times:
-        exp_eta_w_start = np.hstack([(sample_weight * np.exp(eta))[start_order], 0]) # length=n+1
-        start_cumsum = np.cumsum(exp_eta_w_start[::-1])[::-1]  # length=n+1
-        risk_sums = event_cumsum[first] - start_cumsum[event_map]
-    else:
-        risk_sums = event_cumsum[first]
-        
-    # compute the Efron correction, adjusting risk_sum if necessary
-    
-    if efron == True:
-        # XXXXX is last term handled correctly?
-        n = eta.shape[0]
-        num = (event_cumsum[first] - 
-               event_cumsum[last+1])
-        risk_sums -= num * scaling
-    
-    log_terms = np.log(np.array(risk_sums)) * w_event * _status
-    loglik = (w_event * eta_event * _status).sum() - np.sum(log_terms)
-
-    # cumsums for gradient and Hessian
-    
-    # length of cumsums is n+1
-    # 0 is prepended for first(k)-1, start(k)-1 lookups
-    # a 1 is added to all indices
-
-    A_10 = _status * w_event / risk_sums
-    C_10 = np.hstack([0, np.cumsum(A_10)]) 
-    
-    A_20 = _status * w_event / risk_sums**2
-    C_20 = np.hstack([0, np.cumsum(A_20)]) # length=n+1
-
-    # if there are no ties, scaling should be identically 0
-    # don't bother with cumsums below 
-
-    if not efron:
-        if have_start_times:
-            T_1_term = C_10[last+1] - C_10[start_map]   # +1 for start_map? depends on how  
-                                                         # a tie between a start time and an event time
-                                                         # if that means the start individual is excluded
-                                                         # we should add +1, otherwise there should be
-                                                         # no +1 in the [start_map+1] above
-            T_2_term = C_20[last+1] - C_20[start_map]
-        else:
-            T_1_term = C_10[last+1]
-            T_2_term = C_20[last+1]
-    else:
-        # compute the other necessary cumsums
-        
-        A_11 = _status * w_event * scaling / risk_sums
-        C_11 = np.hstack([0, np.cumsum(A_11)]) # length=n+1
-
-        A_21 = _status * w_event * scaling / risk_sums
-        C_21 = np.hstack([0, np.cumsum(A_21)]) # length=n+1
-
-        A_22 = _status * w_event * scaling / risk_sums
-        C_22 = np.hstack([0, np.cumsum(A_22)]) # length=n+1
-
-        T_1_term = (C_10[last+1] - 
-                    (C_11[last+1] - C_11[first]))
-        T_2_term = ((C_22[last+1] - C_22[first]) 
-                    - 2 * (C_21[last+1] - C_21[first]) + 
-                    C_20[last+1])
-        if have_start_times:
-            T_1_term -= C_10[start_map]
-            T_2_term -= C_20[first]
-    
-    grad = w_event * _status - exp_eta_w_event * T_1_term
-    grad_cp = grad.copy()
-    grad[event_order] = grad_cp
-
-    # now the diagonal of the Hessian
-
-    diag_hess = exp_eta_w_event**2 * T_2_term - exp_eta_w_event * T_1_term
-    diag_hess_cp = diag_hess.copy()
-    diag_hess[event_order] = diag_hess_cp
-
-    deviance = 2 * (loglik_sat - loglik)
-    return deviance, -2 * grad, -2 * diag_hess
+print(inspect.getsource(_cox_dev))
 ```
 
 ```{code-cell} ipython3
 eta = data_df['eta'] # in native order
-print(loglik_sat)
 _, dev, G, H = _cox_dev(eta,
                         data_df['weight'],
                         event_order,
@@ -636,6 +540,7 @@ _, dev, G, H = _cox_dev(eta,
                         preproc['scaling'],
                         preproc['event_map'],
                         preproc['start_map'],
+                        preproc['first_start'],
                         loglik_sat,
                         efron=False,
                         have_start_times=True)
@@ -684,8 +589,9 @@ coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='breslow')
-_, dev_, G_, H_ = coxdev_(eta, 
-                          weight)
+from dataclasses import astuple
+_, dev_, G_, H_, _ = astuple(coxdev_(eta, 
+                          weight))
 ```
 
 ```{code-cell} ipython3
@@ -704,7 +610,7 @@ np.linalg.norm(H-H_) / np.linalg.norm(H)
 
 ```{code-cell} ipython3
 ties = True
-n = 100000
+n = 10
 rng = np.random.default_rng(0)
 start = rng.integers(0, 10, size=n) 
 event = start + rng.integers(0, 10, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
@@ -714,17 +620,28 @@ eta = rng.standard_normal(n)
 ```
 
 ```{code-cell} ipython3
-%%R -i event,status,start,eta,weight -o G_R,H_R,D_R 
-Y = Surv(start, event, status)
-eta = as.numeric(eta)
-weight = as.numeric(weight)
-print(system.time(for (i in 1:400) {c(glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE),
-                    glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE))}))
-D_R = glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE)
-G_R = glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
-H_R = attr(G_R, 'diag_hessian')
-G_R = -2 * G_R
-H_R = -2 * H_R
+def get_R_result(event, status, start, eta, weight):
+
+    %R -i event,status,start,eta,weight 
+    %R eta = as.numeric(eta)
+    %R weight = as.numeric(weight)
+
+    if start is not None:
+        %R Y = Surv(start, event, status)
+        %R print(system.time(for (i in 1:400) {c(rnorm(length(eta)), glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE), glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE))}))
+        %R D_R = glmnet:::coxnet.deviance3(pred=eta, y=Y, weight=weight, std.weights=FALSE)
+        %R G_R = glmnet:::coxgrad3(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
+    else:
+        %R Y = Surv(event, status)
+        %R print(system.time(for (i in 1:400) {c(rnorm(length(eta)), glmnet:::coxnet.deviance2(pred=eta, y=Y, weight=weight, std.weights=FALSE), glmnet:::coxgrad2(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE))}))
+        %R D_R = glmnet:::coxnet.deviance2(pred=eta, y=Y, weight=weight, std.weights=FALSE)
+        %R G_R = glmnet:::coxgrad2(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
+    
+    %R H_R = attr(G_R, 'diag_hessian')
+    %R G_R = -2 * G_R
+    %R H_R = -2 * H_R
+    %R -o D_R,H_R,G_R
+    return D_R, G_R, H_R
 ```
 
 ```{code-cell} ipython3
@@ -733,8 +650,8 @@ coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='breslow')
-loglik_sat, dev, G, H = coxdev_(eta, weight)
-[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
+loglik_sat, dev, G, H, _  = astuple(coxdev_(eta, weight))
+[coxdev_(rng.standard_normal(eta.shape), weight) for _ in range(400)]
 ```
 
 ```{code-cell} ipython3
@@ -742,8 +659,12 @@ coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='breslow')
-_, dev_, G_, H_ = coxdev_(eta, 
-                          weight)
+_, dev_, G_, H_, _  = astuple(coxdev_(eta, 
+                          weight))
+```
+
+```{code-cell} ipython3
+D_R, G_R, H_R = get_R_result(event, status, start, eta, weight)
 ```
 
 ```{code-cell} ipython3
@@ -758,29 +679,39 @@ np.linalg.norm(G_-G_R) / np.linalg.norm(G)
 np.linalg.norm(H_-H_R) / np.linalg.norm(H)
 ```
 
-## Right censored 
+## Right censored
 
 ```{code-cell} ipython3
 %%timeit
 coxdev_ = CoxDeviance(event,
                       status,
                       tie_breaking='breslow')
-loglik_sat, dev, G, H = coxdev_(eta, weight)
-[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
+loglik_sat, dev, G, H, _ = astuple(coxdev_(eta, weight))
+[coxdev_(rng.standard_normal(eta.shape), weight) for _ in range(400)]
 ```
 
 ```{code-cell} ipython3
-%%R -i event,status,start,eta,weight -o G_R,H_R,D_R 
-Y = Surv(event, status)
-eta = as.numeric(eta)
-weight = as.numeric(weight)
-print(system.time(for (i in 1:400) {c(glmnet:::coxnet.deviance2(pred=eta, y=Y, weight=weight, std.weights=FALSE),
-                    glmnet:::coxgrad2(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE))}))
-D_R = glmnet:::coxnet.deviance2(pred=eta, y=Y, weight=weight, std.weights=FALSE)
-G_R = glmnet:::coxgrad2(eta, Y, weight, std.weights=FALSE, diag.hessian=TRUE)
-H_R = attr(G_R, 'diag_hessian')
-G_R = -2 * G_R
-H_R = -2 * H_R
+coxdev_ = CoxDeviance(event,
+                      status,
+                      tie_breaking='breslow')
+_, dev_, G_, H_, _  = astuple(coxdev_(eta, 
+                          weight))
+```
+
+```{code-cell} ipython3
+D_R, G_R, H_R = get_R_result(event, status, None, eta, weight)
+```
+
+```{code-cell} ipython3
+np.fabs(dev_ - D_R)
+```
+
+```{code-cell} ipython3
+np.linalg.norm(G_-G_R) / np.linalg.norm(G)
+```
+
+```{code-cell} ipython3
+np.linalg.norm(H_-H_R) / np.linalg.norm(H)
 ```
 
 ## Efron's tie breaking
@@ -790,8 +721,8 @@ H_R = -2 * H_R
 coxdev_ = CoxDeviance(event,
                       status,
                       tie_breaking='efron')
-loglik_sat, dev, G, H = coxdev_(eta, weight)
-[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
+loglik_sat, dev, G, H, _  = astuple(coxdev_(eta, weight))
+[coxdev_(rng.standard_normal(eta.shape), weight) for _ in range(400)]
 ```
 
 ### With start time
@@ -802,8 +733,79 @@ coxdev_ = CoxDeviance(event,
                       status,
                       start=start,
                       tie_breaking='efron')
-loglik_sat, dev, G, H = coxdev_(eta, weight)
-[coxdev_(eta, weight, loglik_sat=loglik_sat) for _ in range(400)]
+loglik_sat, dev, G, H, _ = astuple(coxdev_(eta, weight))
+[coxdev_(rng.standard_normal(eta.shape), weight) for _ in range(400)]
+```
+
+## See if we can find an exception when `first_start != start_map`
+
+```{code-cell} ipython3
+ties = True
+n, nsim = 10, 2000
+
+for _ in range(nsim):
+    rng = np.random.default_rng(0)
+    start = rng.integers(0, 5, size=n) 
+    event = start + rng.integers(0, 5, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
+    status = rng.choice([0,1], size=n, replace=True)
+    weight = rng.uniform(1, 2, size=n)
+    eta = rng.standard_normal(n)
+    coxdev_ = CoxDeviance(event,
+                          status,
+                          start=start)
+    coxdev_(eta, weight)
+```
+
+```{code-cell} ipython3
+n = 1000
+
+for _ in range(nsim):
+    rng = np.random.default_rng(0)
+    start = rng.integers(0, 5, size=n) 
+    event = start + rng.integers(0, 5, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
+    status = rng.choice([0,1], size=n, replace=True)
+    weight = rng.uniform(1, 2, size=n)
+    eta = rng.standard_normal(n)
+    coxdev_ = CoxDeviance(event,
+                          status,
+                          start=start)
+    coxdev_(eta, weight)
+```
+
+```{code-cell} ipython3
+n = 1000
+ties = False
+for _ in range(nsim):
+    rng = np.random.default_rng(0)
+    start = rng.integers(0, 5, size=n) 
+    event = start + rng.integers(0, 5, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
+    status = rng.choice([0,1], size=n, replace=True)
+    weight = rng.uniform(1, 2, size=n)
+    eta = rng.standard_normal(n)
+    coxdev_ = CoxDeviance(event,
+                          status,
+                          start=start)
+    coxdev_(eta, weight)
+```
+
+```{code-cell} ipython3
+n = 10
+ties = False
+for _ in range(nsim):
+    rng = np.random.default_rng(0)
+    start = rng.integers(0, 5, size=n) 
+    event = start + rng.integers(0, 5, size=n) + ties + (1 - ties) * rng.standard_exponential(n) * 0.01
+    status = rng.choice([0,1], size=n, replace=True)
+    weight = rng.uniform(1, 2, size=n)
+    eta = rng.standard_normal(n)
+    coxdev_ = CoxDeviance(event,
+                          status,
+                          start=start)
+    coxdev_(eta, weight)
+```
+
+```{code-cell} ipython3
+
 ```
 
 ```{code-cell} ipython3
