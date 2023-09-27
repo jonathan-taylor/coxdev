@@ -54,6 +54,10 @@ class CoxDeviance(object):
         self._scaling = np.asarray(self._preproc['scaling'])
         self._event_map = np.asarray(self._preproc['event_map'])
         self._start_map = np.asarray(self._preproc['start_map'])
+        self._first_start = self._first[self._start_map]
+        
+        if not np.all(self._first_start == self._start_map):
+            raise ValueError('first_start disagrees with start_map')
 
     def __call__(self,
                  linear_predictor,
@@ -61,23 +65,19 @@ class CoxDeviance(object):
 
         if sample_weight is None:
             sample_weight = np.ones_like(linear_predictor)
-
+        else:
+            sample_weight = np.asarray(sample_weight)
+        linear_predictor = np.asarray(linear_predictor)
+            
         cur_hash = hash([linear_predictor, sample_weight])
         if not hasattr(self, "_result") or self._result.__hash_args__ != cur_hash:
 
-            # compute the saturated log-likelihood
+            loglik_sat = _compute_sat_loglik(self._first,
+                                             self._last,
+                                             sample_weight, # in natural order
+                                             self._event_order,
+                                             self._status) 
 
-            _last, _first = self._preproc['last'], self._preproc['first']
-            sample_weight = np.asarray(sample_weight)
-            W_status = np.cumsum(np.hstack([0, sample_weight[self._event_order] * self._preproc['status']]))
-            sums = W_status[_last+1] - W_status[_first]
-            loglik_sat = 0
-            prev_first = -1
-            for f, s in zip(_first, sums):
-                if s > 0 and f != prev_first:
-                    loglik_sat -= s * np.log(s)
-                prev_first = f
-            
             _result = _cox_dev(np.asarray(linear_predictor),
                                np.asarray(sample_weight),
                                self._event_order,
@@ -90,6 +90,7 @@ class CoxDeviance(object):
                                self._scaling,
                                self._event_map,
                                self._start_map,
+                               self._first_start,
                                loglik_sat,
                                efron=self._efron,
                                have_start_times=self._have_start_times,
@@ -99,6 +100,29 @@ class CoxDeviance(object):
         # XXXXX should return the risk sums
         # useful for computing hessian
         return self._result
+
+def _compute_sat_loglik(_first,
+                        _last,
+                        _weight, # in natural order
+                        _event_order,
+                        _status):
+    
+    _first = np.asarray(_first)
+    _last = np.asarray(_last)
+    _weight = np.asarray(_weight)
+    _event_order = np.asarray(_event_order)
+    _status = np.asarray(_status)
+
+    W_status = np.cumsum(np.hstack([0, _weight[_event_order] * _status]))
+    sums = W_status[_last+1] - W_status[_first]
+    loglik_sat = 0
+    prev_first = -1
+    for f, s in zip(_first, sums):
+        if s > 0 and f != prev_first:
+            loglik_sat -= s * np.log(s)
+        prev_first = f
+
+    return loglik_sat
 
 def _preprocess(start,
                 event,
@@ -228,6 +252,7 @@ def _cox_dev(eta,           # eta is in native order
              scaling,
              event_map,
              start_map,
+             first_start,
              loglik_sat,
              have_start_times=True,
              efron=False,
@@ -248,23 +273,24 @@ def _cox_dev(eta,           # eta is in native order
         scaling = np.asarray(scaling)
         event_map = np.asarray(event_map)
         start_map = np.asarray(start_map)
-    
+        first_start = np.asarray(first_start)
     _status = (status==1)
     
     eta = eta - eta.mean()
     
     # compute the event ordered reversed cumsum
-    eta_event = eta[event_order]
-    w_event = sample_weight[event_order]
-    exp_eta_w_event = w_event * np.exp(eta_event)
-    event_cumsum = np.hstack([np.cumsum(exp_eta_w_event[::-1])[::-1], 0]) # length=n+1 for when last=n-1
-
-    # compute the start oredered reversed cumsum, if necessary
-    # then compute the cumsums (or difference of cumsums) for Breslow approximation
+    exp_w = np.exp(eta) * sample_weight
     
     if have_start_times:
-        exp_eta_w_start = np.hstack([(sample_weight * np.exp(eta))[start_order], 0]) # length=n+1
-        start_cumsum = np.cumsum(exp_eta_w_start[::-1])[::-1]  # length=n+1
+        event_cumsum, start_cumsum = _reversed_cumsums(exp_w,
+                                                       event_order,
+                                                       start_order)
+    else:
+        event_cumsum, start_cumsum = _reversed_cumsums(exp_w,
+                                                       event_order,
+                                                       start_order=None)
+        
+    if have_start_times:
         risk_sums = event_cumsum[first] - start_cumsum[event_map]
     else:
         risk_sums = event_cumsum[first]
@@ -272,16 +298,22 @@ def _cox_dev(eta,           # eta is in native order
     # compute the Efron correction, adjusting risk_sum if necessary
     
     if efron == True:
-        # XXXXX is last term handled correctly?
         n = eta.shape[0]
         num = (event_cumsum[first] - 
                event_cumsum[last+1])
         risk_sums -= num * scaling
     
+    # some ordered terms to complete likelihood
+    # calculation
+
+    eta_event = eta[event_order]
+    w_event = sample_weight[event_order]
+    exp_eta_w_event = exp_w[event_order]
+
     log_terms = np.log(np.array(risk_sums)) * w_event * _status
     loglik = (w_event * eta_event * _status).sum() - np.sum(log_terms)
 
-    # cumsums for gradient and Hessian
+    # forward cumsums for gradient and Hessian
     
     # length of cumsums is n+1
     # 0 is prepended for first(k)-1, start(k)-1 lookups
@@ -296,6 +328,9 @@ def _cox_dev(eta,           # eta is in native order
     # if there are no ties, scaling should be identically 0
     # don't bother with cumsums below 
 
+    use_first_start = True # JT: don't think this is strictly needed
+                           # but haven't found a counterexample
+
     if not efron:
         if have_start_times:
 
@@ -305,8 +340,12 @@ def _cox_dev(eta,           # eta is in native order
             # we should add +1, otherwise there should be
             # no +1 in the [start_map+1] above
 
-            T_1_term = C_10[last+1] - C_10[start_map]
-            T_2_term = C_20[last+1] - C_20[start_map]
+            if use_first_start:
+                T_1_term = C_10[last+1] - C_10[first_start]
+                T_2_term = C_20[last+1] - C_20[first_start]
+            else:
+                T_1_term = C_10[last+1] - C_10[start_map]
+                T_2_term = C_20[last+1] - C_20[start_map]
         else:
             T_1_term = C_10[last+1]
             T_2_term = C_20[last+1]
@@ -328,7 +367,10 @@ def _cox_dev(eta,           # eta is in native order
                     - 2 * (C_21[last+1] - C_21[first]) + 
                     C_20[last+1])
         if have_start_times:
-            T_1_term -= C_10[start_map]
+            if use_first_start:
+                T_1_term -= C_10[first_start]
+            else:
+                T_1_term -= C_10[start_map]
             T_2_term -= C_20[first]
     
     grad = w_event * _status - exp_eta_w_event * T_1_term
@@ -342,4 +384,30 @@ def _cox_dev(eta,           # eta is in native order
     diag_hess[event_order] = diag_hess_cp
 
     deviance = 2 * (loglik_sat - loglik)
+
     return loglik_sat, deviance, -2 * grad, -2 * diag_hess
+
+def _reversed_cumsums(sequence,
+                      event_order=None,
+                      start_order=None):
+    """
+    Compute reversed cumsums of a sequence
+    in start and / or event order with a 0 padded at the end.
+    """
+    
+    # pad by 1 at the end length=n+1 for when last=n-1    
+
+    if event_order is not None:
+        seq_event = np.hstack([sequence[event_order], 0])
+        event_cumsum = np.cumsum(seq_event[::-1])[::-1]
+    else:
+        event_cumsum = None
+
+    if start_order is not None:
+        seq_start = np.hstack([sequence[start_order], 0])
+        start_cumsum = np.cumsum(seq_start[::-1])[::-1]  # length=n+1
+    else:
+        start_cumsum = None
+
+    return event_cumsum, start_cumsum
+
