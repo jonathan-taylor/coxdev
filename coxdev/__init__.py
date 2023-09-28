@@ -69,9 +69,9 @@ class CoxDeviance(object):
             sample_weight = np.asarray(sample_weight)
         # correct the scaling if weights are not all 1
         old_scaling = self._scaling
-        W_cumsum = np.cumsum(np.hstack([0, sample_weight]))
+        W_cumsum = np.cumsum(np.hstack([0, sample_weight[self._event_order]]))
         nevent = linear_predictor.shape[0]
-        self._scaling = ((sample_weight * (np.arange(nevent) - self._first)) /
+        self._scaling = ((np.ones(nevent) * (np.arange(nevent) - self._first)) /
                          (W_cumsum[self._last+1] - W_cumsum[self._first]))
 
         linear_predictor = np.asarray(linear_predictor)
@@ -106,6 +106,7 @@ class CoxDeviance(object):
             
         # XXXXX should return the risk sums
         # useful for computing hessian
+#        self._scaling = old_scaling
         return self._result
 
 def _compute_sat_loglik(_first,
