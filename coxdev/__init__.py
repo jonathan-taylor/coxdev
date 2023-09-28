@@ -67,6 +67,13 @@ class CoxDeviance(object):
             sample_weight = np.ones_like(linear_predictor)
         else:
             sample_weight = np.asarray(sample_weight)
+        # correct the scaling if weights are not all 1
+        old_scaling = self._scaling
+        W_cumsum = np.cumsum(np.hstack([0, sample_weight]))
+        nevent = linear_predictor.shape[0]
+        self._scaling = ((sample_weight * (np.arange(nevent) - self._first)) /
+                         (W_cumsum[self._last+1] - W_cumsum[self._first]))
+
         linear_predictor = np.asarray(linear_predictor)
             
         cur_hash = hash([linear_predictor, sample_weight])
@@ -282,13 +289,15 @@ def _cox_dev(eta,           # eta is in native order
     exp_w = np.exp(eta) * sample_weight
     
     if have_start_times:
-        event_cumsum, start_cumsum = _reversed_cumsums(exp_w,
-                                                       event_order,
-                                                       start_order)
+        (event_cumsum,
+         start_cumsum) = _reversed_cumsums(exp_w,
+                                           event_order=event_order,
+                                           start_order=start_order)
     else:
-        event_cumsum, start_cumsum = _reversed_cumsums(exp_w,
-                                                       event_order,
-                                                       start_order=None)
+        (event_cumsum,
+         start_cumsum) = _reversed_cumsums(exp_w,
+                                           event_order,
+                                           start_order=None)
         
     if have_start_times:
         risk_sums = event_cumsum[first] - start_cumsum[event_map]
