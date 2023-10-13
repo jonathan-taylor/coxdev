@@ -67,12 +67,6 @@ class CoxDeviance(object):
             sample_weight = np.ones_like(linear_predictor)
         else:
             sample_weight = np.asarray(sample_weight)
-        # correct the scaling if weights are not all 1
-        old_scaling = self._scaling
-        W_cumsum = np.cumsum(np.hstack([0, sample_weight[self._event_order]]))
-        nevent = linear_predictor.shape[0]
-        self._scaling = ((np.ones(nevent) * (np.arange(nevent) - self._first)) /
-                         (W_cumsum[self._last+1] - W_cumsum[self._first]))
 
         linear_predictor = np.asarray(linear_predictor)
             
@@ -106,7 +100,7 @@ class CoxDeviance(object):
             
         # XXXXX should return the risk sums
         # useful for computing hessian
-#        self._scaling = old_scaling
+
         return self._result
 
 def _compute_sat_loglik(_first,
@@ -218,6 +212,9 @@ def _preprocess(start,
     _start_map = start_map[event_order]
     _event_map = event_map
 
+    _event = event[event_order]
+    _start = event[start_order]
+
     # compute `last`
     
     last = []
@@ -228,13 +225,12 @@ def _preprocess(start,
         if f - (nevent - 1 - i) == 0:
             last_event = f - 1        
     _last = np.array(last[::-1])
-    _event = event[event_order]
-    _start = event[start_order]
 
     den = _last + 1 - _first
 
+    # XXXX
     _scaling = (np.arange(nevent) - _first) / den
-
+    
     preproc = {'start':_start,
                'event':_event,
                'first':_first,
@@ -309,19 +305,29 @@ def _cox_dev(eta,           # eta is in native order
     
     if efron == True:
         n = eta.shape[0]
-        num = (event_cumsum[first] - 
-               event_cumsum[last+1])
-        risk_sums -= num * scaling
-    
+        # for K events,
+        # this results in risk sums event_cumsum[first] to
+        # event_cumsum[first] -
+        # (K-1)/K [event_cumsum[last+1] - event_cumsum[first]
+        # or event_cumsum[last+1] + 1/K [event_cumsum[first] - event_cumsum[last+1]]
+        # to event[cumsum_first]
+        delta = (event_cumsum[first] - 
+                 event_cumsum[last+1])
+        risk_sums -= delta * scaling
+
     # some ordered terms to complete likelihood
     # calculation
 
     eta_event = eta[event_order]
     w_event = sample_weight[event_order]
+    w_cumsum = np.cumsum(np.hstack([0, sample_weight[event_order]]))
+    w_avg = ((w_cumsum[last + 1] - w_cumsum[first]) /
+             (last + 1 - first))
+
     exp_eta_w_event = exp_w[event_order]
 
-    log_terms = np.log(np.array(risk_sums)) * w_event * _status
-    loglik = (w_event * eta_event * _status).sum() - np.sum(log_terms)
+    log_terms = np.log(np.array(risk_sums)) * w_avg * _status
+    loglik = (w_avg * eta_event * _status).sum() - np.sum(log_terms)
 
     # forward cumsums for gradient and Hessian
     
@@ -329,10 +335,10 @@ def _cox_dev(eta,           # eta is in native order
     # 0 is prepended for first(k)-1, start(k)-1 lookups
     # a 1 is added to all indices
 
-    A_10 = _status * w_event / risk_sums
+    A_10 = _status * w_avg / risk_sums
     C_10 = np.hstack([0, np.cumsum(A_10)]) 
     
-    A_20 = _status * w_event / risk_sums**2
+    A_20 = _status * w_avg / risk_sums**2
     C_20 = np.hstack([0, np.cumsum(A_20)]) # length=n+1
 
     # if there are no ties, scaling should be identically 0
@@ -362,13 +368,13 @@ def _cox_dev(eta,           # eta is in native order
     else:
         # compute the other necessary cumsums
         
-        A_11 = _status * w_event * scaling / risk_sums
+        A_11 = _status * w_avg * scaling / risk_sums
         C_11 = np.hstack([0, np.cumsum(A_11)]) # length=n+1
 
-        A_21 = _status * w_event * scaling / risk_sums
+        A_21 = _status * w_avg * scaling / risk_sums
         C_21 = np.hstack([0, np.cumsum(A_21)]) # length=n+1
 
-        A_22 = _status * w_event * scaling / risk_sums
+        A_22 = _status * w_avg * scaling / risk_sums
         C_22 = np.hstack([0, np.cumsum(A_22)]) # length=n+1
 
         T_1_term = (C_10[last+1] - 
@@ -383,7 +389,7 @@ def _cox_dev(eta,           # eta is in native order
                 T_1_term -= C_10[start_map]
             T_2_term -= C_20[first]
     
-    grad = w_event * _status - exp_eta_w_event * T_1_term
+    grad = w_avg * _status - exp_eta_w_event * T_1_term
     grad_cp = grad.copy()
     grad[event_order] = grad_cp
 
