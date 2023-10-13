@@ -327,7 +327,7 @@ def _cox_dev(eta,           # eta is in native order
     exp_eta_w_event = exp_w[event_order]
 
     log_terms = np.log(np.array(risk_sums)) * w_avg * _status
-    loglik = (w_avg * eta_event * _status).sum() - np.sum(log_terms)
+    loglik = (w_event * eta_event * _status).sum() - np.sum(log_terms)
 
     # forward cumsums for gradient and Hessian
     
@@ -389,7 +389,7 @@ def _cox_dev(eta,           # eta is in native order
                 T_1_term -= C_10[start_map]
             T_2_term -= C_20[first]
     
-    grad = w_avg * _status - exp_eta_w_event * T_1_term
+    grad = w_event * _status - exp_eta_w_event * T_1_term
     grad_cp = grad.copy()
     grad[event_order] = grad_cp
 
