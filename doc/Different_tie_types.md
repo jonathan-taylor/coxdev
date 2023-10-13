@@ -231,8 +231,30 @@ def get_R_result(event, status, start, eta, weight, time=False):
 ```
 
 ```{code-cell} ipython3
+def get_coxph_grad(event, status, X, beta, sample_weight, start=None, ties='efron'):
+    %R -i X,event,status,beta,ties,sample_weight library(survival)
+    
+    %R X = as.matrix(X)
+    %R beta = as.numeric(beta)
+    %R sample_weight = as.numeric(sample_weight)
+    
+    if start is not None:
+        %R -i start
+        %R y = Surv(start, event, status)
+    else:
+        %R y = Surv(event, status)
+        
+    %R fit = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties)
+    try:
+        %R -o score score = colSums(coxph.detail(fit)$scor )
+        return score
+    except:
+        return None
+```
+
+```{code-cell} ipython3
 dataset_types = [(0,1), (1,0), (1, 1), (0, 2), (2, 0), (2, 1), (1, 2), (2, 2)]
-size, nrep, tol = 4, 1, 1e-10
+size, nrep, tol = 6, 3, 1e-10
 datasets = {}
 for t in dataset_types:
     datasets[t] = pd.concat([simulate(t[0], t[1], size=size) for _ in range(nrep)])
@@ -243,7 +265,11 @@ for i in range(1, 9):
                              start=data['start'],
                              status=data['status'],
                              tie_breaking='breslow')
-        eta = rng.standard_normal(data.shape[0])
+        n = data.shape[0]
+        p = n // 2
+        X = rng.standard_normal((n, p))
+        beta = rng.standard_normal(p) / np.sqrt(n)
+        eta = X @ beta
         weight = rng.uniform(size=data.shape[0]) + 0.2
         D_R, G_R, H_R = get_R_result(data['event'],
                                      data['status'],
@@ -273,8 +299,6 @@ for i in range(1, 9):
                              start=None,
                              status=data['status'],
                              tie_breaking='breslow')
-        eta = rng.standard_normal(data.shape[0])
-        weight = np.ones(data.shape[0])
         D_R, G_R, H_R = get_R_result(data['event'],
                                      data['status'],
                                      None,
@@ -292,6 +316,43 @@ for i in range(1, 9):
             print(v, delta_H, 'hessian')
         if np.fabs(D_R) == 0:
             print(v, 'coxdev2')
+
+        for ties in ['efron', 'breslow']:
+            weight = np.ones(n)
+            coxdev = CoxDeviance(event=data['event'],
+                                 start=None,
+                                 status=data['status'],
+                                 tie_breaking=ties)
+            C3 = coxdev(X @ beta, weight)
+            score = get_coxph_grad(event=np.asarray(data['event']),
+                                   status=np.asarray(data['status']),
+                                   beta=beta,
+                                   sample_weight=weight,
+                                   ties=ties,
+                                   X=X)
+            if score is not None:
+                delta_ph = np.linalg.norm(-2 * score - X.T @ C3.gradient) / np.linalg.norm(X.T @  C3.gradient)
+                if delta_ph > tol:
+                    print(v, delta_ph, ties, 'coxph')
+
+            weight = np.ones(n)
+            coxdev = CoxDeviance(event=data['event'],
+                                 start=data['start'],
+                                 status=data['status'],
+                                 tie_breaking=ties)
+            C3 = coxdev(X @ beta, weight)
+            score = get_coxph_grad(event=np.asarray(data['event']),
+                                   status=np.asarray(data['status']),
+                                   beta=beta,
+                                   sample_weight=weight,
+                                   ties=ties,
+                                   start=np.asarray(data['start']),
+                                   X=X)
+            if score is not None:
+                delta_ph = np.linalg.norm(-2 * score - X.T @ C3.gradient) / np.linalg.norm(X.T @  C3.gradient)
+                if delta_ph > tol:
+                    print(v, delta_ph, ties, 'coxph')
+        
 ```
 
 ## All 8 different "types" of points in one dataset
