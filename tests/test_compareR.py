@@ -1,12 +1,5 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[33]:
-
-from IPython import get_ipython
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from coxdev import CoxDeviance
 
 try:
@@ -34,7 +27,10 @@ from itertools import product, combinations
 # basic model for times
 rng = np.random.default_rng(0)
 def sample(size=1):
-    return rng.uniform(size=size) + 0.5
+    W = rng.uniform(size=size) + 0.5
+    W[size//3] += 2
+    W[size//3:size//2] += 1
+    return W
 
 # simulate different types of ties occurring
 def simulate(start_count, event_count, size=1):
@@ -174,8 +170,9 @@ def get_coxph_grad(event,
         rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
+        D = rpy.r('F$loglik')
 
-    return -2 * G
+    return -2 * G, -2 * D
 
 
 dataset_types = [(0,1), (1,0), (1, 1), (0, 2), (2, 0), (2, 1), (1, 2), (2, 2)]
@@ -185,7 +182,7 @@ for i in range(1, 9):
         all_combos.append(v)
 
 @pytest.mark.parametrize('tie_types', all_combos)
-@pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+@pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'][1:])
 @pytest.mark.parametrize('sample_weight', [np.ones, lambda n: sample(n)])
 @pytest.mark.parametrize('have_start_times', [True, False])
 def test_coxph(tie_types,
@@ -217,20 +214,24 @@ def test_coxph(tie_types,
     X = rng.standard_normal((n, p))
     beta = rng.standard_normal(p) / np.sqrt(n)
     weight = sample_weight(n)
+
     C = coxdev(X @ beta, weight)
-    G_coxph = get_coxph_grad(event=np.asarray(data['event']),
-                             status=np.asarray(data['status']),
-                             beta=beta,
-                             sample_weight=weight,
-                             start=start,
-                             ties=tie_breaking,
-                             X=X)
+    (G_coxph,
+     D_coxph) = get_coxph_grad(event=np.asarray(data['event']),
+                               status=np.asarray(data['status']),
+                               beta=beta,
+                               sample_weight=weight,
+                               start=start,
+                               ties=tie_breaking,
+                               X=X)
+
+    assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
     assert delta_ph < tol
 
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('sample_weight', [np.ones, lambda n: sample(n)])
-@pytest.mark.parametrize('have_start_times', [True, False][1:])
+@pytest.mark.parametrize('have_start_times', [True, False])
 def test_glmnet(tie_types,
                 sample_weight,
                 have_start_times,
