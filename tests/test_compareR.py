@@ -24,7 +24,7 @@ import pytest
 from simulate import (simulate_df,
                       all_combos,
                       rng,
-                      sample)
+                      sample_weights)
 
 def get_glmnet_result(event,
                       status,
@@ -105,7 +105,7 @@ def get_coxph(event,
 
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
-@pytest.mark.parametrize('sample_weight', [np.ones, lambda n: sample(n)])
+@pytest.mark.parametrize('sample_weight', [np.ones, sample_weights])
 @pytest.mark.parametrize('have_start_times', [True, False])
 def test_coxph(tie_types,
                tie_breaking,
@@ -161,7 +161,7 @@ def test_coxph(tie_types,
     assert np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_) < tol
 
 @pytest.mark.parametrize('tie_types', all_combos)
-@pytest.mark.parametrize('sample_weight', [np.ones, lambda n: sample(n)])
+@pytest.mark.parametrize('sample_weight', [np.ones, sample_weights])
 @pytest.mark.parametrize('have_start_times', [True, False])
 def test_glmnet(tie_types,
                 sample_weight,

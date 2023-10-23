@@ -5,7 +5,13 @@ import pandas as pd
 
 # basic model for times
 rng = np.random.default_rng(0)
-def sample(size=1):
+def sample_weights(size=1):
+    W = rng.poisson(2, size=size) + rng.uniform(size=size)
+    W[size//3] += 2.
+    W[size//3:size//2] += 1
+    return W
+
+def sample_times(size=1):
     W = rng.uniform(size=size) + 0.5
     W[size//3] += 2.
     W[size//3:size//2] += 1
@@ -25,56 +31,56 @@ def simulate(start_count,
     elif ((start_count == 0 and event_count == 1) or  
                                                       
           (start_count == 1 and event_count == 0)):
-        start = sample(size=size)
-        event = start + sample(size=size)
+        start = sample_times(size=size)
+        event = start + sample_times(size=size)
         
     # ties in event but not starts
     elif (start_count == 0) and (event_count == 2): 
-        event = sample() * np.ones(size)
-        start = event - sample(size=size)
+        event = sample_times() * np.ones(size)
+        start = event - sample_times(size=size)
         min_start = start.min()
-        E = sample()
+        E = sample_times()
         event += min_start + E
         start += min_start + E
     # ties in starts but not events
     elif (start_count == 2) and (event_count == 0): 
-        start = sample() * np.ones(size)
-        event = start + sample(size=size)
+        start = sample_times() * np.ones(size)
+        event = start + sample_times(size=size)
     # single tie in start and event
     elif (start_count == 1) and (event_count == 1): 
         start = []
         event = []
         for _ in range(size):
-            U = sample()
-            start.extend([U-sample(), U])
-            event.extend([U, U+sample()])
+            U = sample_times()
+            start.extend([U-sample_times(), U])
+            event.extend([U, U+sample_times()])
         start = np.asarray(start).reshape(-1)
         event = np.asarray(event).reshape(-1)
         
     # multiple starts at single event
     elif (start_count == 2) and (event_count == 1): 
-        start = sample() * np.ones(size)
-        event = start + sample(size=size)
-        E = sample()
+        start = sample_times() * np.ones(size)
+        event = start + sample_times(size=size)
+        E = sample_times()
         event = np.hstack([event, start[0]])
-        start = np.hstack([start, start[0] - sample()])
+        start = np.hstack([start, start[0] - sample_times()])
 
     # multiple events at single start
     elif (start_count == 1) and (event_count == 2):
-        event = sample() * np.ones(size)
-        start = event - sample(size=size)
-        E = sample()
+        event = sample_times() * np.ones(size)
+        start = event - sample_times(size=size)
+        E = sample_times()
         start = np.hstack([start, event[0]])
-        event = np.hstack([event, event[0] + sample()])
+        event = np.hstack([event, event[0] + sample_times()])
 
     # multiple events and starts
     elif (start_count == 2) and (event_count == 2): 
-        U = sample()
+        U = sample_times()
         event = U * np.ones(size)
-        start = event - sample(size=size)
+        start = event - sample_times(size=size)
         size2 = rng.poisson(size) + 1
         start2 = U * np.ones(size2)
-        event2 = start2 + sample(size=size2)
+        event2 = start2 + sample_times(size=size2)
         start = np.hstack([start, start2])
         event = np.hstack([event, event2])
 
