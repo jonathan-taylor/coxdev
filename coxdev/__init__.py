@@ -481,6 +481,11 @@ def _sum_over_risk_set(arg,
                        scaling,
                        efron):
 
+    '''
+    arg is in native order
+    returns a sum in event order
+    '''
+
     have_start_times = event_map is not None
 
     if have_start_times:
@@ -559,11 +564,14 @@ def _hessian_matvec(arg,           # arg is in native order
     # compute the event ordered reversed cumsum
     exp_w = np.exp(eta) * sample_weight
     
+    exp_w_event = exp_w[event_order]
     eta_event = eta[event_order]
     w_event = sample_weight[event_order]
     w_cumsum = np.cumsum(np.hstack([0, sample_weight[event_order]]))
     w_avg = ((w_cumsum[last + 1] - w_cumsum[first]) /
              (last + 1 - first))
+
+    arg_event = arg[event_order]
 
     if have_start_times:
         # now in event_order
@@ -585,8 +593,9 @@ def _hessian_matvec(arg,           # arg is in native order
                                            scaling,
                                            efron)
 
-    cumsum_arg = _status * w_avg * risk_sums_arg / risk_sums**2
-
+    cumsum_arg = _status * w_avg * (risk_sums_arg / risk_sums - 0 * arg_event) / risk_sums
+    # cumsum_arg *= exp_w_event
+    
     if have_start_times:
         value = _sum_over_events(cumsum_arg,
                                  event_order,

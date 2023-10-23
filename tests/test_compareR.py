@@ -141,6 +141,7 @@ def test_coxph(tie_types,
     I = coxdev.information(X,
                            beta,
                            weight)
+    assert np.allclose(I, I.T)
     cov_ = np.linalg.inv(I)
 
     (G_coxph,
