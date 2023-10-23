@@ -16,6 +16,8 @@ class CoxDevianceResult(object):
     diag_hessian: Optional[np.ndarray]
     risk_sums: Optional[np.ndarray]
     diag_part: Optional[np.ndarray]
+    w_avg: Optional[np.ndarray]
+    exp_w: Optional[np.ndarray]
     __hash_args__: str
 
 @dataclass
@@ -134,6 +136,8 @@ class CoxDeviance(object):
                                np.asarray(sample_weight),
                                result.risk_sums,
                                result.diag_part,
+                               result.w_avg,
+                               result.exp_w,
                                self._event_order,
                                self._start_order,
                                self._status,
@@ -425,6 +429,8 @@ def _cox_dev(eta,           # eta is in native order
                 T_1_term -= C_10[start_map]
             T_2_term -= C_20[first]
     
+    # could do multiply by exp_w after reorder...
+    # save a reorder of w * exp(eta)
     diag_part = exp_eta_w_event * T_1_term
     grad = w_event * _status - diag_part
     grad_cp = grad.copy()
@@ -446,7 +452,9 @@ def _cox_dev(eta,           # eta is in native order
             -2 * grad,
             -2 * diag_hess,
             risk_sums,
-            diag_part)
+            diag_part,
+            w_avg,
+            exp_w)
 
 def _sum_over_events(arg,
                      event_order,
@@ -527,6 +535,8 @@ def _hessian_matvec(arg,           # arg is in native order
                     sample_weight, # sample_weight is in native order
                     risk_sums,
                     diag_part,
+                    w_avg,
+                    exp_w,
                     event_order,   
                     start_order,
                     status,        # everything below in event order
@@ -560,19 +570,6 @@ def _hessian_matvec(arg,           # arg is in native order
         first_start = np.asarray(first_start)
     _status = (status==1)
     
-    eta = eta - eta.mean()
-    
-    # compute the event ordered reversed cumsum
-    exp_w = np.exp(eta) * sample_weight
-    
-    eta_event = eta[event_order]
-    w_event = sample_weight[event_order]
-    w_cumsum = np.cumsum(np.hstack([0, sample_weight[event_order]]))
-    w_avg = ((w_cumsum[last + 1] - w_cumsum[first]) /
-             (last + 1 - first))
-
-    arg_event = arg[event_order]
-
     if have_start_times:
         # now in event_order
         risk_sums_arg = _sum_over_risk_set(exp_w * arg, # in native order
