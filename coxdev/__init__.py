@@ -1,6 +1,10 @@
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
 
+# for Hessian
+
+from scipy.sparse.linalg import LinearOperator
+
 from . import _version
 __version__ = _version.get_versions()['version']
 
@@ -10,6 +14,8 @@ from joblib import hash
 @dataclass
 class CoxDevianceResult(object):
 
+    linear_predictor: np.ndarray
+    sample_weight: np.ndarray
     loglik_sat: float
     deviance: float
     gradient: Optional[np.ndarray]
@@ -19,6 +25,7 @@ class CoxDevianceResult(object):
     w_avg: Optional[np.ndarray]
     exp_w: Optional[np.ndarray]
     __hash_args__: str
+
 
 @dataclass
 class CoxDeviance(object):
@@ -100,58 +107,75 @@ class CoxDeviance(object):
                                efron=self._efron,
                                have_start_times=self._have_start_times,
                                asarray=False)
-            self._result = CoxDevianceResult(*(_result + (cur_hash,)))
+            self._result = CoxDevianceResult(*((linear_predictor,
+                                                sample_weight) +
+                                               _result + (cur_hash,)))
             
-        # XXXXX should return the risk sums
-        # useful for computing hessian
-
         return self._result
 
     def information(self,
                     X,
                     beta,
                     sample_weight=None):
+
         linear_predictor = X @ beta
 
-        HX = np.column_stack([self._hessian_matvec(
-                                  X[:,i],
-                                  linear_predictor,
-                                  sample_weight=sample_weight)
-                              for i in range(X.shape[1])])
-        return - X.T @ HX
+        result = self(linear_predictor,
+                      sample_weight)
+        H = CoxInformation(result=result,
+                           coxdev=self)
 
-    def _hessian_matvec(self,
-                        arg,
-                        linear_predictor,
-                        sample_weight=None):
+        return X.T @ (H @ X)
+
+@dataclass
+class CoxInformation(LinearOperator):
+
+    coxdev: CoxDeviance
+    result: CoxDevianceResult
+
+    def __post_init__(self):
+        n = self.coxdev._status.shape[0]
+        self.shape = (n, n)
+        self.dtype = float
+        
+    def _matvec(self, arg):
 
         # this will compute risk sums if not already computed
         # at this linear_predictor and sample_weight
         
-        result = self(linear_predictor,
-                      sample_weight=sample_weight)
+        result = self.result
+        coxdev = self.coxdev
 
-        return _hessian_matvec(np.asarray(arg),
-                               np.asarray(linear_predictor),
-                               np.asarray(sample_weight),
+        # negative will give 2nd derivative of negative
+        # loglikelihood
+
+        return _hessian_matvec(-np.asarray(arg).reshape(-1),
+                               np.asarray(result.linear_predictor),
+                               np.asarray(result.sample_weight),
                                result.risk_sums,
                                result.diag_part,
                                result.w_avg,
                                result.exp_w,
-                               self._event_order,
-                               self._start_order,
-                               self._status,
-                               self._event,
-                               self._start,
-                               self._first,
-                               self._last,
-                               self._scaling,
-                               self._event_map,
-                               self._start_map,
-                               self._first_start,
-                               efron=self._efron,
-                               have_start_times=self._have_start_times,
+                               coxdev._event_order,
+                               coxdev._start_order,
+                               coxdev._status,
+                               coxdev._event,
+                               coxdev._start,
+                               coxdev._first,
+                               coxdev._last,
+                               coxdev._scaling,
+                               coxdev._event_map,
+                               coxdev._start_map,
+                               coxdev._first_start,
+                               efron=coxdev._efron,
+                               have_start_times=coxdev._have_start_times,
                                asarray=False)                        
+
+    def _adjoint(self, arg):
+        # it is symmetric
+        return self._matvec(arg)
+
+# utility functions
 
 def _compute_sat_loglik(_first,
                         _last,
