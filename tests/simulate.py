@@ -91,7 +91,8 @@ for i in range(1, 9):
 def simulate_df(tie_types,
                 nrep,
                 size,
-                rng=rng):
+                rng=rng,
+                noinfo=True):
     dfs = []
     for tie_type in tie_types:
         for _ in range(nrep):
@@ -99,5 +100,19 @@ def simulate_df(tie_types,
                                 tie_type[1],
                                 size=size,
                                 rng=rng))
-    return pd.concat(dfs)
+    df = pd.concat(dfs)
+
+    # if noinfo, include some points that have no failures
+    # and are beyond the last failure time
+
+    max_event = df['event'].max()
+    if noinfo:
+        start = max_event + rng.standard_exponential(5)
+        event = start + rng.standard_exponential(5)
+        df_noinfo = pd.DataFrame({'start':start,
+                                  'event':event,
+                                  'status':np.zeros(5)})
+        df = pd.concat([df, df_noinfo])
+
+    return df
         

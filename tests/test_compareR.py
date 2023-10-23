@@ -69,13 +69,13 @@ def get_glmnet_result(event,
     return D_R, -2 * G_R, -2 * H_R
 
 
-def get_coxph_grad(event,
-                   status,
-                   X,
-                   beta,
-                   sample_weight,
-                   start=None,
-                   ties='efron'):
+def get_coxph(event,
+              status,
+              X,
+              beta,
+              sample_weight,
+              start=None,
+              ties='efron'):
 
     if start is not None:
         start = np.asarray(start)
@@ -99,8 +99,8 @@ def get_coxph_grad(event,
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')
-
-    return -2 * G, -2 * D
+        cov = rpy.r('vcov(F)')
+    return -2 * G, -2 * D, cov
 
 
 @pytest.mark.parametrize('tie_types', all_combos)
@@ -135,15 +135,28 @@ def test_coxph(tie_types,
     weight = sample_weight(n)
 
     C = coxdev(X @ beta, weight)
-    (G_coxph,
-     D_coxph) = get_coxph_grad(event=np.asarray(data['event']),
-                               status=np.asarray(data['status']),
-                               beta=beta,
-                               sample_weight=weight,
-                               start=start,
-                               ties=tie_breaking,
-                               X=X)
 
+    eta = X @ beta
+
+    I = coxdev.information(X,
+                           beta,
+                           weight)
+    cov_ = np.linalg.inv(I)
+    # HX = np.column_stack([coxdev.hessian_matvec(X[:,i], eta, weight)
+    #                       for i in range(X.shape[1])])
+    # H = X.T @ HX
+
+    (G_coxph,
+     D_coxph,
+     cov_coxph) = get_coxph(event=np.asarray(data['event']),
+                            status=np.asarray(data['status']),
+                            beta=beta,
+                            sample_weight=weight,
+                            start=start,
+                            ties=tie_breaking,
+                            X=X)
+
+    print(np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_))
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
     assert delta_ph < tol

@@ -14,6 +14,8 @@ class CoxDevianceResult(object):
     deviance: float
     gradient: Optional[np.ndarray]
     diag_hessian: Optional[np.ndarray]
+    risk_sums: Optional[np.ndarray]
+    diag_part: Optional[np.ndarray]
     __hash_args__: str
 
 @dataclass
@@ -102,6 +104,50 @@ class CoxDeviance(object):
         # useful for computing hessian
 
         return self._result
+
+    def information(self,
+                    X,
+                    beta,
+                    sample_weight=None):
+        linear_predictor = X @ beta
+
+        HX = np.column_stack([self._hessian_matvec(
+                                  X[:,i],
+                                  linear_predictor,
+                                  sample_weight=sample_weight)
+                              for i in range(X.shape[1])])
+        return - X.T @ HX
+
+    def _hessian_matvec(self,
+                        arg,
+                        linear_predictor,
+                        sample_weight=None):
+
+        # this will compute risk sums if not already computed
+        # at this linear_predictor and sample_weight
+        
+        result = self(linear_predictor,
+                      sample_weight=sample_weight)
+
+        return _hessian_matvec(np.asarray(arg),
+                               np.asarray(linear_predictor),
+                               np.asarray(sample_weight),
+                               result.risk_sums,
+                               result.diag_part,
+                               self._event_order,
+                               self._start_order,
+                               self._status,
+                               self._event,
+                               self._start,
+                               self._first,
+                               self._last,
+                               self._scaling,
+                               self._event_map,
+                               self._start_map,
+                               self._first_start,
+                               efron=self._efron,
+                               have_start_times=self._have_start_times,
+                               asarray=False)                        
 
 def _compute_sat_loglik(_first,
                         _last,
@@ -360,10 +406,10 @@ def _cox_dev(eta,           # eta is in native order
         A_11 = _status * w_avg * scaling / risk_sums
         C_11 = np.hstack([0, np.cumsum(A_11)]) # length=n+1
 
-        A_21 = _status * w_avg * scaling / risk_sums
+        A_21 = _status * w_avg * scaling**2 / risk_sums
         C_21 = np.hstack([0, np.cumsum(A_21)]) # length=n+1
 
-        A_22 = _status * w_avg * scaling / risk_sums
+        A_22 = _status * w_avg * scaling**2 / risk_sums**2
         C_22 = np.hstack([0, np.cumsum(A_22)]) # length=n+1
 
         T_1_term = (C_10[last+1] - 
@@ -371,6 +417,7 @@ def _cox_dev(eta,           # eta is in native order
         T_2_term = ((C_22[last+1] - C_22[first]) 
                     - 2 * (C_21[last+1] - C_21[first]) + 
                     C_20[last+1])
+
         if have_start_times:
             if use_first_start:
                 T_1_term -= C_10[first_start]
@@ -378,19 +425,49 @@ def _cox_dev(eta,           # eta is in native order
                 T_1_term -= C_10[start_map]
             T_2_term -= C_20[first]
     
-    grad = w_event * _status - exp_eta_w_event * T_1_term
+    diag_part = exp_eta_w_event * T_1_term
+    grad = w_event * _status - diag_part
     grad_cp = grad.copy()
     grad[event_order] = grad_cp
 
     # now the diagonal of the Hessian
 
-    diag_hess = exp_eta_w_event**2 * T_2_term - exp_eta_w_event * T_1_term
+    diag_hess = exp_eta_w_event**2 * T_2_term - diag_part
     diag_hess_cp = diag_hess.copy()
     diag_hess[event_order] = diag_hess_cp
 
     deviance = 2 * (loglik_sat - loglik)
 
-    return loglik_sat, deviance, -2 * grad, -2 * diag_hess
+    return (loglik_sat,
+            deviance,
+            -2 * grad,
+            -2 * diag_hess,
+            risk_sums,
+            diag_part)
+
+def _sum_over_events(arg,
+                     event_order,
+                     start_order,
+                     first,
+                     last,
+                     start_map,
+                     scaling,
+                     efron):
+    '''
+    compute sum_i (d_i Z_i ((1_{t_k>=t_i} - 1_{s_k>=t_i}) - sigma_i (1_{i <= last(k)} - 1_{i <= first(k)-1})
+    '''
+        
+    have_start_times = start_map is not None
+
+    C_arg = np.hstack([0, np.cumsum(arg)])
+    value = C_arg[last+1]
+    if have_start_times:
+        value -= C_arg[start_map]
+
+    if efron:
+        C_arg_scale = np.hstack([0, np.cumsum(arg * scaling)])
+        value -= C_arg_scale[last+1] - C_arg_scale[first]
+    return value
 
 def _sum_over_risk_set(arg,
                        event_order,
@@ -433,6 +510,103 @@ def _sum_over_risk_set(arg,
         _sum -= delta * scaling
 
     return _sum
+
+def _hessian_matvec(arg,           # arg is in native order
+                    eta,           # eta is in native order 
+                    sample_weight, # sample_weight is in native order
+                    risk_sums,
+                    diag_part,
+                    event_order,   
+                    start_order,
+                    status,        # everything below in event order
+                    event,
+                    start,
+                    first,
+                    last,
+                    scaling,
+                    event_map,
+                    start_map,
+                    first_start,
+                    have_start_times=True,
+                    efron=False,
+                    asarray=True):                    
+
+    # be sure they're arrays so that no weird pandas indexing is used
+
+    if asarray:
+        eta = np.asarray(eta)
+        sample_weight = np.asarray(sample_weight)
+        event_order = np.asarray(event_order)   
+        start_order = np.asarray(start_order)
+        status = np.asarray(status)
+        event = np.asarray(event)
+        start = np.asarray(start)
+        first = np.asarray(first)
+        last = np.asarray(last)
+        scaling = np.asarray(scaling)
+        event_map = np.asarray(event_map)
+        start_map = np.asarray(start_map)
+        first_start = np.asarray(first_start)
+    _status = (status==1)
+    
+    eta = eta - eta.mean()
+    
+    # compute the event ordered reversed cumsum
+    exp_w = np.exp(eta) * sample_weight
+    
+    eta_event = eta[event_order]
+    w_event = sample_weight[event_order]
+    w_cumsum = np.cumsum(np.hstack([0, sample_weight[event_order]]))
+    w_avg = ((w_cumsum[last + 1] - w_cumsum[first]) /
+             (last + 1 - first))
+
+    if have_start_times:
+        risk_sums_arg = _sum_over_risk_set(exp_w * arg,
+                                           event_order,
+                                           start_order,
+                                           first,
+                                           last,
+                                           event_map,
+                                           scaling,
+                                           efron)
+    else:
+        risk_sums_arg = _sum_over_risk_set(exp_w * arg,
+                                           event_order,
+                                           start_order,
+                                           first,
+                                           last,
+                                           None,
+                                           scaling,
+                                           efron)
+
+    cumsum_arg = _status * w_avg * risk_sums_arg / risk_sums**2
+
+    if have_start_times:
+        value = _sum_over_events(exp_w,
+                                 event_order,
+                                 start_order,
+                                 first,
+                                 last,
+                                 start_map,
+                                 scaling,
+                                 efron)
+    else:
+        value = _sum_over_events(exp_w,
+                                 event_order,
+                                 start_order,
+                                 first,
+                                 last,
+                                 None,
+                                 scaling,
+                                 efron)
+        
+    hess_matvec = np.zeros_like(value)
+    hess_matvec[event_order] = value
+
+    hess_matvec -= diag_part * arg
+    hess_matvec *= exp_w 
+    return hess_matvec
+
 
 def _reversed_cumsums(sequence,
                       event_order=None,
