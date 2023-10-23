@@ -142,9 +142,6 @@ def test_coxph(tie_types,
                            beta,
                            weight)
     cov_ = np.linalg.inv(I)
-    # HX = np.column_stack([coxdev.hessian_matvec(X[:,i], eta, weight)
-    #                       for i in range(X.shape[1])])
-    # H = X.T @ HX
 
     (G_coxph,
      D_coxph,
@@ -156,10 +153,10 @@ def test_coxph(tie_types,
                             ties=tie_breaking,
                             X=X)
 
-    print(np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_))
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
     assert delta_ph < tol
+    assert np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_) < tol
 
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('sample_weight', [np.ones, lambda n: sample(n)])

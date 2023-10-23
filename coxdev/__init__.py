@@ -436,6 +436,9 @@ def _cox_dev(eta,           # eta is in native order
     diag_hess_cp = diag_hess.copy()
     diag_hess[event_order] = diag_hess_cp
 
+    diag_part_cp = diag_part.copy()
+    diag_part[event_order] = diag_part_cp
+    
     deviance = 2 * (loglik_sat - loglik)
 
     return (loglik_sat,
@@ -509,6 +512,8 @@ def _sum_over_risk_set(arg,
                  event_cumsum[last+1])
         _sum -= delta * scaling
 
+    # returned in event order!
+    
     return _sum
 
 def _hessian_matvec(arg,           # arg is in native order
@@ -561,7 +566,8 @@ def _hessian_matvec(arg,           # arg is in native order
              (last + 1 - first))
 
     if have_start_times:
-        risk_sums_arg = _sum_over_risk_set(exp_w * arg,
+        # now in event_order
+        risk_sums_arg = _sum_over_risk_set(exp_w * arg, # in native order
                                            event_order,
                                            start_order,
                                            first,
@@ -570,7 +576,7 @@ def _hessian_matvec(arg,           # arg is in native order
                                            scaling,
                                            efron)
     else:
-        risk_sums_arg = _sum_over_risk_set(exp_w * arg,
+        risk_sums_arg = _sum_over_risk_set(exp_w * arg, # in native order
                                            event_order,
                                            start_order,
                                            first,
@@ -582,7 +588,7 @@ def _hessian_matvec(arg,           # arg is in native order
     cumsum_arg = _status * w_avg * risk_sums_arg / risk_sums**2
 
     if have_start_times:
-        value = _sum_over_events(exp_w,
+        value = _sum_over_events(cumsum_arg,
                                  event_order,
                                  start_order,
                                  first,
@@ -591,7 +597,7 @@ def _hessian_matvec(arg,           # arg is in native order
                                  scaling,
                                  efron)
     else:
-        value = _sum_over_events(exp_w,
+        value = _sum_over_events(cumsum_arg,
                                  event_order,
                                  start_order,
                                  first,
@@ -603,8 +609,8 @@ def _hessian_matvec(arg,           # arg is in native order
     hess_matvec = np.zeros_like(value)
     hess_matvec[event_order] = value
 
-    hess_matvec -= diag_part * arg
     hess_matvec *= exp_w 
+    hess_matvec -= diag_part * arg
     return hess_matvec
 
 
