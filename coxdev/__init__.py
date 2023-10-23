@@ -568,7 +568,6 @@ def _hessian_matvec(arg,           # arg is in native order
         event_map = np.asarray(event_map)
         start_map = np.asarray(start_map)
         first_start = np.asarray(first_start)
-    _status = (status==1)
     
     if have_start_times:
         # now in event_order
@@ -602,7 +601,7 @@ def _hessian_matvec(arg,           # arg is in native order
                                  last,
                                  start_map,
                                  scaling,
-                                 _status,
+                                 status,
                                  efron)
     else:
         value = _sum_over_events(cumsum_arg,
@@ -612,7 +611,7 @@ def _hessian_matvec(arg,           # arg is in native order
                                  last,
                                  None,
                                  scaling,
-                                 _status,
+                                 status,
                                  efron)
         
     hess_matvec = np.zeros_like(value)
