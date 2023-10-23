@@ -28,6 +28,8 @@ class CoxDevianceResult(object):
     diag_part: Optional[np.ndarray]
     w_avg: Optional[np.ndarray]
     exp_w: Optional[np.ndarray]
+    event_cumsum: Optional[np.ndarray]
+    start_cumsum: Optional[np.ndarray]
     __hash_args__: str
 
 
@@ -156,6 +158,8 @@ class CoxInformation(LinearOperator):
                                result.diag_part,
                                result.w_avg,
                                result.exp_w,
+                               result.event_cumsum,
+                               result.start_cumsum,
                                coxdev._event_order,
                                coxdev._start_order,
                                coxdev._status,
