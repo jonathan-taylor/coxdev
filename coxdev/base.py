@@ -50,14 +50,11 @@ def _cox_dev(eta,           # eta is in native order
              event_order,   
              start_order,
              status,        # everything below in event order
-             event,
-             start,
              first,
              last,
              scaling,
              event_map,
              start_map,
-             first_start,
              loglik_sat,
              have_start_times=True,
              efron=False):
@@ -115,8 +112,11 @@ def _cox_dev(eta,           # eta is in native order
     # if there are no ties, scaling should be identically 0
     # don't bother with cumsums below 
 
-    use_first_start = True # JT: don't think this is strictly needed
-                           # but haven't found a counterexample
+    # JT: don't think this is strictly needed
+    # and haven't found a counterexample
+    # if changed to True, we'll need first_start as an argument
+    
+    use_first_start = False
 
     if not efron:
         if have_start_times:
@@ -272,14 +272,11 @@ def _hessian_matvec(arg,           # arg is in native order
                     event_order,   
                     start_order,
                     status,        # everything below in event order
-                    event,
-                    start,
                     first,
                     last,
                     scaling,
                     event_map,
                     start_map,
-                    first_start,
                     have_start_times=True,
                     efron=False):                    
 
