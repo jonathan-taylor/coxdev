@@ -286,34 +286,23 @@ def _cox_dev(eta,           # eta is in native order
     exp_w = np.exp(eta) * sample_weight
     
     if have_start_times:
-        (event_cumsum,
-         start_cumsum) = _reversed_cumsums(exp_w,
-                                           event_order=event_order,
-                                           start_order=start_order)
+        risk_sums = _sum_over_risk_set(exp_w,
+                                       event_order,
+                                       start_order,
+                                       first,
+                                       last,
+                                       event_map,
+                                       scaling,
+                                       efron)
     else:
-        (event_cumsum,
-         start_cumsum) = _reversed_cumsums(exp_w,
-                                           event_order,
-                                           start_order=None)
-        
-    if have_start_times:
-        risk_sums = event_cumsum[first] - start_cumsum[event_map]
-    else:
-        risk_sums = event_cumsum[first]
-        
-    # compute the Efron correction, adjusting risk_sum if necessary
-    
-    if efron == True:
-        n = eta.shape[0]
-        # for K events,
-        # this results in risk sums event_cumsum[first] to
-        # event_cumsum[first] -
-        # (K-1)/K [event_cumsum[last+1] - event_cumsum[first]
-        # or event_cumsum[last+1] + 1/K [event_cumsum[first] - event_cumsum[last+1]]
-        # to event[cumsum_first]
-        delta = (event_cumsum[first] - 
-                 event_cumsum[last+1])
-        risk_sums -= delta * scaling
+        risk_sums = _sum_over_risk_set(exp_w,
+                                       event_order,
+                                       start_order,
+                                       first,
+                                       last,
+                                       None,
+                                       scaling,
+                                       efron)
 
     # some ordered terms to complete likelihood
     # calculation
@@ -402,6 +391,48 @@ def _cox_dev(eta,           # eta is in native order
     deviance = 2 * (loglik_sat - loglik)
 
     return loglik_sat, deviance, -2 * grad, -2 * diag_hess
+
+def _sum_over_risk_set(arg,
+                       event_order,
+                       start_order,
+                       first,
+                       last,
+                       event_map,
+                       scaling,
+                       efron):
+
+    have_start_times = event_map is not None
+
+    if have_start_times:
+        (event_cumsum,
+         start_cumsum) = _reversed_cumsums(arg,
+                                           event_order=event_order,
+                                           start_order=start_order)
+    else:
+        (event_cumsum,
+         start_cumsum) = _reversed_cumsums(arg,
+                                           event_order,
+                                           start_order=None)
+        
+    if have_start_times:
+        _sum = event_cumsum[first] - start_cumsum[event_map]
+    else:
+        _sum = event_cumsum[first]
+        
+    # compute the Efron correction, adjusting risk_sum if necessary
+    
+    if efron:
+        # for K events,
+        # this results in risk sums event_cumsum[first] to
+        # event_cumsum[first] -
+        # (K-1)/K [event_cumsum[last+1] - event_cumsum[first]
+        # or event_cumsum[last+1] + 1/K [event_cumsum[first] - event_cumsum[last+1]]
+        # to event[cumsum_first]
+        delta = (event_cumsum[first] - 
+                 event_cumsum[last+1])
+        _sum -= delta * scaling
+
+    return _sum
 
 def _reversed_cumsums(sequence,
                       event_order=None,
