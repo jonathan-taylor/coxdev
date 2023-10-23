@@ -4,16 +4,10 @@ import numpy as np
 
 def _compute_sat_loglik(_first,
                         _last,
-                        _weight, # in natural order
+                        _weight, # in natural order!!!
                         _event_order,
                         _status):
     
-    _first = np.asarray(_first)
-    _last = np.asarray(_last)
-    _weight = np.asarray(_weight)
-    _event_order = np.asarray(_event_order)
-    _status = np.asarray(_status)
-
     W_status = np.cumsum(np.hstack([0, _weight[_event_order] * _status]))
     sums = W_status[_last+1] - W_status[_first]
     loglik_sat = 0
@@ -25,123 +19,31 @@ def _compute_sat_loglik(_first,
 
     return loglik_sat
 
-def _preprocess(start,
-                event,
-                status):
+def _reversed_cumsums(sequence,
+                      event_order=None,
+                      start_order=None):
+    """
+    Compute reversed cumsums of a sequence
+    in start and / or event order with a 0 padded at the end.
+    """
     
-    start = np.asarray(start)
-    event = np.asarray(event)
-    status = np.asarray(status)
-    nevent = status.shape[0]
-    
-    # second column of stacked_array is 1-status...
-    stacked_time = np.hstack([start, event])
-    stacked_status_c = np.hstack([np.ones(nevent, int), 1-status]) # complement of status
-    stacked_is_start = np.hstack([np.ones(nevent, int), np.zeros(nevent, int)])
-    stacked_index = np.hstack([np.arange(nevent), np.arange(nevent)])
+    # pad by 1 at the end length=n+1 for when last=n-1    
 
-    argsort = np.lexsort((stacked_is_start,
-                          stacked_status_c,
-                          stacked_time))
-    sorted_time = stacked_time[argsort]
-    sorted_status = 1 - stacked_status_c[argsort]
-    sorted_is_start = stacked_is_start[argsort]
-    sorted_index = stacked_index[argsort]
-    
-    # do the joint sort
+    if event_order is not None:
+        seq_event = np.hstack([sequence[event_order], 0])
+        event_cumsum = np.cumsum(seq_event[::-1])[::-1]
+    else:
+        event_cumsum = None
 
-    event_count, start_count = 0, 0
-    event_order, start_order = [], []
-    start_map, event_map = [], []
-    first = []
-    event_idx = []
-    last_row = None
-    which_event = -1
-    first_event = -1
-    num_successive_event = 1
-    ties = {}    
-    for row in zip(sorted_time,
-                   sorted_status,
-                   sorted_is_start,
-                   sorted_index):
-        (_time, _status, _is_start, _index) = row
-        if _is_start == 1: # a start time
-            start_order.append(_index)
-            start_map.append(event_count)
-            start_count += 1
-        else: # an event / stop time
-            if _status == 1:
-                # if it's an event and the time is same as last row 
-                # it is the same event
-                # else it's the next "which_event"
-                
-                if (last_row is not None and 
-                    _time != last_row[0]): # index of next `status==1`
-                    first_event += num_successive_event
-                    num_successive_event = 1
-                    which_event += 1
-                else:
-                    num_successive_event += 1
-                    
-                first.append(first_event)
-            else:
-                first_event += num_successive_event
-                num_successive_event = 1
-                first.append(first_event) # this event time was not an failure time
+    if start_order is not None:
+        seq_start = np.hstack([sequence[start_order], 0])
+        start_cumsum = np.cumsum(seq_start[::-1])[::-1]  # length=n+1
+    else:
+        start_cumsum = None
 
-            event_map.append(start_count)
-            event_order.append(_index)
-            event_count += 1
-        last_row = row
+    return event_cumsum, start_cumsum
 
-    first = np.array(first)
-    start_order = np.array(start_order, int)
-    event_order = np.array(event_order, int)
-    start_map = np.array(start_map, int)
-    event_map = np.array(event_map, int)
-
-    # reset start_map to original order
-    start_map_cp = start_map.copy()
-    start_map[start_order] = start_map_cp
-
-    # set to event order
-
-    _status = status[event_order]
-    _first = first
-    _start_map = start_map[event_order]
-    _event_map = event_map
-
-    _event = event[event_order]
-    _start = event[start_order]
-
-    # compute `last`
-    
-    last = []
-    last_event = nevent-1
-    for i, f in enumerate(_first[::-1]):
-        last.append(last_event)
-        # immediately following a last event, `first` will agree with np.arange
-        if f - (nevent - 1 - i) == 0:
-            last_event = f - 1        
-    _last = np.array(last[::-1])
-
-    den = _last + 1 - _first
-
-    # XXXX
-    _scaling = (np.arange(nevent) - _first) / den
-    
-    preproc = {'start':_start,
-               'event':_event,
-               'first':_first,
-               'last':_last,
-               'scaling':_scaling,
-               'start_map':_start_map,
-               'event_map':_event_map,
-               'status':_status}
-
-    return preproc, event_order, start_order
-
-# Evaluation in `python` code that is similar to what the `C` code will look like.
+# Core function
 
 def _cox_dev(eta,           # eta is in native order 
              sample_weight, # sample_weight is in native order
@@ -158,27 +60,8 @@ def _cox_dev(eta,           # eta is in native order
              first_start,
              loglik_sat,
              have_start_times=True,
-             efron=False,
-             asarray=True):
+             efron=False):
 
-    # be sure they're arrays so that no weird pandas indexing is used
-
-    if asarray:
-        eta = np.asarray(eta)
-        sample_weight = np.asarray(sample_weight)
-        event_order = np.asarray(event_order)   
-        start_order = np.asarray(start_order)
-        status = np.asarray(status)
-        event = np.asarray(event)
-        start = np.asarray(start)
-        first = np.asarray(first)
-        last = np.asarray(last)
-        scaling = np.asarray(scaling)
-        event_map = np.asarray(event_map)
-        start_map = np.asarray(start_map)
-        first_start = np.asarray(first_start)
-    _status = (status==1)
-    
     eta = eta - eta.mean()
     
     # compute the event ordered reversed cumsum
@@ -214,8 +97,8 @@ def _cox_dev(eta,           # eta is in native order
 
     exp_eta_w_event = exp_w[event_order]
 
-    log_terms = np.log(np.array(risk_sums)) * w_avg * _status
-    loglik = (w_event * eta_event * _status).sum() - np.sum(log_terms)
+    log_terms = np.log(np.array(risk_sums)) * w_avg * status
+    loglik = (w_event * eta_event * status).sum() - np.sum(log_terms)
 
     # forward cumsums for gradient and Hessian
     
@@ -223,10 +106,10 @@ def _cox_dev(eta,           # eta is in native order
     # 0 is prepended for first(k)-1, start(k)-1 lookups
     # a 1 is added to all indices
 
-    A_10 = _status * w_avg / risk_sums
+    A_10 = status * w_avg / risk_sums
     C_10 = np.hstack([0, np.cumsum(A_10)]) 
     
-    A_20 = _status * w_avg / risk_sums**2
+    A_20 = status * w_avg / risk_sums**2
     C_20 = np.hstack([0, np.cumsum(A_20)]) # length=n+1
 
     # if there are no ties, scaling should be identically 0
@@ -256,13 +139,13 @@ def _cox_dev(eta,           # eta is in native order
     else:
         # compute the other necessary cumsums
         
-        A_11 = _status * w_avg * scaling / risk_sums
+        A_11 = status * w_avg * scaling / risk_sums
         C_11 = np.hstack([0, np.cumsum(A_11)]) # length=n+1
 
-        A_21 = _status * w_avg * scaling**2 / risk_sums
+        A_21 = status * w_avg * scaling**2 / risk_sums
         C_21 = np.hstack([0, np.cumsum(A_21)]) # length=n+1
 
-        A_22 = _status * w_avg * scaling**2 / risk_sums**2
+        A_22 = status * w_avg * scaling**2 / risk_sums**2
         C_22 = np.hstack([0, np.cumsum(A_22)]) # length=n+1
 
         T_1_term = (C_10[last+1] - 
@@ -281,7 +164,7 @@ def _cox_dev(eta,           # eta is in native order
     # could do multiply by exp_w after reorder...
     # save a reorder of w * exp(eta)
     diag_part = exp_eta_w_event * T_1_term
-    grad = w_event * _status - diag_part
+    grad = w_event * status - diag_part
     grad_cp = grad.copy()
     grad[event_order] = grad_cp
 
@@ -398,26 +281,8 @@ def _hessian_matvec(arg,           # arg is in native order
                     start_map,
                     first_start,
                     have_start_times=True,
-                    efron=False,
-                    asarray=True):                    
+                    efron=False):                    
 
-    # be sure they're arrays so that no weird pandas indexing is used
-
-    if asarray:
-        eta = np.asarray(eta)
-        sample_weight = np.asarray(sample_weight)
-        event_order = np.asarray(event_order)   
-        start_order = np.asarray(start_order)
-        status = np.asarray(status)
-        event = np.asarray(event)
-        start = np.asarray(start)
-        first = np.asarray(first)
-        last = np.asarray(last)
-        scaling = np.asarray(scaling)
-        event_map = np.asarray(event_map)
-        start_map = np.asarray(start_map)
-        first_start = np.asarray(first_start)
-    
     if have_start_times:
         # now in event_order
         risk_sums_arg = _sum_over_risk_set(exp_w * arg, # in native order
@@ -471,26 +336,3 @@ def _hessian_matvec(arg,           # arg is in native order
     return hess_matvec
 
 
-def _reversed_cumsums(sequence,
-                      event_order=None,
-                      start_order=None):
-    """
-    Compute reversed cumsums of a sequence
-    in start and / or event order with a 0 padded at the end.
-    """
-    
-    # pad by 1 at the end length=n+1 for when last=n-1    
-
-    if event_order is not None:
-        seq_event = np.hstack([sequence[event_order], 0])
-        event_cumsum = np.cumsum(seq_event[::-1])[::-1]
-    else:
-        event_cumsum = None
-
-    if start_order is not None:
-        seq_start = np.hstack([sequence[start_order], 0])
-        start_cumsum = np.cumsum(seq_start[::-1])[::-1]  # length=n+1
-    else:
-        start_cumsum = None
-
-    return event_cumsum, start_cumsum
