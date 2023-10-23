@@ -455,6 +455,7 @@ def _sum_over_events(arg,
                      last,
                      start_map,
                      scaling,
+                     status,
                      efron):
     '''
     compute sum_i (d_i Z_i ((1_{t_k>=t_i} - 1_{s_k>=t_i}) - sigma_i (1_{i <= last(k)} - 1_{i <= first(k)-1})
@@ -462,7 +463,7 @@ def _sum_over_events(arg,
         
     have_start_times = start_map is not None
 
-    C_arg = np.hstack([0, np.cumsum(arg)])
+    C_arg = np.hstack([0, np.cumsum(arg * status)])
     value = C_arg[last+1]
     if have_start_times:
         value -= C_arg[start_map]
@@ -564,7 +565,6 @@ def _hessian_matvec(arg,           # arg is in native order
     # compute the event ordered reversed cumsum
     exp_w = np.exp(eta) * sample_weight
     
-    exp_w_event = exp_w[event_order]
     eta_event = eta[event_order]
     w_event = sample_weight[event_order]
     w_cumsum = np.cumsum(np.hstack([0, sample_weight[event_order]]))
@@ -593,8 +593,9 @@ def _hessian_matvec(arg,           # arg is in native order
                                            scaling,
                                            efron)
 
-    cumsum_arg = _status * w_avg * (risk_sums_arg / risk_sums - 0 * arg_event) / risk_sums
-    # cumsum_arg *= exp_w_event
+    E_arg = risk_sums_arg / risk_sums
+    cumsum_arg = w_avg * E_arg / risk_sums # will be multiplied
+                                           # by status in _sum_over_events
     
     if have_start_times:
         value = _sum_over_events(cumsum_arg,
@@ -604,6 +605,7 @@ def _hessian_matvec(arg,           # arg is in native order
                                  last,
                                  start_map,
                                  scaling,
+                                 _status,
                                  efron)
     else:
         value = _sum_over_events(cumsum_arg,
@@ -613,6 +615,7 @@ def _hessian_matvec(arg,           # arg is in native order
                                  last,
                                  None,
                                  scaling,
+                                 _status,
                                  efron)
         
     hess_matvec = np.zeros_like(value)

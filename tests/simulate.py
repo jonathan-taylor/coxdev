@@ -7,7 +7,7 @@ import pandas as pd
 rng = np.random.default_rng(0)
 def sample(size=1):
     W = rng.uniform(size=size) + 0.5
-    W[size//3] += 2
+    W[size//3] += 2.
     W[size//3:size//2] += 1
     return W
 

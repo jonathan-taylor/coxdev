@@ -95,7 +95,7 @@ def get_coxph(event,
             rpy.r('y = Surv(start, event, status)')
         else:
             rpy.r('y = Surv(event, status)')
-        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties)')
+        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')
@@ -154,6 +154,7 @@ def test_coxph(tie_types,
                             ties=tie_breaking,
                             X=X)
 
+    print(D_coxph, C.deviance - 2 * C.loglik_sat)
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
     assert delta_ph < tol
