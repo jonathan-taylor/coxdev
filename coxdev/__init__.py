@@ -116,18 +116,13 @@ class CoxDeviance(object):
         return self._result
 
     def information(self,
-                    X,
-                    beta,
+                    linear_predictor,
                     sample_weight=None):
-
-        linear_predictor = X @ beta
 
         result = self(linear_predictor,
                       sample_weight)
-        H = CoxInformation(result=result,
-                           coxdev=self)
-
-        return X.T @ (H @ X)
+        return CoxInformation(result=result,
+                              coxdev=self)
 
 @dataclass
 class CoxInformation(LinearOperator):
