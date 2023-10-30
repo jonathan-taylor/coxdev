@@ -27,8 +27,12 @@ def _forward_cumsum(sequence, output):
     output[:] = np.cumsum(np.hstack([0, sequence]))
 
 def _reverse_cumsums(sequence,
-                     event_order=None,
-                     start_order=None):
+                     event_buffer,
+                     start_buffer,
+                     event_order,
+                     start_order,
+                     do_event=False,
+                     do_start=False):
     """
     Compute reversed cumsums of a sequence
     in start and / or event order with a 0 padded at the end.
@@ -36,19 +40,13 @@ def _reverse_cumsums(sequence,
     
     # pad by 1 at the end length=n+1 for when last=n-1    
 
-    if event_order is not None:
+    if do_event:
         seq_event = np.hstack([sequence[event_order], 0])
-        event_cumsum = np.cumsum(seq_event[::-1])[::-1]
-    else:
-        event_cumsum = None
+        event_buffer[:] = np.cumsum(seq_event[::-1])[::-1]
 
-    if start_order is not None:
+    if do_start:
         seq_start = np.hstack([sequence[start_order], 0])
-        start_cumsum = np.cumsum(seq_start[::-1])[::-1]  # length=n+1
-    else:
-        start_cumsum = None
-
-    return event_cumsum, start_cumsum
+        start_buffer[:] = np.cumsum(seq_start[::-1])[::-1]  # length=n+1
 
 # Core function
 
@@ -63,7 +61,9 @@ def _cox_dev(eta,           # eta is in native order
              event_map,
              start_map,
              loglik_sat,
+             risk_sum_buffers,
              forward_cumsum_buffers,
+             reverse_cumsum_buffers,
              have_start_times=True,
              efron=False):
 
@@ -74,28 +74,32 @@ def _cox_dev(eta,           # eta is in native order
     exp_w = np.exp(eta) * sample_weight
     
     if have_start_times:
-        (risk_sums,
-         event_cumsum,
-         start_cumsum) = _sum_over_risk_set(exp_w,
-                                            event_order,
-                                            start_order,
-                                            first,
-                                            last,
-                                            event_map,
-                                            scaling,
-                                            efron)
+        _sum_over_risk_set(exp_w,
+                           event_order,
+                           start_order,
+                           first,
+                           last,
+                           event_map,
+                           scaling,
+                           efron,
+                           risk_sum_buffers[0],
+                           reverse_cumsum_buffers[:2])
     else:
-        (risk_sums,
-         event_cumsum,
-         start_cumsum) = _sum_over_risk_set(exp_w,
-                                            event_order,
-                                            start_order,
-                                            first,
-                                            last,
-                                            None,
-                                            scaling,
-                                            efron)
+        _sum_over_risk_set(exp_w,
+                           event_order,
+                           start_order,
+                           first,
+                           last,
+                           None,
+                           scaling,
+                           efron,
+                           risk_sum_buffers[0],
+                           reverse_cumsum_buffers[:2])
 
+    event_cumsum = reverse_cumsum_buffers[0]
+    start_cumsum = reverse_cumsum_buffers[1]
+    risk_sums = risk_sum_buffers[0]
+    
     # some ordered terms to complete likelihood
     # calculation
 
@@ -250,7 +254,9 @@ def _sum_over_risk_set(arg,
                        last,
                        event_map,
                        scaling,
-                       efron):
+                       efron,
+                       risk_sum_buffer,
+                       reverse_cumsum_buffers):
 
     '''
     arg is in native order
@@ -259,16 +265,16 @@ def _sum_over_risk_set(arg,
 
     have_start_times = event_map is not None
 
-    if have_start_times:
-        (event_cumsum,
-         start_cumsum) = _reverse_cumsums(arg,
-                                          event_order=event_order,
-                                          start_order=start_order)
-    else:
-        (event_cumsum,
-         start_cumsum) = _reverse_cumsums(arg,
-                                          event_order,
-                                          start_order=None)
+    event_cumsum = reverse_cumsum_buffers[0]
+    start_cumsum = reverse_cumsum_buffers[1]
+    
+    _reverse_cumsums(arg,
+                     event_cumsum,
+                     start_cumsum,
+                     event_order,
+                     start_order,
+                     do_event=True,
+                     do_start=have_start_times)
 
     if have_start_times:
         _sum = event_cumsum[first] - start_cumsum[event_map]
@@ -289,8 +295,9 @@ def _sum_over_risk_set(arg,
         _sum -= delta * scaling
 
     # returned in event order!
+    risk_sum_buffer[:] = _sum
     
-    return _sum, event_cumsum, start_cumsum
+    # return _sum, event_cumsum, start_cumsum
 
 def _hessian_matvec(arg,           # arg is in native order
                     eta,           # eta is in native order 
@@ -309,29 +316,37 @@ def _hessian_matvec(arg,           # arg is in native order
                     scaling,
                     event_map,
                     start_map,
+                    risk_sum_buffers,
                     forward_cumsum_buffers,
+                    reverse_cumsum_buffers,
                     have_start_times=True,
                     efron=False):                    
 
     if have_start_times:
         # now in event_order
-        risk_sums_arg = _sum_over_risk_set(exp_w * arg, # in native order
-                                           event_order,
-                                           start_order,
-                                           first,
-                                           last,
-                                           event_map,
-                                           scaling,
-                                           efron)[0]
+        _sum_over_risk_set(exp_w * arg, # in native order
+                           event_order,
+                           start_order,
+                           first,
+                           last,
+                           event_map,
+                           scaling,
+                           efron,
+                           risk_sum_buffers[1], 
+                           reverse_cumsum_buffers[2:4])
     else:
-        risk_sums_arg = _sum_over_risk_set(exp_w * arg, # in native order
-                                           event_order,
-                                           start_order,
-                                           first,
-                                           last,
-                                           None,
-                                           scaling,
-                                           efron)[0]
+        _sum_over_risk_set(exp_w * arg, # in native order
+                           event_order,
+                           start_order,
+                           first,
+                           last,
+                           None,
+                           scaling,
+                           efron,
+                           risk_sum_buffers[1], 
+                           reverse_cumsum_buffers[2:4])
+
+    risk_sums_arg = risk_sum_buffers[1]
 
     E_arg = risk_sums_arg / risk_sums
     cumsum_arg = w_avg * E_arg / risk_sums # will be multiplied

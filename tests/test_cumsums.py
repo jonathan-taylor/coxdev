@@ -41,10 +41,16 @@ def test_rev_cumsum(tie_types,
             
         X = rng.standard_normal(data.shape[0])
 
-        (X_event, 
-         X_start) = _reverse_cumsums(X, 
-                                     event_order=cox._event_order,
-                                     start_order=cox._start_order)
+        X_event = np.zeros(X.shape[0]+1)
+        X_start = np.zeros(X.shape[0]+1)        
+
+        _reverse_cumsums(X, 
+                         X_event,
+                         X_start,
+                         cox._event_order,
+                         cox._start_order,
+                         do_event=True,
+                         do_start=True)
 
         tmp = X_event[cox._first] - X_start[cox._event_map]
         cumsum_diff = np.zeros_like(tmp)
