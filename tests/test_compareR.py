@@ -160,6 +160,18 @@ def test_coxph(tie_types,
     assert delta_ph < tol
     assert np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_) < tol
 
+def test_simple(nrep=5,
+                size=5,
+                tol=1e-10):
+    test_coxph(all_combos[-1],
+               'efron',
+               sample_weights,
+               True,
+               nrep=5,
+               size=5,
+               tol=1e-10)
+    
+
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('sample_weight', [np.ones, sample_weights])
 @pytest.mark.parametrize('have_start_times', [True, False])

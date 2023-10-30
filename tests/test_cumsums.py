@@ -3,8 +3,8 @@ import pytest
 
 import numpy as np
 import pandas as pd
-from coxdev import (CoxDeviance,
-                    _reversed_cumsums)
+from coxdev import CoxDeviance
+from coxdev.base import _reverse_cumsums
 
 from simulate import (simulate_df, 
                       all_combos,

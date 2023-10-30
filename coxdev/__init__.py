@@ -76,6 +76,10 @@ class CoxDeviance(object):
         if not np.all(self._first_start == self._start_map):
             raise ValueError('first_start disagrees with start_map')
 
+        n = self._status.shape[0]
+        # how many do we need?
+        self._forward_cumsum_buffers = np.zeros((5, n+1))
+
     def __call__(self,
                  linear_predictor,
                  sample_weight=None):
@@ -94,7 +98,8 @@ class CoxDeviance(object):
                                              self._last,
                                              sample_weight, # in natural order
                                              self._event_order,
-                                             self._status) 
+                                             self._status,
+                                             self._forward_cumsum_buffers[0]) 
 
             _result = _cox_dev(np.asarray(linear_predictor),
                                np.asarray(sample_weight),
@@ -107,6 +112,7 @@ class CoxDeviance(object):
                                self._event_map,
                                self._start_map,
                                loglik_sat,
+                               self._forward_cumsum_buffers,
                                efron=self._efron,
                                have_start_times=self._have_start_times)
             self._result = CoxDevianceResult(*((linear_predictor,
@@ -163,6 +169,7 @@ class CoxInformation(LinearOperator):
                                coxdev._scaling,
                                coxdev._event_map,
                                coxdev._start_map,
+                               coxdev._forward_cumsum_buffers,
                                efron=coxdev._efron,
                                have_start_times=coxdev._have_start_times)                        
 

@@ -6,9 +6,10 @@ def _compute_sat_loglik(_first,
                         _last,
                         _weight, # in natural order!!!
                         _event_order,
-                        _status):
+                        _status,
+                        W_status):
     
-    W_status = _forward_cumsum(_weight[_event_order] * _status)
+    _forward_cumsum(_weight[_event_order] * _status, W_status)
     sums = W_status[_last+1] - W_status[_first]
     loglik_sat = 0
     prev_first = -1
@@ -19,11 +20,11 @@ def _compute_sat_loglik(_first,
 
     return loglik_sat
 
-def _forward_cumsum(sequence):
+def _forward_cumsum(sequence, output):
     '''
     compute cumsum with a padding of 0 at the beginning
     '''
-    return np.cumsum(np.hstack([0, sequence]))
+    output[:] = np.cumsum(np.hstack([0, sequence]))
 
 def _reverse_cumsums(sequence,
                      event_order=None,
@@ -62,10 +63,12 @@ def _cox_dev(eta,           # eta is in native order
              event_map,
              start_map,
              loglik_sat,
+             forward_cumsum_buffers,
              have_start_times=True,
              efron=False):
 
     eta = eta - eta.mean()
+    n = eta.shape[0]
     
     # compute the event ordered reversed cumsum
     exp_w = np.exp(eta) * sample_weight
@@ -98,7 +101,10 @@ def _cox_dev(eta,           # eta is in native order
 
     eta_event = eta[event_order]
     w_event = sample_weight[event_order]
-    w_cumsum = _forward_cumsum(sample_weight[event_order]) # length=n+1
+    # w_cumsum is only used here, can write over forward_cumsum_buffers
+    # after computing w_avg
+    _forward_cumsum(sample_weight[event_order], forward_cumsum_buffers[0])
+    w_cumsum = forward_cumsum_buffers[0]
     w_avg = ((w_cumsum[last + 1] - w_cumsum[first]) /
              (last + 1 - first))
 
@@ -114,10 +120,12 @@ def _cox_dev(eta,           # eta is in native order
     # a 1 is added to all indices
 
     A_10 = status * w_avg / risk_sums
-    C_10 = _forward_cumsum(A_10) # length=n+1 
-    
+    _forward_cumsum(A_10, forward_cumsum_buffers[0]) # length=n+1 
+    C_10 = forward_cumsum_buffers[0]
+
     A_20 = status * w_avg / risk_sums**2
-    C_20 = _forward_cumsum(A_20) # length=n+1
+    _forward_cumsum(A_20, forward_cumsum_buffers[1]) # length=n+1
+    C_20 = forward_cumsum_buffers[1]
 
     # if there are no ties, scaling should be identically 0
     # don't bother with cumsums below 
@@ -150,13 +158,16 @@ def _cox_dev(eta,           # eta is in native order
         # compute the other necessary cumsums
         
         A_11 = status * w_avg * scaling / risk_sums
-        C_11 = _forward_cumsum(A_11) # length=n+1
+        _forward_cumsum(A_11, forward_cumsum_buffers[2]) # length=n+1
+        C_11 = forward_cumsum_buffers[2]
 
         A_21 = status * w_avg * scaling**2 / risk_sums
-        C_21 = _forward_cumsum(A_21) # length=n+1
+        _forward_cumsum(A_21, forward_cumsum_buffers[3]) # length=n+1
+        C_21 = forward_cumsum_buffers[3]
 
         A_22 = status * w_avg * scaling**2 / risk_sums**2
-        C_22 = _forward_cumsum(A_22) # length=n+1
+        _forward_cumsum(A_22, forward_cumsum_buffers[4]) # length=n+1
+        C_22 = forward_cumsum_buffers[4]
 
         T_1_term = (C_10[last+1] - 
                     (C_11[last+1] - C_11[first]))
@@ -208,21 +219,27 @@ def _sum_over_events(arg,
                      start_map,
                      scaling,
                      status,
-                     efron):
+                     efron,
+                     forward_cumsum_buffers):
     '''
     compute sum_i (d_i Z_i ((1_{t_k>=t_i} - 1_{s_k>=t_i}) - sigma_i (1_{i <= last(k)} - 1_{i <= first(k)-1})
     '''
         
     have_start_times = start_map is not None
 
-    C_arg = _forward_cumsum(arg * status) # length=n+1
+    n = arg.shape[0]
+
+    _forward_cumsum(arg * status, forward_cumsum_buffers[0]) # length=n+1
+    C_arg = forward_cumsum_buffers[0]
+    
     value = C_arg[last+1]
     if have_start_times:
         value -= C_arg[start_map]
 
     # scaling is supported on status==1
     if efron:
-        C_arg_scale = _forward_cumsum(arg * scaling) # length=n+1
+        _forward_cumsum(arg * scaling, forward_cumsum_buffers[1]) # length=n+1
+        C_arg_scale = forward_cumsum_buffers[1]
         value -= C_arg_scale[last+1] - C_arg_scale[first]
     return value
 
@@ -292,6 +309,7 @@ def _hessian_matvec(arg,           # arg is in native order
                     scaling,
                     event_map,
                     start_map,
+                    forward_cumsum_buffers,
                     have_start_times=True,
                     efron=False):                    
 
@@ -328,7 +346,8 @@ def _hessian_matvec(arg,           # arg is in native order
                                  start_map,
                                  scaling,
                                  status,
-                                 efron)
+                                 efron,
+                                 forward_cumsum_buffers)
     else:
         value = _sum_over_events(cumsum_arg,
                                  event_order,
@@ -338,7 +357,8 @@ def _hessian_matvec(arg,           # arg is in native order
                                  None,
                                  scaling,
                                  status,
-                                 efron)
+                                 efron,
+                                 forward_cumsum_buffers)
         
     hess_matvec = np.zeros_like(value)
     hess_matvec[event_order] = value
