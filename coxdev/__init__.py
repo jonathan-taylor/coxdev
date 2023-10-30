@@ -79,6 +79,7 @@ class CoxDeviance(object):
         n = self._status.shape[0]
         # how many do we need?
         self._forward_cumsum_buffers = np.zeros((5, n+1))
+        self._forward_scratch_buffer = np.zeros(n)
         self._reverse_cumsum_buffers = np.zeros((4, n+1))
         self._risk_sum_buffers = np.zeros((2, n))
 
@@ -103,7 +104,10 @@ class CoxDeviance(object):
                                              self._status,
                                              self._forward_cumsum_buffers[0]) 
 
-            _result = _cox_dev(np.asarray(linear_predictor),
+            eta = np.asarray(linear_predictor)
+            eta = eta - eta.mean()
+
+            _result = _cox_dev(eta,
                                np.asarray(sample_weight),
                                self._event_order,
                                self._start_order,
@@ -116,6 +120,7 @@ class CoxDeviance(object):
                                loglik_sat,
                                self._risk_sum_buffers,
                                self._forward_cumsum_buffers,
+                               self._forward_scratch_buffer,
                                self._reverse_cumsum_buffers,
                                efron=self._efron,
                                have_start_times=self._have_start_times)
@@ -175,6 +180,7 @@ class CoxInformation(LinearOperator):
                                coxdev._start_map,
                                coxdev._risk_sum_buffers,
                                coxdev._forward_cumsum_buffers,
+                               coxdev._forward_scratch_buffer,
                                coxdev._reverse_cumsum_buffers,
                                efron=coxdev._efron,
                                have_start_times=coxdev._have_start_times)                        
