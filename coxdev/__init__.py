@@ -74,6 +74,7 @@ class CoxDeviance(object):
 
         # allocate necessary memory
         
+        self._event_reorder_buffers = np.zeros((3, n))
         self._forward_cumsum_buffers = np.zeros((5, n+1))
         self._forward_scratch_buffer = np.zeros(n)
         self._reverse_cumsum_buffers = np.zeros((4, n+1))
@@ -127,6 +128,7 @@ class CoxDeviance(object):
                                 self._diag_hessian_buffer,
                                 self._diag_part_buffer,
                                 self._w_avg_buffer,
+                                self._event_reorder_buffers,
                                 self._risk_sum_buffers, #[0] is for coxdev, [1] is for hessian...
                                 self._forward_cumsum_buffers,
                                 self._forward_scratch_buffer,

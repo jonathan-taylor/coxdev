@@ -32,14 +32,22 @@ def _reverse_cumsums(sequence,
 
 def _to_native_from_event(arg,
                           event_order,
-                          forward_scratch_buffer):
+                          reorder_buffer):
     """
     reorder an event-ordered vector into native order,
     uses forward_scratch_buffer to make a temporary copy
     """
-    forward_scratch_buffer[:] = arg
-    arg[event_order] = forward_scratch_buffer
-    
+    reorder_buffer[:] = arg
+    arg[event_order] = reorder_buffer
+
+def _to_event_from_native(arg,
+                          event_order,
+                          reorder_buffer):
+    """
+    reorder an event-ordered vector into native order,
+    uses forward_scratch_buffer to make a temporary copy
+    """
+    reorder_buffer[:] = arg[event_order]
 
 def _forward_prework(status,
                      w_avg,
@@ -50,6 +58,11 @@ def _forward_prework(status,
                      moment_buffer,
                      use_w_avg=True,
                      arg=None):
+    """
+    we need some sort of cumsums of scaling**i / risk_sums**j weighted by w_avg (within status==1)
+
+    this function fills in appropriate buffer
+    """
     if use_w_avg:
         moment_buffer[:] = status * w_avg * (scaling**i) / (risk_sums**j)
     else:
@@ -93,6 +106,7 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
              diag_hessian_buffer,
              diag_part_buffer,
              w_avg_buffer,
+             event_reorder_buffers,
              risk_sum_buffers,
              forward_cumsum_buffers,
              forward_scratch_buffer,
@@ -102,14 +116,17 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
 
     n = eta.shape[0]
     
-    # compute the event ordered reversed cumsum
-    #exp_w = np.exp(eta) * sample_weight
-    eta_event = eta[event_order]
-    w_event = sample_weight[event_order]
-    exp_eta_w_event = exp_w[event_order]
+    _to_event_from_native(eta, event_order, event_reorder_buffers[0])
+    eta_event = event_reorder_buffers[0]
+
+    _to_event_from_native(sample_weight, event_order, event_reorder_buffers[1])
+    w_event = event_reorder_buffers[1]
+
+    _to_event_from_native(exp_w, event_order, event_reorder_buffers[2])
+    exp_eta_w_event = event_reorder_buffers[2]
    
     if have_start_times:
-        _sum_over_risk_set(exp_w,
+        _sum_over_risk_set(exp_w, # native order
                            event_order,
                            start_order,
                            first,
@@ -120,7 +137,7 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
                            risk_sum_buffers[0],
                            reverse_cumsum_buffers[:2])
     else:
-        _sum_over_risk_set(exp_w,
+        _sum_over_risk_set(exp_w, # native order
                            event_order,
                            start_order,
                            first,
