@@ -74,6 +74,8 @@ class CoxDeviance(object):
 
         # allocate necessary memory
         
+        self._T_1_term = np.zeros(n)
+        self._T_2_term = np.zeros(n)
         self._event_reorder_buffers = np.zeros((3, n))
         self._forward_cumsum_buffers = np.zeros((5, n+1))
         self._forward_scratch_buffer = np.zeros(n)
@@ -124,6 +126,8 @@ class CoxDeviance(object):
                                 self._event_map,
                                 self._start_map,
                                 loglik_sat,
+                                self._T_1_term,
+                                self._T_2_term,
                                 self._grad_buffer,
                                 self._diag_hessian_buffer,
                                 self._diag_part_buffer,

@@ -102,6 +102,8 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
              event_map,
              start_map,
              loglik_sat,
+             T_1_term,
+             T_2_term,
              grad_buffer,
              diag_hessian_buffer,
              diag_part_buffer,
@@ -191,12 +193,12 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
             # we should add +1, otherwise there should be
             # no +1 in the [start_map+1] above
 
-            T_1_term = C_01[last+1] - C_01[start_map]
-            T_2_term = C_02[last+1] - C_02[start_map]
+            T_1_term[:] = C_01[last+1] - C_01[start_map]
+            T_2_term[:] = C_02[last+1] - C_02[start_map]
 
         else:
-            T_1_term = C_01[last+1]
-            T_2_term = C_02[last+1]
+            T_1_term[:] = C_01[last+1]
+            T_2_term[:] = C_02[last+1]
     else:
         # compute the other necessary cumsums
         
@@ -215,11 +217,11 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
         _forward_cumsum(A_22, forward_cumsum_buffers[4]) # length=n+1
         C_22 = forward_cumsum_buffers[4]
 
-        T_1_term = (C_01[last+1] - 
-                    (C_11[last+1] - C_11[first]))
-        T_2_term = ((C_22[last+1] - C_22[first]) 
-                    - 2 * (C_21[last+1] - C_21[first]) + 
-                    C_02[last+1])
+        T_1_term[:] = (C_01[last+1] - 
+                       (C_11[last+1] - C_11[first]))
+        T_2_term[:] = ((C_22[last+1] - C_22[first]) 
+                       - 2 * (C_21[last+1] - C_21[first]) + 
+                       C_02[last+1])
 
         if have_start_times:
             T_1_term -= C_01[start_map]
