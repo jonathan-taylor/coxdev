@@ -79,6 +79,7 @@ def _compute_sat_loglik(_first,
 
 def _cox_dev(eta,           # eta is in native order  -- assumes centered (or otherwise normalized for numeric stability)
              sample_weight, # sample_weight is in native order
+             exp_w,
              event_order,   
              start_order,
              status,        # everything below in event order
@@ -88,6 +89,10 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
              event_map,
              start_map,
              loglik_sat,
+             grad_buffer,
+             diag_hessian_buffer,
+             diag_part_buffer,
+             w_avg_buffer,
              risk_sum_buffers,
              forward_cumsum_buffers,
              forward_scratch_buffer,
@@ -98,7 +103,7 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
     n = eta.shape[0]
     
     # compute the event ordered reversed cumsum
-    exp_w = np.exp(eta) * sample_weight
+    #exp_w = np.exp(eta) * sample_weight
     eta_event = eta[event_order]
     w_event = sample_weight[event_order]
     exp_eta_w_event = exp_w[event_order]
@@ -137,8 +142,9 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
     # after computing w_avg
     _forward_cumsum(w_event, forward_cumsum_buffers[0])
     w_cumsum = forward_cumsum_buffers[0]
-    w_avg = ((w_cumsum[last + 1] - w_cumsum[first]) /
-             (last + 1 - first))
+    w_avg_buffer[:] = ((w_cumsum[last + 1] - w_cumsum[first]) /
+                       (last + 1 - first))
+    w_avg = w_avg_buffer # shorthand
 
     loglik = ((w_event * eta_event * status).sum() -
               np.sum(np.log(np.array(risk_sums)) * w_avg * status))
@@ -205,29 +211,21 @@ def _cox_dev(eta,           # eta is in native order  -- assumes centered (or ot
     # could do multiply by exp_w after reorder...
     # save a reorder of w * exp(eta)
 
-    diag_part = exp_eta_w_event * T_1_term
-    grad = w_event * status - diag_part
-
+    diag_part_buffer[:] = exp_eta_w_event * T_1_term
+    grad_buffer[:] = w_event * status - diag_part_buffer
+    grad_buffer *= -2
     # now the diagonal of the Hessian
 
-    diag_hess = exp_eta_w_event**2 * T_2_term - diag_part
-
-    _to_native_from_event(grad, event_order, forward_scratch_buffer)
-    _to_native_from_event(diag_hess, event_order, forward_scratch_buffer)
-    _to_native_from_event(diag_part, event_order, forward_scratch_buffer)
+    diag_hessian_buffer[:] = exp_eta_w_event**2 * T_2_term - diag_part_buffer
+    diag_hessian_buffer *= -2
+    
+    _to_native_from_event(grad_buffer, event_order, forward_scratch_buffer)
+    _to_native_from_event(diag_hessian_buffer, event_order, forward_scratch_buffer)
+    _to_native_from_event(diag_part_buffer, event_order, forward_scratch_buffer)
     
     deviance = 2 * (loglik_sat - loglik)
 
-    return (loglik_sat,
-            deviance,
-            -2 * grad,
-            -2 * diag_hess,
-            risk_sums,
-            diag_part,
-            w_avg,
-            exp_w,
-            event_cumsum,
-            start_cumsum)
+    return deviance
 
 def _sum_over_events(event_order,
                      start_order,
@@ -238,7 +236,8 @@ def _sum_over_events(event_order,
                      status,
                      efron,
                      forward_cumsum_buffers,
-                     forward_scratch_buffer):
+                     forward_scratch_buffer,
+                     value_buffer):
     '''
     compute sum_i (d_i Z_i ((1_{t_k>=t_i} - 1_{s_k>=t_i}) - sigma_i (1_{i <= last(k)} - 1_{i <= first(k)-1})
     '''
@@ -250,16 +249,15 @@ def _sum_over_events(event_order,
     _forward_cumsum(forward_scratch_buffer, forward_cumsum_buffers[0]) # length=n+1
     C_arg = forward_cumsum_buffers[0]
     
-    value = C_arg[last+1]
+    value_buffer[:] = C_arg[last+1]
     if have_start_times:
-        value -= C_arg[start_map]
+        value_buffer -= C_arg[start_map]
 
     if efron:
         forward_scratch_buffer[:] *= scaling
         _forward_cumsum(forward_scratch_buffer, forward_cumsum_buffers[1]) # length=n+1
         C_arg_scale = forward_cumsum_buffers[1]
-        value -= C_arg_scale[last+1] - C_arg_scale[first]
-    return value
+        value_buffer -= C_arg_scale[last+1] - C_arg_scale[first]
 
 def _sum_over_risk_set(arg,
                        event_order,
@@ -311,8 +309,6 @@ def _sum_over_risk_set(arg,
     # returned in event order!
     risk_sum_buffer[:] = _sum
     
-    # return _sum, event_cumsum, start_cumsum
-
 def _hessian_matvec(arg,           # arg is in native order
                     eta,           # eta is in native order 
                     sample_weight, # sample_weight is in native order
@@ -370,34 +366,34 @@ def _hessian_matvec(arg,           # arg is in native order
     # one less step to compute from above representation
     forward_scratch_buffer[:] = status * w_avg * risk_sums_arg / risk_sums**2
 
-    hess_matvec = hess_matvec_buffer
     if have_start_times:
-        hess_matvec[:] = _sum_over_events(event_order,
-                                                 start_order,
-                                                 first,
-                                                 last,
-                                                 start_map,
-                                                 scaling,
-                                                 status,
-                                                 efron,
-                                                 forward_cumsum_buffers,
-                                                 forward_scratch_buffer)
+        _sum_over_events(event_order,
+                         start_order,
+                         first,
+                         last,
+                         start_map,
+                         scaling,
+                         status,
+                         efron,
+                         forward_cumsum_buffers,
+                         forward_scratch_buffer,
+                         hess_matvec_buffer)
     else:
-        hess_matvec[:] = _sum_over_events(event_order,
-                                                 start_order,
-                                                 first,
-                                                 last,
-                                                 None,
-                                                 scaling,
-                                                 status,
-                                                 efron,
-                                                 forward_cumsum_buffers,
-                                                 forward_scratch_buffer)
+        _sum_over_events(event_order,
+                         start_order,
+                         first,
+                         last,
+                         None,
+                         scaling,
+                         status,
+                         efron,
+                         forward_cumsum_buffers,
+                         forward_scratch_buffer,
+                         hess_matvec_buffer)
         
-    _to_native_from_event(hess_matvec, event_order, forward_scratch_buffer)
+    _to_native_from_event(hess_matvec_buffer, event_order, forward_scratch_buffer)
 
-    hess_matvec *= exp_w 
-    hess_matvec -= diag_part * arg
-    return hess_matvec
+    hess_matvec_buffer *= exp_w 
+    hess_matvec_buffer -= diag_part * arg
 
 

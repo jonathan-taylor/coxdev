@@ -24,12 +24,6 @@ class CoxDevianceResult(object):
     deviance: float
     gradient: Optional[np.ndarray]
     diag_hessian: Optional[np.ndarray]
-    risk_sums: Optional[np.ndarray]
-    diag_part: Optional[np.ndarray]
-    w_avg: Optional[np.ndarray]
-    exp_w: Optional[np.ndarray]
-    event_cumsum: Optional[np.ndarray]
-    start_cumsum: Optional[np.ndarray]
     __hash_args__: str
 
 
@@ -77,12 +71,19 @@ class CoxDeviance(object):
             raise ValueError('first_start disagrees with start_map')
 
         n = self._status.shape[0]
-        # how many do we need?
+
+        # allocate necessary memory
+        
         self._forward_cumsum_buffers = np.zeros((5, n+1))
         self._forward_scratch_buffer = np.zeros(n)
         self._reverse_cumsum_buffers = np.zeros((4, n+1))
         self._risk_sum_buffers = np.zeros((2, n))
         self._hess_matvec_buffer = np.zeros(n)
+        self._grad_buffer = np.zeros(n)
+        self._diag_hessian_buffer = np.zeros(n)
+        self._diag_part_buffer = np.zeros(n)
+        self._w_avg_buffer = np.zeros(n)
+        self._exp_w_buffer = np.zeros(n)
 
     def __call__(self,
                  linear_predictor,
@@ -106,29 +107,45 @@ class CoxDeviance(object):
                                              self._forward_cumsum_buffers[0]) 
 
             eta = np.asarray(linear_predictor)
+            sample_weight = np.asarray(sample_weight)
             eta = eta - eta.mean()
+            self._exp_w_buffer[:] = sample_weight * np.exp(eta)
 
-            _result = _cox_dev(eta,
-                               np.asarray(sample_weight),
-                               self._event_order,
-                               self._start_order,
-                               self._status,
-                               self._first,
-                               self._last,
-                               self._scaling,
-                               self._event_map,
-                               self._start_map,
-                               loglik_sat,
-                               self._risk_sum_buffers, #[0] is for coxdev, [1] is for hessian...
-                               self._forward_cumsum_buffers,
-                               self._forward_scratch_buffer,
-                               self._reverse_cumsum_buffers,
-                               efron=self._efron,
-                               have_start_times=self._have_start_times)
-            self._result = CoxDevianceResult(*((linear_predictor,
-                                                sample_weight) +
-                                               _result + (cur_hash,)))
-            
+            deviance = _cox_dev(eta,
+                                sample_weight,
+                                self._exp_w_buffer,
+                                self._event_order,
+                                self._start_order,
+                                self._status,
+                                self._first,
+                                self._last,
+                                self._scaling,
+                                self._event_map,
+                                self._start_map,
+                                loglik_sat,
+                                self._grad_buffer,
+                                self._diag_hessian_buffer,
+                                self._diag_part_buffer,
+                                self._w_avg_buffer,
+                                self._risk_sum_buffers, #[0] is for coxdev, [1] is for hessian...
+                                self._forward_cumsum_buffers,
+                                self._forward_scratch_buffer,
+                                self._reverse_cumsum_buffers, #[0:2] are for risk sums, [2:4] used for hessian risk*arg sums
+                                efron=self._efron,
+                                have_start_times=self._have_start_times)
+
+            # shorthand, for reference in hessian_matvec
+            self._event_cumsum = self._reverse_cumsum_buffers[0]
+            self._start_cumsum = self._reverse_cumsum_buffers[1]
+
+            self._result = CoxDevianceResult(linear_predictor=linear_predictor,
+                                             sample_weight=sample_weight,
+                                             loglik_sat=loglik_sat,
+                                             deviance=deviance,
+                                             gradient=self._grad_buffer.copy(),
+                                             diag_hessian=self._diag_hessian_buffer.copy(),
+                                             __hash_args__=cur_hash)
+
         return self._result
 
     def information(self,
@@ -165,12 +182,12 @@ class CoxInformation(LinearOperator):
         _hessian_matvec(-np.asarray(arg).reshape(-1),
                         np.asarray(result.linear_predictor),
                         np.asarray(result.sample_weight),
-                        result.risk_sums,
-                        result.diag_part,
-                        result.w_avg,
-                        result.exp_w,
-                        result.event_cumsum,
-                        result.start_cumsum,
+                        coxdev._risk_sum_buffers[0],
+                        coxdev._diag_part_buffer,
+                        coxdev._w_avg_buffer,
+                        coxdev._exp_w_buffer,
+                        coxdev._event_cumsum,
+                        coxdev._start_cumsum,
                         coxdev._event_order,
                         coxdev._start_order,
                         coxdev._status,
