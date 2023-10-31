@@ -82,6 +82,7 @@ class CoxDeviance(object):
         self._forward_scratch_buffer = np.zeros(n)
         self._reverse_cumsum_buffers = np.zeros((4, n+1))
         self._risk_sum_buffers = np.zeros((2, n))
+        self._hess_matvec_buffer = np.zeros(n)
 
     def __call__(self,
                  linear_predictor,
@@ -118,7 +119,7 @@ class CoxDeviance(object):
                                self._event_map,
                                self._start_map,
                                loglik_sat,
-                               self._risk_sum_buffers,
+                               self._risk_sum_buffers, #[0] is for coxdev, [1] is for hessian...
                                self._forward_cumsum_buffers,
                                self._forward_scratch_buffer,
                                self._reverse_cumsum_buffers,
@@ -161,30 +162,33 @@ class CoxInformation(LinearOperator):
         # negative will give 2nd derivative of negative
         # loglikelihood
 
-        return _hessian_matvec(-np.asarray(arg).reshape(-1),
-                               np.asarray(result.linear_predictor),
-                               np.asarray(result.sample_weight),
-                               result.risk_sums,
-                               result.diag_part,
-                               result.w_avg,
-                               result.exp_w,
-                               result.event_cumsum,
-                               result.start_cumsum,
-                               coxdev._event_order,
-                               coxdev._start_order,
-                               coxdev._status,
-                               coxdev._first,
-                               coxdev._last,
-                               coxdev._scaling,
-                               coxdev._event_map,
-                               coxdev._start_map,
-                               coxdev._risk_sum_buffers,
-                               coxdev._forward_cumsum_buffers,
-                               coxdev._forward_scratch_buffer,
-                               coxdev._reverse_cumsum_buffers,
-                               efron=coxdev._efron,
-                               have_start_times=coxdev._have_start_times)                        
+        _hessian_matvec(-np.asarray(arg).reshape(-1),
+                        np.asarray(result.linear_predictor),
+                        np.asarray(result.sample_weight),
+                        result.risk_sums,
+                        result.diag_part,
+                        result.w_avg,
+                        result.exp_w,
+                        result.event_cumsum,
+                        result.start_cumsum,
+                        coxdev._event_order,
+                        coxdev._start_order,
+                        coxdev._status,
+                        coxdev._first,
+                        coxdev._last,
+                        coxdev._scaling,
+                        coxdev._event_map,
+                        coxdev._start_map,
+                        coxdev._risk_sum_buffers,
+                        coxdev._forward_cumsum_buffers,
+                        coxdev._forward_scratch_buffer,
+                        coxdev._reverse_cumsum_buffers,
+                        coxdev._hess_matvec_buffer,
+                        efron=coxdev._efron,
+                        have_start_times=coxdev._have_start_times)
+        return coxdev._hess_matvec_buffer.copy()
 
+    
     def _adjoint(self, arg):
         # it is symmetric
         return self._matvec(arg)
