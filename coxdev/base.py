@@ -308,9 +308,9 @@ def _sum_over_risk_set(arg,
                      do_start=have_start_times)
 
     if have_start_times:
-        _sum = event_cumsum[first] - start_cumsum[event_map]
+        risk_sum_buffer[:] = event_cumsum[first] - start_cumsum[event_map]
     else:
-        _sum = event_cumsum[first]
+        risk_sum_buffer[:] = event_cumsum[first]
         
     # compute the Efron correction, adjusting risk_sum if necessary
     
@@ -323,11 +323,8 @@ def _sum_over_risk_set(arg,
         # to event[cumsum_first]
         delta = (event_cumsum[first] - 
                  event_cumsum[last+1])
-        _sum -= delta * scaling
+        risk_sum_buffer[:] -= delta * scaling
 
-    # returned in event order!
-    risk_sum_buffer[:] = _sum
-    
 def _hessian_matvec(arg,           # arg is in native order
                     eta,           # eta is in native order 
                     sample_weight, # sample_weight is in native order
