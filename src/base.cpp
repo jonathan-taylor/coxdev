@@ -3,10 +3,10 @@
 #include <pybind11/eigen.h>
 #include <Eigen/Dense>
 
-// Map a python list element into an Eigen double vector
+// Map python buffers list element into an Eigen double vector
 // SRC_LIST = python list, OFFSET = index offset (e.g. 0 or 1),
-// DEST will be the ref, TMP should be unique throwaway name with each invocation
-#define map_py_list_buf(SRC_LIST, OFFSET, DEST, TMP)				\
+// DEST will be the ref downstream, TMP should be unique throwaway name with each invocation
+#define MAP_PYLIST_BUF(SRC_LIST, OFFSET, DEST, TMP)				\
   py::array_t<double> TMP = SRC_LIST[OFFSET].cast<py::array_t<double>>();    \
   Eigen::Map<Eigen::VectorXd> DEST(TMP.mutable_data(), TMP.size());
 
@@ -179,15 +179,18 @@ void sum_over_events(const Eigen::Ref<Eigen::VectorXi> event_order,
 		     Eigen::Ref<Eigen::VectorXd> forward_scratch_buffer,
                      Eigen::Ref<Eigen::VectorXd> value_buffer)
 {
-  py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
+  // py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
 
   bool have_start_times = start_map.size() >  0;
 
   // Map first element of list into Eigen vector.
   // C_arg = forward_cumsum_buffers[0]!
-  py_array = forward_cumsum_buffers[0].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> C_arg(py_array.mutable_data(), py_array.size());
+  // py_array = forward_cumsum_buffers[0].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> C_arg(py_array.mutable_data(), py_array.size());
   
+  MAP_PYLIST_BUF(forward_cumsum_buffers, 0, C_arg, tmp1)	
+
+
   forward_cumsum(forward_scratch_buffer, C_arg); //length=n+1
   if (have_start_times) {
     for (int i = 0; i < last.size(); ++i) {
@@ -202,8 +205,10 @@ void sum_over_events(const Eigen::Ref<Eigen::VectorXi> event_order,
     forward_scratch_buffer = forward_scratch_buffer.array() * scaling.array();
     // Map second element of list into Eigen vector.
     // C_arg_scale = forward_cumsum_buffers[1]!
-    py_array = forward_cumsum_buffers[1].cast<py::array_t<double>>();
-    Eigen::Map<Eigen::VectorXd> C_arg_scale(py_array.mutable_data(), py_array.size());
+    // py_array = forward_cumsum_buffers[1].cast<py::array_t<double>>();
+    // Eigen::Map<Eigen::VectorXd> C_arg_scale(py_array.mutable_data(), py_array.size());
+    MAP_PYLIST_BUF(forward_cumsum_buffers, 1, C_arg_scale, tmp2)	
+    
     forward_cumsum(forward_scratch_buffer, C_arg_scale); // length=n+1
     for (int i = 0; i < last.size(); ++i) {
       value_buffer(i) = C_arg_scale(last(i) + 1) - C_arg_scale(first(i));
@@ -226,16 +231,19 @@ void sum_over_risk_set(const Eigen::Ref<Eigen::VectorXd> arg,
                        py::list &reverse_cumsum_buffers, // List of 1-d numpy arrays
 		       int reverse_cumsum_buffers_offset) // starting index into buffer
 {
-  py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
+  // py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
 
   bool have_start_times = event_map.size() > 0;
   
   // Map first element of list into Eigen vector.
-  py_array = reverse_cumsum_buffers[reverse_cumsum_buffers_offset].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> event_cumsum(py_array.mutable_data(), py_array.size());
+  // py_array = reverse_cumsum_buffers[reverse_cumsum_buffers_offset].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> event_cumsum(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(reverse_cumsum_buffers, reverse_cumsum_buffers_offset, event_cumsum, tmp1)	
+
   // Map second element of list into Eigen vector.
-  py_array = reverse_cumsum_buffers[reverse_cumsum_buffers_offset + 1].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> start_cumsum(py_array.mutable_data(), py_array.size());
+  // py_array = reverse_cumsum_buffers[reverse_cumsum_buffers_offset + 1].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> start_cumsum(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(reverse_cumsum_buffers, reverse_cumsum_buffers_offset + 1, start_cumsum, tmp2)	
 
   reverse_cumsums(arg,
 		  event_cumsum,
@@ -246,9 +254,10 @@ void sum_over_risk_set(const Eigen::Ref<Eigen::VectorXd> arg,
 		  have_start_times); // do_start
     
   // Map first element of list into Eigen vector.
-  py_array = risk_sum_buffers[risk_sum_buffers_offset].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> risk_sum_buffer(py_array.mutable_data(), py_array.size());
-
+  // py_array = risk_sum_buffers[risk_sum_buffers_offset].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> risk_sum_buffer(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(risk_sum_buffers, risk_sum_buffers_offset, risk_sum_buffer, tmp3)
+    
   if (have_start_times) {
     for (int i = 0; i < first.size(); ++i) {
       risk_sum_buffer(i) = event_cumsum(first(i)) - start_cumsum(event_map(i));
@@ -300,32 +309,34 @@ double cox_dev(const Eigen::Ref<Eigen::VectorXd> eta, //eta is in native order  
 	       bool have_start_times = true,
 	       bool efron = false)
 {
-  py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
+  // py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
 
   // int n = eta.size();
     
   // eta_event: map first element of list into Eigen vector.
-  py_array = event_reorder_buffers[0].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> eta_event(py_array.mutable_data(), py_array.size());
-
+  // py_array = event_reorder_buffers[0].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> eta_event(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(event_reorder_buffers, 0, eta_event, tmp1)	
   to_event_from_native(eta, event_order, eta_event);
 
   // w_event: map second element of list into Eigen vector.
-  py_array = event_reorder_buffers[1].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> w_event(py_array.mutable_data(), py_array.size());
-
+  // py_array = event_reorder_buffers[1].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> w_event(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(event_reorder_buffers, 1, w_event, tmp2)	  
   to_event_from_native(sample_weight, event_order, w_event);
 
   // exp_eta_w_event: map third element of list into Eigen vector.
-  py_array = event_reorder_buffers[2].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> exp_eta_w_event(py_array.mutable_data(), py_array.size());
+  // py_array = event_reorder_buffers[2].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> exp_eta_w_event(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(event_reorder_buffers, 2, exp_eta_w_event, tmp3)	
   to_event_from_native(exp_w, event_order, exp_eta_w_event);
 
   // risk_sum_buffer[0]: map first element of list into Eigen vector.
   // We will name it risk_sums as that is what it is called in the ensuing code
-  py_array = risk_sum_buffers[0].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> risk_sums(py_array.mutable_data(), py_array.size());
-
+  // py_array = risk_sum_buffers[0].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> risk_sums(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(risk_sum_buffers, 0, risk_sums, tmp4)
+    
   if (have_start_times) {
     sum_over_risk_set(exp_w, // native order
 		      event_order,
@@ -356,29 +367,35 @@ double cox_dev(const Eigen::Ref<Eigen::VectorXd> eta, //eta is in native order  
   }
 
   // event_cumsum: map first element of list into Eigen vector.
-  py_array = reverse_cumsum_buffers[0].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> event_cumsum(py_array.mutable_data(), py_array.size());
+  // py_array = reverse_cumsum_buffers[0].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> event_cumsum(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(reverse_cumsum_buffers, 0, event_cumsum, tmp5)
   // start_cumsum: map second element of list into Eigen vector.
-  py_array = reverse_cumsum_buffers[1].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> start_cumsum(py_array.mutable_data(), py_array.size());
+  // py_array = reverse_cumsum_buffers[1].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> start_cumsum(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(reverse_cumsum_buffers, 1, start_cumsum, tmp6)    
     
 
   // forward_cumsum_buffers[0]: map first element of list into Eigen vector.
-  py_array = forward_cumsum_buffers[0].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers0(py_array.mutable_data(), py_array.size());
+  // py_array = forward_cumsum_buffers[0].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers0(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(forward_cumsum_buffers, 0, forward_cumsum_buffers0, tmp7)
   // forward_cumsum_buffers[1]: map second element of list into Eigen vector.
-  py_array = forward_cumsum_buffers[1].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers1(py_array.mutable_data(), py_array.size());
+  // py_array = forward_cumsum_buffers[1].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers1(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(forward_cumsum_buffers, 1, forward_cumsum_buffers1, tmp8)
   // forward_cumsum_buffers[0]: map third element of list into Eigen vector.
-  py_array = forward_cumsum_buffers[2].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers2(py_array.mutable_data(), py_array.size());
+  // py_array = forward_cumsum_buffers[2].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers2(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(forward_cumsum_buffers, 2, forward_cumsum_buffers2, tmp9)
   // forward_cumsum_buffers[0]: map fourth element of list into Eigen vector.
-  py_array = forward_cumsum_buffers[3].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers3(py_array.mutable_data(), py_array.size());
+  // py_array = forward_cumsum_buffers[3].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers3(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(forward_cumsum_buffers, 3, forward_cumsum_buffers3, tmp10)
   // forward_cumsum_buffers[0]: map fifth element of list into Eigen vector.
-  py_array = forward_cumsum_buffers[4].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers4(py_array.mutable_data(), py_array.size());
-
+  // py_array = forward_cumsum_buffers[4].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> forward_cumsum_buffers4(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(forward_cumsum_buffers, 4, forward_cumsum_buffers4, tmp11)
 
   // some ordered terms to complete likelihood
   // calculation
@@ -509,7 +526,7 @@ void hessian_matvec(const Eigen::Ref<Eigen::VectorXd> arg, // # arg is in native
                     bool have_start_times = true,
                     bool efron = false) {
 
-  py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
+  // py::array_t<double> py_array; // We need this to map python list components to Eigen vectors
   
   Eigen::VectorXd exp_w_times_arg = exp_w.array() * arg.array();
   
@@ -543,9 +560,10 @@ void hessian_matvec(const Eigen::Ref<Eigen::VectorXd> arg, // # arg is in native
 		      2);// offset from index 2 of reverse_cumsum_buffers 
   }
   // risk_sums_arg: map second element of list into Eigen vector.
-  py_array = risk_sum_buffers[1].cast<py::array_t<double>>();
-  Eigen::Map<Eigen::VectorXd> risk_sums_arg(py_array.mutable_data(), py_array.size());
-
+  // py_array = risk_sum_buffers[1].cast<py::array_t<double>>();
+  // Eigen::Map<Eigen::VectorXd> risk_sums_arg(py_array.mutable_data(), py_array.size());
+  MAP_PYLIST_BUF(risk_sum_buffers, 1, risk_sums_arg, tmp1)
+    
   // # E_arg = risk_sums_arg / risk_sums -- expecations under the probabilistic interpretation
   // # forward_scratch_buffer[:] = status * w_avg * E_arg / risk_sums
 

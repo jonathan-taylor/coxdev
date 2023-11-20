@@ -104,6 +104,7 @@ def test_coxph(tie_types,
 
     H = coxdev.information(eta,
                            weight)
+    breakpoint()
     I = X.T @ (H @ X)
 
     assert np.allclose(I, I.T)
