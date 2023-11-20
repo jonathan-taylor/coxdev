@@ -1,6 +1,6 @@
+
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
-
 # for Hessian
 
 from scipy.sparse.linalg import LinearOperator
@@ -11,10 +11,19 @@ __version__ = _version.get_versions()['version']
 import numpy as np
 from joblib import hash
 
-from .base import (_cox_dev,
-                   _hessian_matvec,
-                   _compute_sat_loglik)
+what = 'python'  ## default python version of code
+import os
+if os.getenv('PY') == 'false':
+    print("Using C++ code")
+    what = 'C++'
+    from coxc import cox_dev as _cox_dev, hessian_matvec as _hessian_matvec, compute_sat_loglik as _compute_sat_loglik
+else:
+    print("Using Python code")
+    from .base import (_cox_dev,
+                       _hessian_matvec,
+                       _compute_sat_loglik)
 
+    
 @dataclass
 class CoxDevianceResult(object):
 
@@ -55,16 +64,19 @@ class CoxDeviance(object):
          self._start_order) = _preprocess(start,
                                          event,
                                          status)
+        self._event_order = self._event_order.astype(np.int32)
+        self._start_order = self._start_order.astype(np.int32)
+        
         self._efron = self.tie_breaking == 'efron' and np.linalg.norm(self._preproc['scaling']) > 0
 
         self._status = np.asarray(self._preproc['status'])
         self._event = np.asarray(self._preproc['event'])
         self._start = np.asarray(self._preproc['start'])
-        self._first = np.asarray(self._preproc['first'])
-        self._last = np.asarray(self._preproc['last'])
+        self._first = np.asarray(self._preproc['first']).astype(np.int32)
+        self._last = np.asarray(self._preproc['last']).astype(np.int32)
         self._scaling = np.asarray(self._preproc['scaling'])
-        self._event_map = np.asarray(self._preproc['event_map'])
-        self._start_map = np.asarray(self._preproc['start_map'])
+        self._event_map = np.asarray(self._preproc['event_map']).astype(np.int32)
+        self._start_map = np.asarray(self._preproc['start_map']).astype(np.int32)
         self._first_start = self._first[self._start_map]
         
         if not np.all(self._first_start == self._start_map):
@@ -76,11 +88,15 @@ class CoxDeviance(object):
         
         self._T_1_term = np.zeros(n)
         self._T_2_term = np.zeros(n)
-        self._event_reorder_buffers = np.zeros((3, n))
-        self._forward_cumsum_buffers = np.zeros((5, n+1))
+        # self._event_reorder_buffers = np.zeros((3, n))
+        self._event_reorder_buffers = [np.zeros(n) for i in range(3)]
+        # self._forward_cumsum_buffers = np.zeros((5, n+1))
+        self._forward_cumsum_buffers = [np.zeros(n+1) for i in range(5)]
         self._forward_scratch_buffer = np.zeros(n)
-        self._reverse_cumsum_buffers = np.zeros((4, n+1))
-        self._risk_sum_buffers = np.zeros((2, n))
+        # self._reverse_cumsum_buffers = np.zeros((4, n+1))
+        self._reverse_cumsum_buffers = [np.zeros(n+1) for i in range(4)]
+        # self._risk_sum_buffers = np.zeros((2, n))
+        self._risk_sum_buffers = [np.zeros(n) for i in range(2)]
         self._hess_matvec_buffer = np.zeros(n)
         self._grad_buffer = np.zeros(n)
         self._diag_hessian_buffer = np.zeros(n)
@@ -107,13 +123,36 @@ class CoxDeviance(object):
                                              sample_weight, # in natural order
                                              self._event_order,
                                              self._status,
-                                             self._forward_cumsum_buffers[0]) 
-
+                                             self._forward_cumsum_buffers[0])
+            
             eta = np.asarray(linear_predictor)
             sample_weight = np.asarray(sample_weight)
             eta = eta - eta.mean()
             self._exp_w_buffer[:] = sample_weight * np.exp(eta)
 
+            # print(f'eta type {eta.dtype}')
+            # print(f'sample_weight type {sample_weight.dtype}')
+            # print(f'self._exp_w_buffer {self._exp_w_buffer.dtype}')
+            # print(f'self._event_order {self._event_order.dtype}')
+            # print(f'self._start_order {self._start_order.dtype}')
+            # print(f'self._status {self._status.dtype}')
+            # print(f'self._first {self._first.dtype}')
+            # print(f'self._last {self._last.dtype}')
+            # print(f'self._scaling {self._scaling.dtype}')
+            # print(f'self._event_map {self._event_map.dtype}')
+            # print(f'self._start_map {self._start_map.dtype}')
+            # print(f'self._T_1_term {self._T_1_term.dtype}')
+            # print(f'self._T_2_term {self._T_2_term.dtype}')
+            # print(f'self._grad_buffer {self._grad_buffer.dtype}')
+            # print(f'self._diag_hessian_buffer {self._diag_hessian_buffer.dtype}')
+            # print(f'self._diag_part_buffer {self._diag_part_buffer.dtype}')
+            # print(f'self._w_avg_buffer {self._w_avg_buffer.dtype}')
+            # #print(f'self._event_reorder_buffers {self._event_reorder_buffers.dtype}')
+            # #print(f'self._risk_sum_buffers {self._risk_sum_buffers.dtype}')
+            # #print(f'self._forward_cumsum_buffers {self._forward_cumsum_buffers.dtype}')
+            # print(f'self._forward_scratch_buffer {self._forward_scratch_buffer.dtype}')
+            # #print(f'self._reverse_cumsum_buffers {self._reverse_cumsum_buffers.dtype}')
+            
             deviance = _cox_dev(eta,
                                 sample_weight,
                                 self._exp_w_buffer,
@@ -137,9 +176,9 @@ class CoxDeviance(object):
                                 self._forward_cumsum_buffers,
                                 self._forward_scratch_buffer,
                                 self._reverse_cumsum_buffers, #[0:2] are for risk sums, [2:4] used for hessian risk*arg sums
-                                efron=self._efron,
-                                have_start_times=self._have_start_times)
-
+                                self._have_start_times,
+                                self._efron)
+                                
             # shorthand, for reference in hessian_matvec
             self._event_cumsum = self._reverse_cumsum_buffers[0]
             self._start_cumsum = self._reverse_cumsum_buffers[1]
@@ -151,7 +190,14 @@ class CoxDeviance(object):
                                              gradient=self._grad_buffer.copy(),
                                              diag_hessian=self._diag_hessian_buffer.copy(),
                                              __hash_args__=cur_hash)
-
+            
+            print(f'{what} linear_predictor {linear_predictor}')
+            print(f'{what} sample_weight {sample_weight}')
+            print(f'{what} loglik_sat {loglik_sat}')
+            print(f'{what} deviance {deviance}')
+            print(f'{what} gradient {self._grad_buffer}')
+            print(f'{what} diag_hessian {self._diag_hessian_buffer}')
+            
         return self._result
 
     def information(self,
@@ -207,8 +253,9 @@ class CoxInformation(LinearOperator):
                         coxdev._forward_scratch_buffer,
                         coxdev._reverse_cumsum_buffers,
                         coxdev._hess_matvec_buffer,
-                        efron=coxdev._efron,
-                        have_start_times=coxdev._have_start_times)
+                        coxdev._have_start_times,                        
+                        coxdev._efron)
+
         return coxdev._hess_matvec_buffer.copy()
 
     

@@ -7,6 +7,7 @@ import setuptools
 
 from setuptools import setup, Extension
 import versioneer
+import pybind11
 #from cythexts import cyproc_exts, get_pyx_sdist
 
 # Get various parameters for this version, stored in ISLP/info.py
@@ -47,10 +48,13 @@ long_description_content_type = 'text/markdown'
 
 # Cox extension
 
-# EXTS.append(Extension('glmnet.cox_utils',
-#                       ['src/cox/cox_utils.pyx', 'src/cox/cox_fns.c'],
-#                       include_dirs=['src/cox']))
-
+EXTS=[Extension(
+    'coxc',
+    sources=[f'src/base.cpp'],
+    include_dirs=[pybind11.get_include(),
+                  '/usr/local/include/eigen3'],
+    language='c++',
+    extra_compile_args=['-std=c++17'])]
 
 # Add numpy includes when building extension.
 # build_ext, need_cython = cyproc_exts(EXTS,
@@ -109,7 +113,7 @@ def main(**extra_args):
           platforms=info.PLATFORMS,
           version=versioneer.get_version(),
           packages = ['coxdev'],
-          ext_modules = [], # EXTS,
+          ext_modules = EXTS,
           include_package_data=True,
           data_files=[],
           scripts=[],

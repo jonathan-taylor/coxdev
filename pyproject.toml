@@ -3,6 +3,7 @@ name = "coxdev"
 version = "0.1.1"
 dependencies = ["numpy>=1.7.1",
 	        "joblib",
+		"pybind11",
 		"scipy",
                ]
 description  = "Library for computing Cox deviance"
@@ -13,7 +14,7 @@ keywords = []
 authors = [
     {name = "Jonathan Taylor", email="jonathan.taylor@stanford.edu" },
     {name = "Trevor Hastie", email="hastie@stanford.edu" },
-    {name = "Narasimhan Balasubrimanian", email="naras@stanford.edu" }
+    {name = "Balasubramanian Narasimhan", email="naras@stanford.edu" }
     ]  
 maintainers = [
     {name = "Jonathan Taylor", email="jonathan.taylor@stanford.edu" },
@@ -30,6 +31,7 @@ classifiers = ["Development Status :: 3 - Alpha",
 [build-system]
 requires = ["setuptools>=42",
             "wheel",
+	    "pybind11",
             "numpy>=1.7.1",
             "versioneer"]
 build-backend = "setuptools.build_meta"
