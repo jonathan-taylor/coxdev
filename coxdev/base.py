@@ -350,6 +350,7 @@ def _hessian_matvec(arg,           # arg is in native order
                     have_start_times=True,
                     efron=False):                    
 
+    breakpoint()
     if have_start_times:
         # now in event_order
         _sum_over_risk_set(exp_w * arg, # in native order

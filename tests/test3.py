@@ -1,13 +1,61 @@
 ## Which version
 import os
+from dataclasses import dataclass
 
 # Set an environment variable
-os.environ['PY'] = 'false'
+os.environ['PY'] = 'true'
 
 
 import numpy as np
 import pandas as pd
-from coxdev import CoxDeviance
+from coxdev import CoxDeviance, CoxInformation
+from coxc import hessian_matvec
+@dataclass
+class CoxInformationTest(CoxInformation):
+
+    C_flag: bool = False
+
+    def _matvec(self, arg):
+
+        # this will compute risk sums if not already computed
+        # at this linear_predictor and sample_weight
+        
+        result = self.result
+        coxdev = self.coxdev
+
+        if not self.C_flag:
+            return CoxInformation._matvec(self, arg)
+        else:
+
+        # negative will give 2nd derivative of negative
+        # loglikelihood
+
+            hessian_matvec(-np.asarray(arg).reshape(-1),
+                           np.asarray(result.linear_predictor),
+                           np.asarray(result.sample_weight),
+                           coxdev._risk_sum_buffers[0],
+                           coxdev._diag_part_buffer,
+                           coxdev._w_avg_buffer,
+                           coxdev._exp_w_buffer,
+                           coxdev._event_cumsum,
+                           coxdev._start_cumsum,
+                           coxdev._event_order,
+                           coxdev._start_order,
+                           coxdev._status,
+                           coxdev._first,
+                           coxdev._last,
+                           coxdev._scaling,
+                           coxdev._event_map,
+                           coxdev._start_map,
+                           coxdev._risk_sum_buffers,
+                           coxdev._forward_cumsum_buffers,
+                           coxdev._forward_scratch_buffer,
+                           coxdev._reverse_cumsum_buffers,
+                           coxdev._hess_matvec_buffer,
+                           coxdev._have_start_times,                        
+                           coxdev._efron)
+
+        return coxdev._hess_matvec_buffer.copy()
 
 try:
     import rpy2.robjects as rpy
@@ -104,30 +152,19 @@ def test_coxph(tie_types,
 
     H = coxdev.information(eta,
                            weight)
+
+    # this is the "information" method basically
+
+    result = coxdev(eta,
+                    weight)
+    H_test = CoxInformationTest(result=result,
+                                coxdev=coxdev,
+                                C_flag=True)
+
     v = rng.standard_normal(H.shape[0])
     Hv = H @ v
-
+    Hv_test = H_test @ v
     breakpoint()
-    I = X.T @ (H @ X)
-
-    assert np.allclose(I, I.T)
-    cov_ = np.linalg.inv(I)
-
-    (G_coxph,
-     D_coxph,
-     cov_coxph) = get_coxph(event=np.asarray(data['event']),
-                            status=np.asarray(data['status']),
-                            beta=beta,
-                            sample_weight=weight,
-                            start=start,
-                            ties=tie_breaking,
-                            X=X)
-
-    print(D_coxph, C.deviance - 2 * C.loglik_sat)
-    assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
-    delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
-    assert delta_ph < tol
-    assert np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_) < tol
 
     
 test_coxph(tie_types = all_combos[100], tie_breaking = 'efron', sample_weight = sample_weights,
