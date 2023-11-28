@@ -350,6 +350,7 @@ def _hessian_matvec(arg,           # arg is in native order
                     have_start_times=True,
                     efron=False):                    
 
+    #breakpoint()
     if have_start_times:
         # now in event_order
         _sum_over_risk_set(exp_w * arg, # in native order
@@ -381,7 +382,8 @@ def _hessian_matvec(arg,           # arg is in native order
 
     # one less step to compute from above representation
     forward_scratch_buffer[:] = status * w_avg * risk_sums_arg / risk_sums**2
-
+    print(f'forward_scratch_buffer {forward_scratch_buffer}')
+    
     if have_start_times:
         _sum_over_events(event_order,
                          start_order,
@@ -406,10 +408,12 @@ def _hessian_matvec(arg,           # arg is in native order
                          forward_cumsum_buffers,
                          forward_scratch_buffer,
                          hess_matvec_buffer)
-        
+    print(f'hess_matvec_buffer {hess_matvec_buffer}')        
+    
     _to_native_from_event(hess_matvec_buffer, event_order, forward_scratch_buffer)
 
     hess_matvec_buffer *= exp_w 
     hess_matvec_buffer -= diag_part * arg
-
+    print(f'hess_matvec_buffer {hess_matvec_buffer}')
+    
 

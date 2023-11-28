@@ -7,6 +7,7 @@ import setuptools
 
 from setuptools import setup, Extension
 import versioneer
+import pybind11
 #from cythexts import cyproc_exts, get_pyx_sdist
 
 # Get various parameters for this version, stored in ISLP/info.py
@@ -45,55 +46,26 @@ info = read_vars_from(os.path.join('coxdev', 'info.py'))
 long_description = open('README.md', 'rt', encoding='utf-8').read()
 long_description_content_type = 'text/markdown'
 
+# find eigen source directory of submodule
+
+dirname = os.path.abspath(os.path.dirname(__file__))
+eigendir = os.path.abspath(os.path.join(dirname, 'eigen'))
+
+if 'EIGEN_LIBRARY_PATH' in os.environ:
+    eigendir = os.path.abspath(os.environ['EIGEN_LIBRARY_PATH'])
+
 # Cox extension
 
-# EXTS.append(Extension('glmnet.cox_utils',
-#                       ['src/cox/cox_utils.pyx', 'src/cox/cox_fns.c'],
-#                       include_dirs=['src/cox']))
+EXTS=[Extension(
+    'coxc',
+    sources=[f'src/base.cpp'],
+    include_dirs=[pybind11.get_include(),
+                  eigendir],
+    language='c++',
+    extra_compile_args=['-std=c++17'])]
 
-
-# Add numpy includes when building extension.
-# build_ext, need_cython = cyproc_exts(EXTS,
-#                                      '3.0',
-#                                      'pyx-stamps')
-# def make_np_ext_builder(build_ext_class):
-#     """ Override input `build_ext_class` to add numpy includes to extension
-
-#     This is useful to delay call of ``np.get_include`` until the extension is
-#     being built.
-
-#     Parameters
-#     ----------
-#     build_ext_class : class
-#         Class implementing ``distutils.command.build_ext.build_ext`` interface,
-#         with a ``build_extensions`` method.
-
-#     Returns
-#     -------
-#     np_build_ext_class : class
-#         A class with similar interface to
-#         ``distutils.command.build_ext.build_ext``, that adds libraries in
-#         ``np.get_include()`` to include directories of extension.
-#     """
-#     class NpExtBuilder(build_ext_class):
-
-#         def build_extensions(self):
-#             """ Hook into extension building to add np include dirs
-#             """
-#             # Delay numpy import until last moment
-#             import numpy as np
-#             for ext in self.extensions:
-#                 ext.include_dirs.append(np.get_include())
-#             build_ext_class.build_extensions(self)
-
-#     return NpExtBuilder
-# build_ext = make_np_ext_builder(build_ext)
 
 cmdclass = versioneer.get_cmdclass()
-cmdclass=versioneer.get_cmdclass()
-# cmdclass.update(dict(
-#     build_ext=build_ext,
-#     sdist=get_pyx_sdist()))
 
 def main(**extra_args):
     setup(name=info.NAME,
@@ -109,7 +81,7 @@ def main(**extra_args):
           platforms=info.PLATFORMS,
           version=versioneer.get_version(),
           packages = ['coxdev'],
-          ext_modules = [], # EXTS,
+          ext_modules = EXTS,
           include_package_data=True,
           data_files=[],
           scripts=[],

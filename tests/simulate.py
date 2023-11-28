@@ -24,6 +24,7 @@ def simulate(start_count,
              rng=rng):
 
     size = rng.poisson(size) + 1
+    #print(f'Size is {size}')
     if start_count == 0 and event_count == 0:
         return None
 
