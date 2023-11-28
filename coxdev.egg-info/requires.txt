@@ -1,4 +1,0 @@
-numpy>=1.7.1
-joblib
-pybind11
-scipy
