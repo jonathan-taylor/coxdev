@@ -107,7 +107,6 @@ def test_coxph(tie_types,
     v = rng.standard_normal(H.shape[0])
     Hv = H @ v
 
-    breakpoint()
     I = X.T @ (H @ X)
 
     assert np.allclose(I, I.T)

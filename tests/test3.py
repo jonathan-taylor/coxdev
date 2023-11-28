@@ -164,7 +164,6 @@ def test_coxph(tie_types,
     v = rng.standard_normal(H.shape[0])
     Hv = H @ v
     Hv_test = H_test @ v
-    breakpoint()
 
     
 test_coxph(tie_types = all_combos[100], tie_breaking = 'efron', sample_weight = sample_weights,
