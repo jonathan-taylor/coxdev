@@ -13,8 +13,8 @@ from simulate import (simulate_df,
 
 rng = np.random.default_rng(0)
 
-def test_rev_cumsum(tie_types,
-                    have_start_times,
+def test_rev_cumsum(tie_types=all_combos[100],
+                    have_start_times=True,
                     nrep=5,
                     size=5,
                     tol=1e-10,
@@ -77,4 +77,3 @@ def test_rev_cumsum(tie_types,
         assert np.allclose(by_hand2 * np.array(data['status']), cumsum_diff * np.array(data['status']))
 
 
-test_rev_cumsum(tie_types = all_combos[100], have_start_times = True, nsim = 1)
