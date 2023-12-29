@@ -701,11 +701,11 @@ std::tuple<py::dict, Eigen::VectorXi, Eigen::VectorXi> preprocess(const Eigen::R
 
   // Except for start_order and event_order which are returned, we can probably not make copies
   // for others here.
-  Eigen::VectorXi first = Eigen::Map<Eigen::VectorXi>(first_vec.data(), first_vec.size());
+  Eigen::VectorXi _first = Eigen::Map<Eigen::VectorXi>(first_vec.data(), first_vec.size());
   Eigen::VectorXi start_order = Eigen::Map<Eigen::VectorXi>(start_order_vec.data(), start_order_vec.size());
   Eigen::VectorXi event_order = Eigen::Map<Eigen::VectorXi>(event_order_vec.data(), event_order_vec.size());
   Eigen::VectorXi start_map = Eigen::Map<Eigen::VectorXi>(start_map_vec.data(), start_map_vec.size());
-  Eigen::VectorXi event_map = Eigen::Map<Eigen::VectorXi>(event_map_vec.data(), event_map_vec.size());
+  Eigen::VectorXi _event_map = Eigen::Map<Eigen::VectorXi>(event_map_vec.data(), event_map_vec.size());
 
   // Eigen::VectorXi first(first_vec.size());
   // for (size_t i = 0; i < first.size(); ++i) {
@@ -740,14 +740,14 @@ std::tuple<py::dict, Eigen::VectorXi, Eigen::VectorXi> preprocess(const Eigen::R
     _status(i) = status(event_order(i));
   }
   
-  Eigen::VectorXi _first = first;
+  // Eigen::VectorXi _first = first;
   
   Eigen::VectorXi _start_map(start_map.size());
   for (int i = 0; i < start_map.size(); ++i) {
     _start_map(i) = start_map(event_order(i));
   }
 
-  Eigen::VectorXi _event_map = event_map;
+  // Eigen::VectorXi _event_map = event_map;
 
   Eigen::VectorXd _event(event.size());
   for (int i = 0; i < event.size(); ++i) {
@@ -760,7 +760,7 @@ std::tuple<py::dict, Eigen::VectorXi, Eigen::VectorXi> preprocess(const Eigen::R
   }
 
   std::vector<int> last_vec;
-  int last_event = nevent - 1, first_size = first.size();
+  int last_event = nevent - 1, first_size = _first.size();
   for (int i = 0; i < first_size; ++i) {
     int f = _first(first_size - i - 1);
     last_vec.push_back(last_event);
