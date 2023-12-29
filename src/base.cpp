@@ -677,8 +677,9 @@ std::tuple<py::dict, Eigen::VectorXi, Eigen::VectorXi> preprocess(const Eigen::R
 	// if it's an event and the time is same as last row 
 	// it is the same event
 	// else it's the next "which_event"
-	// TODO: CHANGE THE COMPARISON below to _time >= last_row_time since time is sorted.
-	if (last_row_time_set  && _time != last_row_time) {// # index of next `status==1` 
+	// CHANGED THE ORIGINAL COMPARISON time != last_row_time below to
+	// _time > last_row_time since time is sorted! 
+	if (last_row_time_set  && _time > last_row_time) {// # index of next `status==1` 
 	  first_event += num_successive_event;
 	  num_successive_event = 1;
 	  which_event++;
