@@ -16,7 +16,7 @@ from joblib import hash
 # if os.getenv('PY') == 'false':
 print("Using C++ code")
 ## what = 'C++'
-from coxc import cox_dev as _cox_dev, hessian_matvec as _hessian_matvec, compute_sat_loglik as _compute_sat_loglik
+from coxc import cox_dev as _cox_dev, hessian_matvec as _hessian_matvec, compute_sat_loglik as _compute_sat_loglik, c_preprocess
 # else:
 #     print("Using Python code")
 #     from .base import (_cox_dev,
@@ -50,20 +50,21 @@ class CoxDeviance(object):
                       start=None):
 
         event = np.asarray(event)
-        status = np.asarray(status)
+        status = np.asarray(status).astype(np.int32)
         nevent = event.shape[0]
 
         if start is None:
             start = -np.ones(nevent) * np.inf
             self._have_start_times = False
         else:
+            start = np.asarray(start)
             self._have_start_times = True
 
         (self._preproc,
          self._event_order,
-         self._start_order) = _preprocess(start,
-                                         event,
-                                         status)
+         self._start_order) = c_preprocess(start,
+                                           event,
+                                           status)
         self._event_order = self._event_order.astype(np.int32)
         self._start_order = self._start_order.astype(np.int32)
         
