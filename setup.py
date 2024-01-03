@@ -58,12 +58,11 @@ if 'EIGEN_LIBRARY_PATH' in os.environ:
 
 EXTS=[Extension(
     'coxc',
-    sources=[f'src/base.cpp'],
+    sources=[f'src/coxdev.cpp'],
     include_dirs=[pybind11.get_include(),
                   eigendir],
     language='c++',
-    extra_compile_args=['-std=c++17'])]
-
+    extra_compile_args=['-std=c++17', '-DPY_INTERFACE=1'])]
 
 cmdclass = versioneer.get_cmdclass()
 

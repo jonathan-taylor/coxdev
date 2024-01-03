@@ -12,7 +12,7 @@ coxdev.egg-info/SOURCES.txt
 coxdev.egg-info/dependency_links.txt
 coxdev.egg-info/requires.txt
 coxdev.egg-info/top_level.txt
-src/base.cpp
+src/coxdev.cpp
 tests/test_compareR.py
 tests/test_cumsums.py
 tests/test_naras.py
