@@ -1,0 +1,25 @@
+Package: coxdev
+Title: Package for testing Cox calculations
+Version: 0.2
+Authors@R: c(person("Jonathan", "Taylor", role = c("aut")),
+	     person("Trevor", "Hastie", role = c("aut")),
+	     person("Balasubramanian", "Narasimhan", role = c("aut", "cre"), email = "naras@stanford.edu"))
+Description: Does Cox calculations.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Suggests: 
+    glmnet,
+    knitr,
+    rmarkdown,
+    survival,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+LinkingTo: 
+    Rcpp,
+    RcppEigen
+Imports: 
+    Rcpp,
+    RcppEigen
+Config/testthat/edition: 3
