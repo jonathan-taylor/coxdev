@@ -1,6 +1,6 @@
 [project]
 name = "coxdev"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = ["numpy>=1.7.1",
 	        "joblib",
 		"pybind11",

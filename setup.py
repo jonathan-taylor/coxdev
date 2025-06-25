@@ -1,4 +1,5 @@
 import os
+import shutil
 
 # BEFORE importing distutils, remove MANIFEST. distutils doesn't properly
 # update it when the contents of directories change.
@@ -58,16 +59,31 @@ if 'EIGEN_LIBRARY_PATH' in os.environ:
 
 EXTS=[Extension(
     'coxc',
-    sources=[f'src/base.cpp'],
+    sources=[f'src/coxdev.cpp'],
     include_dirs=[pybind11.get_include(),
                   eigendir],
     language='c++',
-    extra_compile_args=['-std=c++17'])]
+    extra_compile_args=['-std=c++17', '-DPY_INTERFACE=1'])]
 
+# The cox extension shares the same C++ source as R and
+# we will copy it to the src directory before setup.
+# That way we have one true source. Should probably also add
+# src/coxdev.cpp and src/coxdev.h to .gitignore
+
+# Do some tasks before build
+def do_prebuild_tasks():
+    # copy the C++ source from R package
+    src_files = ['R_pkg/coxdev/src/coxdev.cpp', 'R_pkg/coxdev/inst/include/coxdev.h']
+    dest = 'src'
+    if not os.path.exists(dest):
+        os.makedirs(dest)
+    for f in src_files:
+        shutil.copy(f, dest)
 
 cmdclass = versioneer.get_cmdclass()
 
 def main(**extra_args):
+    do_prebuild_tasks()
     setup(name=info.NAME,
           maintainer=info.MAINTAINER,
           maintainer_email=info.MAINTAINER_EMAIL,
