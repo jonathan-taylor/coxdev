@@ -61,7 +61,9 @@ EXTS=[Extension(
     'coxc',
     sources=[f'src/coxdev.cpp'],
     include_dirs=[pybind11.get_include(),
-                  eigendir],
+                  eigendir,
+                  "src"],
+    depends=["src/coxdev.h"],
     language='c++',
     extra_compile_args=['-std=c++17', '-DPY_INTERFACE=1'])]
 
@@ -73,12 +75,13 @@ EXTS=[Extension(
 # Do some tasks before build
 def do_prebuild_tasks():
     # copy the C++ source from R package
-    src_files = ['R_pkg/coxdev/src/coxdev.cpp', 'R_pkg/coxdev/inst/include/coxdev.h']
-    dest = 'src'
-    if not os.path.exists(dest):
-        os.makedirs(dest)
-    for f in src_files:
-        shutil.copy(f, dest)
+    if not os.path.exists('src/coxdev.cpp'):
+        src_files = ['R_pkg/coxdev/src/coxdev.cpp', 'R_pkg/coxdev/inst/include/coxdev.h']
+        dest = 'src'
+        if not os.path.exists(dest):
+            os.makedirs(dest)
+        for f in src_files:
+            shutil.copy(f, dest)
 
 cmdclass = versioneer.get_cmdclass()
 

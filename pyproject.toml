@@ -1,6 +1,5 @@
 [project]
 name = "coxdev"
-version = "0.1.2"
 dependencies = ["numpy>=1.7.1",
 	        "joblib",
 		"pybind11",
@@ -9,7 +8,6 @@ dependencies = ["numpy>=1.7.1",
 description  = "Library for computing Cox deviance"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {file = "LICENSE"}
 keywords = []
 authors = [
     {name = "Jonathan Taylor", email="jonathan.taylor@stanford.edu" },
@@ -22,11 +20,12 @@ maintainers = [
 classifiers = ["Development Status :: 3 - Alpha",
                "Environment :: Console",
                "Intended Audience :: Science/Research",
-               "License :: OSI Approved :: BSD License",
                "Operating System :: OS Independent",
                "Programming Language :: Python",
                "Topic :: Scientific/Engineering"
 	       ]
+license = "BSD-3-Clause"
+dynamic = ['version']
 
 [build-system]
 requires = ["setuptools>=42",
