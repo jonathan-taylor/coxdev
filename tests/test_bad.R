@@ -8,6 +8,33 @@ all_close  <- function(a, b, rtol = 1e-05, atol = 1e-08) {
 
 rel_diff_norm  <- function(a, b) { a <- as.matrix(a); b <- as.matrix(b); norm(a - b, 'F') / norm(b, 'F') }
 
+generate_problematic_test_data <- function() {
+  # Set random seed for reproducibility
+  set.seed(42)
+  
+  # Generate a problematic test case
+  n <- 50
+  p <- 10
+  
+  # Generate event times, status, and weights
+  event <- rexp(n, rate = 0.5)
+  status <- sample(c(0, 1), size = n, replace = TRUE, prob = c(0.3, 0.7))
+  sample_weight <- runif(n, 0.5, 2.0)
+  
+  # Generate design matrix and coefficients
+  X <- matrix(rnorm(n * p), n, p)
+  beta <- rnorm(p) * 0.1
+  
+  list(
+    event = event,
+    start = NULL,  # No start times for this test
+    status = status,
+    sample_weight = sample_weight,
+    X = X,
+    beta = beta
+  )
+}
+
 get_glmnet_result <- function(event,
                               status,
                               start,
@@ -56,22 +83,21 @@ get_coxph <- function(event,
   list(G = -2 * G, D = -2 * D, cov = cov)
 }
 
-check_results  <- function(fname, ties = c('efron', 'breslow')) {
-  d  <- readRDS(fname)
+check_results  <- function(data_dict, ties = c('efron', 'breslow')) {
   ties  <- match.arg(ties)
 
-  weight <- d$sample_weight
-  event <- d$event
-  start <- d$start
-  status <- d$status
+  weight <- data_dict$sample_weight
+  event <- data_dict$event
+  start <- data_dict$start
+  status <- data_dict$status
   cox_deviance  <- make_cox_deviance(event = event,
                                      start = start,
                                      status = status,
                                      weight = weight,
                                      tie_breaking = ties)
 
-  X  <- d$X; tX  <- t(X);
-  beta  <- d$beta
+  X  <- data_dict$X; tX  <- t(X);
+  beta  <- data_dict$beta
   C <- cox_deviance$coxdev(X %*% beta, weight)
   h <- cox_deviance$information(X %*% beta, weight)
   I <- tX %*% h(X)
@@ -111,7 +137,9 @@ check_results  <- function(fname, ties = c('efron', 'breslow')) {
   }
 }
 
-check_results("g0.RDS")
+# Generate test data instead of loading from file
+test_data <- generate_problematic_test_data()
+check_results(test_data)
 
-check_results("g0.RDS", 'breslow')
+check_results(test_data, 'breslow')
 
