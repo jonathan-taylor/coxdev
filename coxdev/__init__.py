@@ -18,17 +18,10 @@ __version__ = _version.get_versions()['version']
 import numpy as np
 from joblib import hash
 
-# what = 'C++'  ## default python version of code
-# import os
-# if os.getenv('PY') == 'false':
-print("Using C++ code")
-## what = 'C++'
-from coxc import cox_dev as _cox_dev, hessian_matvec as _hessian_matvec, compute_sat_loglik as _compute_sat_loglik, c_preprocess
-# else:
-#     print("Using Python code")
-#     from .base import (_cox_dev,
-#                        _hessian_matvec,
-#                        _compute_sat_loglik)
+from coxc import (cox_dev as _cox_dev,
+                  hessian_matvec as _hessian_matvec,
+                  compute_sat_loglik as _compute_sat_loglik,
+                  c_preprocess)
 
     
 @dataclass
@@ -270,13 +263,6 @@ class CoxDeviance(object):
                                              gradient=self._grad_buffer.copy(),
                                              diag_hessian=self._diag_hessian_buffer.copy(),
                                              __hash_args__=cur_hash)
-            
-            # print(f'{what} linear_predictor {linear_predictor}')
-            # print(f'{what} sample_weight {sample_weight}')
-            # print(f'{what} loglik_sat {loglik_sat}')
-            # print(f'{what} deviance {deviance}')
-            # print(f'{what} gradient {self._grad_buffer}')
-            # print(f'{what} diag_hessian {self._diag_hessian_buffer}')
             
         return self._result
 
