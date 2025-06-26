@@ -1,3 +1,10 @@
+"""
+Cox Proportional Hazards Model Deviance Computation.
+
+This module provides efficient computation of Cox model deviance, gradients,
+and Hessian information matrices for survival analysis with support for
+different tie-breaking methods (Efron and Breslow).
+"""
 
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
@@ -11,21 +18,34 @@ __version__ = _version.get_versions()['version']
 import numpy as np
 from joblib import hash
 
-# what = 'C++'  ## default python version of code
-# import os
-# if os.getenv('PY') == 'false':
-print("Using C++ code")
-## what = 'C++'
-from coxc import cox_dev as _cox_dev, hessian_matvec as _hessian_matvec, compute_sat_loglik as _compute_sat_loglik, c_preprocess
-# else:
-#     print("Using Python code")
-#     from .base import (_cox_dev,
-#                        _hessian_matvec,
-#                        _compute_sat_loglik)
+from coxc import (cox_dev as _cox_dev,
+                  hessian_matvec as _hessian_matvec,
+                  compute_sat_loglik as _compute_sat_loglik,
+                  c_preprocess)
 
     
 @dataclass
 class CoxDevianceResult(object):
+    """
+    Result object containing Cox model deviance computation results.
+    
+    Attributes
+    ----------
+    linear_predictor : np.ndarray
+        The linear predictor values (X @ beta) used in the computation.
+    sample_weight : np.ndarray
+        Sample weights used in the computation.
+    loglik_sat : float
+        Saturated log-likelihood value.
+    deviance : float
+        Computed deviance value.
+    gradient : Optional[np.ndarray]
+        Gradient of the deviance with respect to the linear predictor.
+    diag_hessian : Optional[np.ndarray]
+        Diagonal of the Hessian matrix.
+    __hash_args__ : str
+        Hash string for caching results.
+    """
 
     linear_predictor: np.ndarray
     sample_weight: np.ndarray
@@ -38,17 +58,55 @@ class CoxDevianceResult(object):
 
 @dataclass
 class CoxDeviance(object):
-
-    event: InitVar(np.ndarray)
-    status: InitVar(np.ndarray)
-    start: InitVar(np.ndarray)=None
+    """
+    Cox Proportional Hazards Model Deviance Calculator.
+    
+    This class provides efficient computation of Cox model deviance, gradients,
+    and Hessian information matrices. It supports both Efron and Breslow
+    tie-breaking methods and handles left-truncated survival data.
+    
+    Parameters
+    ----------
+    event : np.ndarray
+        Event times (failure times) for each observation.
+    status : np.ndarray
+        Event indicators (1 for event occurred, 0 for censored).
+    start : np.ndarray, optional
+        Start times for left-truncated data. If None, assumes no truncation.
+    tie_breaking : {'efron', 'breslow'}, default='efron'
+        Method for handling tied event times.
+        
+    Attributes
+    ----------
+    tie_breaking : str
+        The tie-breaking method being used.
+    _have_start_times : bool
+        Whether start times are provided.
+    _efron : bool
+        Whether Efron's method is being used for tie-breaking.
+    """
+    
+    event: InitVar[np.ndarray]
+    status: InitVar[np.ndarray]
+    start: InitVar[np.ndarray]=None
     tie_breaking: Literal['efron', 'breslow'] = 'efron'
     
     def __post_init__(self,
                       event,
                       status,
                       start=None):
-
+        """
+        Initialize the CoxDeviance object with survival data.
+        
+        Parameters
+        ----------
+        event : np.ndarray
+            Event times for each observation.
+        status : np.ndarray
+            Event indicators (1 for event, 0 for censored).
+        start : np.ndarray, optional
+            Start times for left-truncated data.
+        """
         event = np.asarray(event)
         status = np.asarray(status).astype(np.int32)
         nevent = event.shape[0]
@@ -108,7 +166,21 @@ class CoxDeviance(object):
     def __call__(self,
                  linear_predictor,
                  sample_weight=None):
-
+        """
+        Compute Cox model deviance and related quantities.
+        
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            Linear predictor values (X @ beta).
+        sample_weight : np.ndarray, optional
+            Sample weights. If None, uses equal weights.
+            
+        Returns
+        -------
+        CoxDevianceResult
+            Object containing deviance, gradient, and Hessian diagonal.
+        """
         if sample_weight is None:
             sample_weight = np.ones_like(linear_predictor)
         else:
@@ -192,19 +264,26 @@ class CoxDeviance(object):
                                              diag_hessian=self._diag_hessian_buffer.copy(),
                                              __hash_args__=cur_hash)
             
-            # print(f'{what} linear_predictor {linear_predictor}')
-            # print(f'{what} sample_weight {sample_weight}')
-            # print(f'{what} loglik_sat {loglik_sat}')
-            # print(f'{what} deviance {deviance}')
-            # print(f'{what} gradient {self._grad_buffer}')
-            # print(f'{what} diag_hessian {self._diag_hessian_buffer}')
-            
         return self._result
 
     def information(self,
                     linear_predictor,
                     sample_weight=None):
-
+        """
+        Compute the information matrix (negative Hessian) as a linear operator.
+        
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            Linear predictor values (X @ beta).
+        sample_weight : np.ndarray, optional
+            Sample weights. If None, uses equal weights.
+            
+        Returns
+        -------
+        CoxInformation
+            Linear operator representing the information matrix.
+        """
         result = self(linear_predictor,
                       sample_weight)
         return CoxInformation(result=result,
@@ -212,17 +291,51 @@ class CoxDeviance(object):
 
 @dataclass
 class CoxInformation(LinearOperator):
+    """
+    Linear operator representing the Cox model information matrix.
+    
+    This class provides matrix-vector multiplication with the information
+    matrix (negative Hessian) of the Cox model, allowing efficient computation
+    without explicitly forming the full matrix.
+    
+    Parameters
+    ----------
+    coxdev : CoxDeviance
+        The CoxDeviance object used for computations.
+    result : CoxDevianceResult
+        Result from the most recent deviance computation.
+        
+    Attributes
+    ----------
+    shape : tuple
+        Shape of the information matrix (n, n).
+    dtype : type
+        Data type of the matrix elements.
+    """
 
     coxdev: CoxDeviance
     result: CoxDevianceResult
 
     def __post_init__(self):
+        """Initialize the linear operator dimensions."""
         n = self.coxdev._status.shape[0]
         self.shape = (n, n)
         self.dtype = float
         
     def _matvec(self, arg):
-
+        """
+        Compute matrix-vector product with the information matrix.
+        
+        Parameters
+        ----------
+        arg : np.ndarray
+            Vector to multiply with the information matrix.
+            
+        Returns
+        -------
+        np.ndarray
+            Result of the matrix-vector multiplication.
+        """
         # this will compute risk sums if not already computed
         # at this linear_predictor and sample_weight
         
@@ -261,6 +374,21 @@ class CoxInformation(LinearOperator):
 
     
     def _adjoint(self, arg):
+        """
+        Compute the adjoint (transpose) matrix-vector product.
+        
+        Since the information matrix is symmetric, this is the same as _matvec.
+        
+        Parameters
+        ----------
+        arg : np.ndarray
+            Vector to multiply with the adjoint matrix.
+            
+        Returns
+        -------
+        np.ndarray
+            Result of the adjoint matrix-vector multiplication.
+        """
         # it is symmetric
         return self._matvec(arg)
 
@@ -271,122 +399,24 @@ def _preprocess(start,
                 event,
                 status):
     """
-    Compute various functions of the start / event / status
-    to be used to help in computing cumsums
-
-    This can probably stay in python, and have a separate
-    implementation in R
+    Preprocess survival data for Cox model computations.
+    
+    This function handles data preprocessing including sorting, tie detection,
+    and creation of indexing arrays for efficient computation.
+    
+    Parameters
+    ----------
+    start : np.ndarray
+        Start times for left-truncated data.
+    event : np.ndarray
+        Event times.
+    status : np.ndarray
+        Event indicators.
+        
+    Returns
+    -------
+    tuple
+        Preprocessed data structures for efficient computation.
     """
-    
-    start = np.asarray(start)
-    event = np.asarray(event)
-    status = np.asarray(status)
-    nevent = status.shape[0]
-    
-    # second column of stacked_array is 1-status...
-    stacked_time = np.hstack([start, event])
-    stacked_status_c = np.hstack([np.ones(nevent, int), 1-status]) # complement of status
-    stacked_is_start = np.hstack([np.ones(nevent, int), np.zeros(nevent, int)])
-    stacked_index = np.hstack([np.arange(nevent), np.arange(nevent)])
-
-    argsort = np.lexsort((stacked_is_start,
-                          stacked_status_c,
-                          stacked_time))
-    sorted_time = stacked_time[argsort]
-    sorted_status = 1 - stacked_status_c[argsort]
-    sorted_is_start = stacked_is_start[argsort]
-    sorted_index = stacked_index[argsort]
-    
-    # do the joint sort
-
-    event_count, start_count = 0, 0
-    event_order, start_order = [], []
-    start_map, event_map = [], []
-    first = []
-    event_idx = []
-    last_row = None
-    which_event = -1
-    first_event = -1
-    num_successive_event = 1
-    ties = {}    
-    for row in zip(sorted_time,
-                   sorted_status,
-                   sorted_is_start,
-                   sorted_index):
-        (_time, _status, _is_start, _index) = row
-        if _is_start == 1: # a start time
-            start_order.append(_index)
-            start_map.append(event_count)
-            start_count += 1
-        else: # an event / stop time
-            if _status == 1:
-                # if it's an event and the time is same as last row 
-                # it is the same event
-                # else it's the next "which_event"
-                
-                if (last_row is not None and 
-                    _time != last_row[0]): # index of next `status==1`
-                    first_event += num_successive_event
-                    num_successive_event = 1
-                    which_event += 1
-                else:
-                    num_successive_event += 1
-                    
-                first.append(first_event)
-            else:
-                first_event += num_successive_event
-                num_successive_event = 1
-                first.append(first_event) # this event time was not an failure time
-
-            event_map.append(start_count)
-            event_order.append(_index)
-            event_count += 1
-        last_row = row
-
-    first = np.array(first)
-    start_order = np.array(start_order, int)
-    event_order = np.array(event_order, int)
-    start_map = np.array(start_map, int)
-    event_map = np.array(event_map, int)
-
-    # reset start_map to original order
-    start_map_cp = start_map.copy()
-    start_map[start_order] = start_map_cp
-
-    # set to event order
-
-    _status = status[event_order]
-    _first = first
-    _start_map = start_map[event_order]
-    _event_map = event_map
-
-    _event = event[event_order]
-    _start = event[start_order]
-
-    # compute `last`
-    
-    last = []
-    last_event = nevent-1
-    for i, f in enumerate(_first[::-1]):
-        last.append(last_event)
-        # immediately following a last event, `first` will agree with np.arange
-        if f - (nevent - 1 - i) == 0:
-            last_event = f - 1        
-    _last = np.array(last[::-1])
-
-    den = _last + 1 - _first
-
-    # XXXX
-    _scaling = (np.arange(nevent) - _first) / den
-    
-    preproc = {'start':np.asarray(_start),
-               'event':np.asarray(_event),
-               'first':np.asarray(_first),
-               'last':np.asarray(_last),
-               'scaling':np.asarray(_scaling),
-               'start_map':np.asarray(_start_map),
-               'event_map':np.asarray(_event_map),
-               'status':np.asarray(_status)}
-
-    return preproc, event_order, start_order
+    return c_preprocess(start, event, status)
 

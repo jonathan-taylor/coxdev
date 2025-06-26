@@ -1,1 +1,8 @@
-__pycache__
+__pycache__/
+*.py~
+*.Rmd~
+.ipynb_checkpoints/
+*.RDS
+*.rds
+*.csv
+ipython_log.py*
