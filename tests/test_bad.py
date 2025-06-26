@@ -273,22 +273,22 @@ def test_glmnet_agreement():
 
     C = coxdev(X @ beta, weight)
     
-    D_R, G_R, H_R = get_glmnet_result(event,
-                                      status,
-                                      start,
-                                      X @ beta,
-                                      weight)
+    D_R, grad_R, hess_diag_R = get_glmnet_result(event,
+                                                 status,
+                                                 start,
+                                                 X @ beta,
+                                                 weight)
     
     # Test deviance agreement
     delta_D = np.fabs(D_R - C.deviance) / np.fabs(D_R)
     assert delta_D < tol
     
     # Test gradient agreement
-    delta_G = np.linalg.norm(G_R - C.gradient) / np.linalg.norm(G_R)
+    delta_G = np.linalg.norm(grad_R - C.gradient) / np.linalg.norm(grad_R)
     assert delta_G < tol
     
     # Test Hessian agreement
-    delta_H = np.linalg.norm(H_R - C.diag_hessian) / np.linalg.norm(H_R)
+    delta_H = np.linalg.norm(hess_diag_R - C.diag_hessian) / np.linalg.norm(hess_diag_R)
     assert delta_H < tol
 
 @pytest.mark.skipif(not has_rpy2, reason="rpy2 not available")
