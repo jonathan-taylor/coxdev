@@ -23,7 +23,7 @@ jobs:
           submodules: recursive
 
       - name: Build wheels
-        uses: cibuildwheel/cibuildwheel@v2.19.0 # Use the latest version
+        uses: cibuildwheel/cibuildwheel@v2 # Use the latest version
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
