@@ -55,6 +55,26 @@ eigendir = os.path.abspath(os.path.join(dirname, 'eigen'))
 if 'EIGEN_LIBRARY_PATH' in os.environ:
     eigendir = os.path.abspath(os.environ['EIGEN_LIBRARY_PATH'])
 
+# Ensure Eigen headers are available
+def ensure_eigen_available():
+    """Ensure Eigen headers are available for compilation"""
+    if not os.path.exists(eigendir):
+        raise RuntimeError(
+            f"Eigen directory not found at {eigendir}. "
+            "Please ensure the Eigen submodule is initialized: "
+            "git submodule update --init --recursive"
+        )
+    
+    # Check if Eigen headers are present
+    eigen_headers = os.path.join(eigendir, 'Eigen')
+    if not os.path.exists(eigen_headers):
+        raise RuntimeError(
+            f"Eigen headers not found at {eigen_headers}. "
+            "Please ensure the Eigen submodule is properly initialized"
+        )
+    
+    print(f"Using Eigen headers from: {eigendir}")
+
 # Cox extension
 
 EXTS=[Extension(
@@ -74,6 +94,9 @@ EXTS=[Extension(
 
 # Do some tasks before build
 def do_prebuild_tasks():
+    # Ensure Eigen headers are available
+    ensure_eigen_available()
+    
     # copy the C++ source from R package
     if not os.path.exists('src/coxdev.cpp'):
         src_files = ['R_pkg/coxdev/src/coxdev.cpp', 'R_pkg/coxdev/inst/include/coxdev.h']
@@ -87,28 +110,13 @@ cmdclass = versioneer.get_cmdclass()
 
 def main(**extra_args):
     do_prebuild_tasks()
-    setup(name=info.NAME,
-          maintainer=info.MAINTAINER,
-          maintainer_email=info.MAINTAINER_EMAIL,
-          description=info.DESCRIPTION,
-          url=info.URL,
-          download_url=info.DOWNLOAD_URL,
-          license=info.LICENSE,
-          classifiers=info.CLASSIFIERS,
-          author=info.AUTHOR,
-          author_email=info.AUTHOR_EMAIL,
-          platforms=info.PLATFORMS,
-          version=versioneer.get_version(),
-          packages = ['coxdev'],
-          ext_modules = EXTS,
-          include_package_data=True,
-          data_files=[],
-          scripts=[],
-          long_description=long_description,
-          long_description_content_type=long_description_content_type,
-          cmdclass = cmdclass,
-          **extra_args
-         )
+    
+    # All metadata is now handled by pyproject.toml
+    setup(
+        ext_modules=EXTS,
+        cmdclass=cmdclass,
+        **extra_args
+    )
 
 #simple way to test what setup will do
 #python setup.py install --prefix=/tmp
