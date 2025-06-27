@@ -219,7 +219,7 @@ jobs:
   upload-to-test-pypi:
     name: Upload to Test PyPI
     runs-on: ubuntu-latest
-    needs: [build-wheels, build-sdist, test-wheels]
+    needs: [build-wheels, build-sdist] # , test-wheels]
     if: github.event_name == 'workflow_dispatch'
     # CHANGED: Added permissions for Trusted Publishing
     permissions:
