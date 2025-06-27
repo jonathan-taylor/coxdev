@@ -112,7 +112,7 @@ jobs:
     - name: Download wheel artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: coxdev-Linux-latest-py${{ matrix.python-version }}
+        pattern: coxdev-Linux-py${{ matrix.python-version }}
         merge-multiple: true
 
     - name: List downloaded artifacts
