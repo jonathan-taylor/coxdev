@@ -1,4 +1,4 @@
-name: Build Wheels2
+name: Build Wheels
 
 on:
   push:
