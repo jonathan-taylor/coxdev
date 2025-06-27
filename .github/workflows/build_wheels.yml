@@ -151,6 +151,23 @@ jobs:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
 
+    - name: List downloaded artifacts
+      run: |
+        echo "Current directory: $(pwd)"
+        echo "Directory contents:"
+        ls -la
+        echo "Looking for wheel and source files:"
+        find . -name "*.whl" -o -name "*.tar.gz" | head -20
+
+    - name: Prepare dist directory
+      run: |
+        mkdir -p dist
+        # Move all wheel and source files to dist/
+        find . -name "*.whl" -exec cp {} dist/ \;
+        find . -name "*.tar.gz" -exec cp {} dist/ \;
+        echo "Files in dist/:"
+        ls -la dist/
+
     - name: Upload to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
@@ -165,6 +182,23 @@ jobs:
     steps:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
+
+    - name: List downloaded artifacts
+      run: |
+        echo "Current directory: $(pwd)"
+        echo "Directory contents:"
+        ls -la
+        echo "Looking for wheel and source files:"
+        find . -name "*.whl" -o -name "*.tar.gz" | head -20
+
+    - name: Prepare dist directory
+      run: |
+        mkdir -p dist
+        # Move all wheel and source files to dist/
+        find . -name "*.whl" -exec cp {} dist/ \;
+        find . -name "*.tar.gz" -exec cp {} dist/ \;
+        echo "Files in dist/:"
+        ls -la dist/
 
     - name: Upload to Test PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
