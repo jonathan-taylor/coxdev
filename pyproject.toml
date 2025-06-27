@@ -42,3 +42,6 @@ versionfile_source = "coxdev/_version.py"
 versionfile_build = "coxdev/_version.py"
 tag_prefix = "v"
 parentdir_prefix = "coxdev-"
+
+[tool.setuptools]
+license-files = []

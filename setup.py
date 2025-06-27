@@ -112,9 +112,11 @@ def main(**extra_args):
     do_prebuild_tasks()
     
     # All metadata is now handled by pyproject.toml
+    # But we still need version from versioneer
     setup(
-        ext_modules=EXTS,
+        version=versioneer.get_version(),
         packages=['coxdev'],
+        ext_modules=EXTS,
         cmdclass=cmdclass,
         **extra_args
     )

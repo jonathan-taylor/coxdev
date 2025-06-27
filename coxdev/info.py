@@ -14,15 +14,15 @@ description  = 'CoxDev (Python)'
 
 NAME                = 'coxdev'
 MAINTAINER          = "Naras Balasubrimanian, Trevor Hastie, Jonathan Taylor"
-MAINTAINER_EMAIL    = ""
+MAINTAINER_EMAIL    = "jonathan.taylor@stanford.edu"
 DESCRIPTION         = description
 LONG_DESCRIPTION    = description
 URL                 = "https://github.org/jonathan-taylor/coxdev"
 DOWNLOAD_URL        = ""
-LICENSE             = "BSD license"
+LICENSE             = "BSD-3-Clause"
 CLASSIFIERS         = CLASSIFIERS
 AUTHOR              = "Naras Balasubrimanian, Trevor Hastie, Jonathan Taylor"
-AUTHOR_EMAIL        = ""
+AUTHOR_EMAIL        = "jonathan.taylor@stanford.edu"
 PLATFORMS           = "OS Independent"
 STATUS              = 'alpha'
 
