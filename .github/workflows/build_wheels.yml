@@ -167,11 +167,28 @@ jobs:
         find . -name "*.tar.gz" -exec cp {} dist/ \;
         echo "Files in dist/:"
         ls -la dist/
+        echo "File sizes:"
+        du -h dist/*
+
+    - name: Validate package metadata
+      run: |
+        cd dist
+        for file in *.whl *.tar.gz; do
+          if [ -f "$file" ]; then
+            echo "Validating $file:"
+            if [[ "$file" == *.whl ]]; then
+              python -m zipfile -t "$file" || echo "Invalid wheel file: $file"
+            elif [[ "$file" == *.tar.gz ]]; then
+              tar -tzf "$file" > /dev/null || echo "Invalid source distribution: $file"
+            fi
+          fi
+        done
 
     - name: Upload to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
+        attestations: false
         skip-existing: true
 
   upload-to-test-pypi:
@@ -204,5 +221,7 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
+        username: __token__
         password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        attestations: false
         skip-existing: true 
