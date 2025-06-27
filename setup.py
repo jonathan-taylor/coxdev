@@ -114,6 +114,7 @@ def main(**extra_args):
     # All metadata is now handled by pyproject.toml
     setup(
         ext_modules=EXTS,
+        packages=['coxdev'],
         cmdclass=cmdclass,
         **extra_args
     )
