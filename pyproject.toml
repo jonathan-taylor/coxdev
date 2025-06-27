@@ -24,7 +24,7 @@ classifiers = ["Development Status :: 3 - Alpha",
                "Programming Language :: Python",
                "Topic :: Scientific/Engineering"
 	       ]
-license = "BSD-3-Clause"
+license = { text = "BSD-3-Clause" }
 dynamic = ['version']
 
 [build-system]
