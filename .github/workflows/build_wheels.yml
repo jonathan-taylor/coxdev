@@ -14,11 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.9', '3.10', '3.11']
-        exclude:
-          # Exclude Python 3.8 on Windows due to compatibility issues
-          - os: windows-latest
-            python-version: '3.8'
+        python-version: ['3.9', '3.10', '3.11', '3.12']
 
     steps:
     - name: Checkout code
@@ -59,7 +55,7 @@ jobs:
     - name: Upload wheel artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-${{ runner.os }}-py${{ matrix.python-version }}
+        name: coxdev-${{ runner.os }}-py${{ matrix.python-version }}
         path: dist/*.whl
 
   build-sdist:
@@ -97,7 +93,7 @@ jobs:
     needs: [build-wheels, build-sdist]
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.9', '3.10', '3.11', '3.12']
 
     steps:
     - name: Set up Python ${{ matrix.python-version }}
@@ -108,7 +104,7 @@ jobs:
     - name: Download wheel artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: wheels-ubuntu-latest-py${{ matrix.python-version }}
+        pattern: coxdev-ubuntu-latest-py${{ matrix.python-version }}
         merge-multiple: true
 
     - name: Install wheel
