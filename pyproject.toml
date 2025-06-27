@@ -20,11 +20,12 @@ maintainers = [
 classifiers = ["Development Status :: 3 - Alpha",
                "Environment :: Console",
                "Intended Audience :: Science/Research",
+               "License :: OSI Approved :: BSD License",
                "Operating System :: OS Independent",
                "Programming Language :: Python",
                "Topic :: Scientific/Engineering"
 	       ]
-license = "BSD-3-Clause"
+license = {text = "BSD-3-Clause"}
 dynamic = ['version']
 
 [build-system]
