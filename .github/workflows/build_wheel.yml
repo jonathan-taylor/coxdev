@@ -231,5 +231,5 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         # CHANGED: Removed user/password and updated the URL
-        repository-url: https://test.pypi.org/
+        repository-url: https://test.pypi.org/legacy/
         skip-existing: true
