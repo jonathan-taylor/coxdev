@@ -16,7 +16,7 @@ from . import _version
 __version__ = _version.get_versions()['version']
 
 import numpy as np
-from joblib import hash
+from joblib import hash as _hash
 
 from coxc import (cox_dev as _cox_dev,
                   hessian_matvec as _hessian_matvec,
@@ -108,7 +108,13 @@ class CoxDeviance(object):
             Start times for left-truncated data.
         """
         event = np.asarray(event)
-        status = np.asarray(status).astype(np.int32)
+        status_arr = np.asarray(status)
+        
+        # Validate that status is integer type before casting
+        if not np.issubdtype(status_arr.dtype, np.integer):
+            raise ValueError(f"status must be integer type, got {status_arr.dtype}")
+        
+        status = status_arr.astype(np.int32)
         nevent = event.shape[0]
 
         if start is None:
@@ -188,7 +194,7 @@ class CoxDeviance(object):
 
         linear_predictor = np.asarray(linear_predictor)
             
-        cur_hash = hash([linear_predictor, sample_weight])
+        cur_hash = _hash([linear_predictor, sample_weight])
         if not hasattr(self, "_result") or self._result.__hash_args__ != cur_hash:
 
             loglik_sat = _compute_sat_loglik(self._first,
@@ -201,7 +207,7 @@ class CoxDeviance(object):
             eta = np.asarray(linear_predictor)
             sample_weight = np.asarray(sample_weight)
             eta = eta - eta.mean()
-            self._exp_w_buffer[:] = sample_weight * np.exp(eta)
+            self._exp_w_buffer[:] = sample_weight * np.exp(np.clip(eta, -np.inf, 30))
 
             # print(f'eta type {eta.dtype}')
             # print(f'sample_weight type {sample_weight.dtype}')
