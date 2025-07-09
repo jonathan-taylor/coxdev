@@ -17,7 +17,15 @@ class StratifiedCoxDeviance:
 
     def __post_init__(self, event, status, strata=None, start=None):
         event = np.asarray(event)
-        status = np.asarray(status).astype(np.int32)
+        status = np.asarray(status)
+        if not set(np.unique(status)).issubset(set([0,1])):
+            raise ValueError('status must be binary')
+
+        status = np.asarray(status).astype(np.int32)        
+        # Validate that status is integer type before casting
+        if not np.issubdtype(status.dtype, np.integer):
+            raise ValueError(f"status must be integer type, got {status.dtype}")
+
         n = event.shape[0]
 
         if strata is None:

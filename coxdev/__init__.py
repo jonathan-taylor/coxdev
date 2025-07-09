@@ -108,13 +108,12 @@ class CoxDeviance(object):
             Start times for left-truncated data.
         """
         event = np.asarray(event)
+
         status_arr = np.asarray(status)
-        
-        # Validate that status is integer type before casting
-        if not np.issubdtype(status_arr.dtype, np.integer):
-            raise ValueError(f"status must be integer type, got {status_arr.dtype}")
-        
+        if not set(np.unique(status_arr)).issubset(set([0,1])):
+            raise ValueError('status must be binary')
         status = status_arr.astype(np.int32)
+        
         nevent = event.shape[0]
 
         if start is None:
