@@ -241,7 +241,7 @@ def test_stratified_input_validation(survival_data):
     data = survival_data
     
     # Test that strata must be provided
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         StratifiedCoxDeviance(event=data['event'], status=data['status'])
     
     # Test that strata must have the same length as other inputs
@@ -475,3 +475,92 @@ def test_coxdeviance_input_validation(survival_data):
             event=data['event'], 
             status=status_nonint
         )
+
+
+def test_stratified_manual_block_diagonal():
+    """Test that StratifiedCoxDeviance matches three CoxDeviance objects for 3 strata of sizes 15, 13, 23."""
+    rng = np.random.default_rng(2024)
+    sizes = [15, 13, 23]
+    n = sum(sizes)
+    strata = np.zeros(n, dtype=np.int32)
+    strata[:sizes[0]] = 0
+    strata[sizes[0]:sizes[0]+sizes[1]] = 1
+    strata[sizes[0]+sizes[1]:] = 2
+    # Shuffle to make it non-contiguous
+    perm = rng.permutation(n)
+    strata = strata[perm]
+
+    # Generate data
+    start = rng.uniform(0, 5, n)
+    event = rng.uniform(0, 10, n) + start
+    status = rng.integers(0, 2, n)
+    eta = rng.standard_normal(n)
+    weight = rng.uniform(0.5, 2.0, n)
+
+    # Sort indices for each stratum
+    idx0 = np.where(strata == 0)[0]
+    idx1 = np.where(strata == 1)[0]
+    idx2 = np.where(strata == 2)[0]
+
+    # Create CoxDeviance objects for each stratum
+    cox0 = CoxDeviance(event=event[idx0], status=status[idx0], start=start[idx0])
+    cox1 = CoxDeviance(event=event[idx1], status=status[idx1], start=start[idx1])
+    cox2 = CoxDeviance(event=event[idx2], status=status[idx2], start=start[idx2])
+
+    # Compute results for each stratum
+    res0 = cox0(eta[idx0], weight[idx0])
+    res1 = cox1(eta[idx1], weight[idx1])
+    res2 = cox2(eta[idx2], weight[idx2])
+
+    # Stratified CoxDeviance
+    stratdev = StratifiedCoxDeviance(
+        event=event, status=status, start=start, strata=strata
+    )
+    strat_res = stratdev(eta, weight)
+
+    # Check deviance
+    expected_deviance = res0.deviance + res1.deviance + res2.deviance
+    assert np.allclose(strat_res.deviance, expected_deviance)
+
+    # Check gradient (should be concatenated in the right order)
+    expected_grad = np.zeros(n)
+    expected_grad[idx0] = res0.gradient
+    expected_grad[idx1] = res1.gradient
+    expected_grad[idx2] = res2.gradient
+    assert np.allclose(strat_res.gradient, expected_grad)
+
+    # Check diag_hessian
+    expected_diag_hess = np.zeros(n)
+    expected_diag_hess[idx0] = res0.diag_hessian
+    expected_diag_hess[idx1] = res1.diag_hessian
+    expected_diag_hess[idx2] = res2.diag_hessian
+    assert np.allclose(strat_res.diag_hessian, expected_diag_hess)
+
+    # Check block diagonal Hessian structure
+    info = stratdev.information(eta, weight)
+    # Should be a LinearOperator, but we can check block structure by matvec
+    # Create a block vector
+    v = np.zeros(n)
+    v[idx0] = rng.standard_normal(sizes[0])
+    v[idx1] = rng.standard_normal(sizes[1])
+    v[idx2] = rng.standard_normal(sizes[2])
+    # The result should be the same as applying each block separately
+    block0 = cox0.information(eta[idx0], weight[idx0])
+    block1 = cox1.information(eta[idx1], weight[idx1])
+    block2 = cox2.information(eta[idx2], weight[idx2])
+    result = info @ v
+    expected = np.zeros(n)
+    expected[idx0] = block0 @ v[idx0]
+    expected[idx1] = block1 @ v[idx1]
+    expected[idx2] = block2 @ v[idx2]
+    assert np.allclose(result, expected)
+
+    # Check that off-blocks are zero: if v is nonzero only in one stratum, result is nonzero only in that stratum
+    for idx, block, size in zip([idx0, idx1, idx2], [block0, block1, block2], sizes):
+        vtest = np.zeros(n)
+        vtest[idx] = rng.standard_normal(size)
+        r = info @ vtest
+        # Should be nonzero only in idx
+        assert np.allclose(r[np.setdiff1d(np.arange(n), idx)], 0)
+        # Should match the block
+        assert np.allclose(r[idx], block @ vtest[idx])
