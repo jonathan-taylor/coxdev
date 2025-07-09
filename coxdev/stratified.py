@@ -68,7 +68,7 @@ class StratifiedCoxDeviance(object):
     def __post_init__(self,
                       event,
                       status,
-                      strata,
+                      strata=None,
                       start=None):
         """
         Initialize the StratifiedCoxDeviance object with survival data.
@@ -85,16 +85,19 @@ class StratifiedCoxDeviance(object):
             Start times for left-truncated data.
         """
         # Convert status to int32 and validate
-        status = np.asarray(status).astype(np.int32)
-        if status.dtype != np.int32:
-            raise ValueError(f"status must be convertible to int32, got {status.dtype}")
+        status_arr = np.asarray(status)
+        if not np.issubdtype(status_arr.dtype, np.integer):
+            raise ValueError(f"status must be integer type, got {status_arr.dtype}")
+        status = status_arr.astype(np.int32)
         
         # Convert strata to int32 and validate
-        strata = np.asarray(strata).astype(np.int32)
-        
-        # Validate that strata is int32 after casting
-        if strata.dtype != np.int32:
-            raise ValueError(f"strata must be convertible to int32, got {strata.dtype}")
+        if strata is None:
+            strata = np.zeros_like(status)
+            
+        strata_arr = np.asarray(strata)
+        if not np.issubdtype(strata_arr.dtype, np.integer):
+            raise ValueError(f"strata must be integer type, got {strata_arr.dtype}")
+        strata = strata_arr.astype(np.int32)
         
         # Validate input lengths
         if len(event) != len(status) or len(event) != len(strata):

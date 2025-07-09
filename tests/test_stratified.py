@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from coxdev import CoxDeviance
 from coxdev.stratified import StratifiedCoxDeviance
-
+from coxdev.coxdev2 import CoxDeviance2
 
 @pytest.fixture
 def survival_data():
@@ -239,10 +239,6 @@ def test_stratified_different_tie_breaking_methods(single_stratum_data):
 def test_stratified_input_validation(survival_data):
     """Test input validation for StratifiedCoxDeviance."""
     data = survival_data
-    
-    # Test that strata must be provided
-    with pytest.raises(ValueError):
-        StratifiedCoxDeviance(event=data['event'], status=data['status'])
     
     # Test that strata must have the same length as other inputs
     with pytest.raises(ValueError):
@@ -564,3 +560,74 @@ def test_stratified_manual_block_diagonal():
         assert np.allclose(r[np.setdiff1d(np.arange(n), idx)], 0)
         # Should match the block
         assert np.allclose(r[idx], block @ vtest[idx])
+
+
+@pytest.mark.parametrize("tie_breaking", ['efron', 'breslow'])
+@pytest.mark.parametrize("use_weight", [True, False])
+@pytest.mark.parametrize("use_strata", [True, False])
+def test_coxdeviance2_matches_stratified_and_coxdeviance(tie_breaking, use_weight, use_strata):
+    """Test that CoxDeviance2 matches StratifiedCoxDeviance (and CoxDeviance if no strata) for random data, including information method and both with and without weights."""
+    from coxdev.coxdev2 import CoxDeviance2
+    from coxdev import CoxDeviance
+    rng = np.random.default_rng(2025)
+    n = 40
+    if use_strata:
+        sizes = [10, 10, 20]
+        strata = np.zeros(n, dtype=np.int32)
+        start_idx = 0
+        for i, sz in enumerate(sizes):
+            strata[start_idx:start_idx+sz] = i
+            start_idx += sz
+        perm = rng.permutation(n)
+        strata = strata[perm]
+    else:
+        strata = None
+    event = rng.uniform(0, 10, n)
+    start = rng.uniform(0, 5, n)
+    event = event + start
+    status = rng.integers(0, 2, n)
+    eta = rng.standard_normal(n)
+    weight = rng.uniform(0.5, 2.0, n)
+    w = weight if use_weight else None
+
+    if use_strata:
+        stratdev = StratifiedCoxDeviance(
+            event=event, status=status, start=start, strata=strata, tie_breaking=tie_breaking,
+        )
+        cox2 = CoxDeviance2(
+            event=event, status=status, start=start, strata=strata, tie_breaking=tie_breaking,
+        )
+        res_strat = stratdev(eta, w)
+        res2 = cox2(eta, w)
+        assert np.allclose(res_strat.deviance, res2.deviance)
+        assert np.allclose(res_strat.gradient, res2.gradient)
+        assert np.allclose(res_strat.diag_hessian, res2.diag_hessian)
+        info_strat = stratdev.information(eta, w)
+        info2 = cox2.information(eta, w)
+        v = rng.standard_normal(n)
+        assert np.allclose(info_strat @ v, info2 @ v)
+    else:
+        coxdev = CoxDeviance(
+            event=event, status=status, start=start, tie_breaking=tie_breaking,
+        )
+        stratdev = StratifiedCoxDeviance(
+            event=event, status=status, start=start, strata=None, tie_breaking=tie_breaking,
+        )
+        cox2 = CoxDeviance2(
+            event=event, status=status, start=start, strata=None, tie_breaking=tie_breaking,
+        )
+        res_cox = coxdev(eta, w)
+        res_strat = stratdev(eta, w)
+        res2 = cox2(eta, w)
+        assert np.allclose(res_cox.deviance, res_strat.deviance)
+        assert np.allclose(res_cox.deviance, res2.deviance)
+        assert np.allclose(res_cox.gradient, res_strat.gradient)
+        assert np.allclose(res_cox.gradient, res2.gradient)
+        assert np.allclose(res_cox.diag_hessian, res_strat.diag_hessian)
+        assert np.allclose(res_cox.diag_hessian, res2.diag_hessian)
+        info_cox = coxdev.information(eta, w)
+        info_strat = stratdev.information(eta, w)
+        info2 = cox2.information(eta, w)
+        v = rng.standard_normal(n)
+        assert np.allclose(info_cox @ v, info_strat @ v)
+        assert np.allclose(info_cox @ v, info2 @ v)
