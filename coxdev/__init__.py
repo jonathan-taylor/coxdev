@@ -205,77 +205,8 @@ class CoxDeviance(object):
             eta = eta - eta.mean()
             self._exp_w_buffer[:] = sample_weight * np.exp(np.clip(eta, -np.inf, 30))
 
-            # Print arguments to _cox_dev for debugging
-            stratum_id = 0
-            arg_dict = {
-                'eta': eta,
-                'sample_weight': sample_weight,
-                'exp_w': self._exp_w_buffer,
-                'event_order': self._event_order,
-                'start_order': self._start_order,
-                'status': self._status,
-                'first': self._first,
-                'last': self._last,
-                'scaling': self._scaling,
-                'event_map': self._event_map,
-                'start_map': self._start_map,
-                'loglik_sat': loglik_sat,
-                'T_1_term': self._T_1_term,
-                'T_2_term': self._T_2_term,
-                'grad_buffer': self._grad_buffer,
-                'diag_hessian_buffer': self._diag_hessian_buffer,
-                'diag_part_buffer': self._diag_part_buffer,
-                'w_avg_buffer': self._w_avg_buffer,
-                'event_reorder_buffers': self._event_reorder_buffers,
-                'risk_sum_buffers': self._risk_sum_buffers,
-                'forward_cumsum_buffers': self._forward_cumsum_buffers,
-                'forward_scratch_buffer': self._forward_scratch_buffer,
-                'reverse_cumsum_buffers': self._reverse_cumsum_buffers,
-                'have_start_times': self._have_start_times,
-                'efron': self._efron
-            }
-            # Create debug dataframe for this stratum
-            debug_data = {}
-            
-            # Find the maximum length among all arrays
-            max_length = 0
-            for name, arr in arg_dict.items():
-                if isinstance(arr, (np.ndarray, list)):
-                    if isinstance(arr, list):
-                        # For lists, find the maximum length across all entries
-                        for item in arr:
-                            if isinstance(item, np.ndarray):
-                                max_length = max(max_length, len(item))
-                    else:
-                        max_length = max(max_length, len(arr))
-            
-            for name, arr in arg_dict.items():
-                if isinstance(arr, (np.ndarray, list)):
-                    if isinstance(arr, list):
-                        # For lists, include all entries
-                        for j, item in enumerate(arr):
-                            if isinstance(item, np.ndarray):
-                                # Pad with zeros to match max_length
-                                if len(item) < max_length:
-                                    padded_item = np.pad(item, (0, max_length - len(item)), 'constant')
-                                else:
-                                    padded_item = item
-                                debug_data[f"{name}_{j}"] = padded_item
-                    else:
-                        # Pad with zeros to match max_length
-                        if len(arr) < max_length:
-                            padded_arr = np.pad(arr, (0, max_length - len(arr)), 'constant')
-                        else:
-                            padded_arr = arr
-                        debug_data[name] = padded_arr
-                else:
-                    # For scalar values, repeat for the max_length
-                    debug_data[name] = [arr] * max_length
-            
-            # Save to CSV
-            import pandas as pd
-            df = pd.DataFrame(debug_data)
-            df.to_csv(f"CoxDev{stratum_id}.csv", index=False)
+
+
 
             deviance = _cox_dev(eta,
                                 sample_weight,
