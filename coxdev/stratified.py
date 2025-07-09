@@ -1,327 +1,246 @@
-"""
-Stratified Cox Proportional Hazards Model Deviance Computation.
-
-This module provides stratified Cox model deviance computation, where
-the baseline hazard is allowed to vary across strata while the regression
-coefficients are shared across all strata.
-"""
-
-from dataclasses import dataclass, InitVar
-from typing import Literal, Optional, Dict, List
 import numpy as np
-from scipy.sparse import block_diag
+from dataclasses import dataclass, InitVar
+from typing import Optional, Literal
+from coxdev import CoxDevianceResult
+from coxc import c_preprocess, cox_dev as _cox_dev, compute_sat_loglik as _compute_sat_loglik
 from scipy.sparse.linalg import LinearOperator
-
-from . import CoxDeviance, CoxDevianceResult, CoxInformation
-
-from joblib import hash as _hash
+from coxdev import CoxInformation, CoxDevianceResult
 
 @dataclass
-class StratifiedCoxDeviance(object):
-    """
-    Stratified Cox Proportional Hazards Model Deviance Calculator.
-    
-    This class provides efficient computation of stratified Cox model deviance,
-    gradients, and Hessian information matrices. It supports both Efron and Breslow
-    tie-breaking methods and handles left-truncated survival data.
-    
-    In a stratified Cox model, the baseline hazard is allowed to vary across
-    strata while the regression coefficients are shared across all strata.
-    
-    Parameters
-    ----------
-    event : np.ndarray
-        Event times (failure times) for each observation.
-    status : np.ndarray
-        Event indicators (1 for event occurred, 0 for censored).
-    strata : np.ndarray
-        Stratum indicators for each observation. Must be np.int32.
-    start : np.ndarray, optional
-        Start times for left-truncated data. If None, assumes no truncation.
-    tie_breaking : {'efron', 'breslow'}, default='efron'
-        Method for handling tied event times.
-        
-    Attributes
-    ----------
-    tie_breaking : str
-        The tie-breaking method being used.
-    _have_start_times : bool
-        Whether start times are provided.
-    _efron : bool
-        Whether Efron's method is being used for tie-breaking.
-    _strata : np.ndarray
-        The stratum indicators.
-    _unique_strata : np.ndarray
-        Unique stratum values.
-    _stratum_indices : Dict[int, np.ndarray]
-        Mapping from stratum value to indices of observations in that stratum.
-    _stratum_coxdevs : Dict[int, CoxDeviance]
-        Mapping from stratum value to CoxDeviance instance for that stratum.
-    """
-    
+class StratifiedCoxDeviance:
+
     event: InitVar[np.ndarray]
     status: InitVar[np.ndarray]
-    strata: InitVar[np.ndarray] = None
-    start: InitVar[np.ndarray] = None
+    strata: InitVar[Optional[np.ndarray]] = None
+    start: InitVar[Optional[np.ndarray]] = None
     tie_breaking: Literal['efron', 'breslow'] = 'efron'
-    
-    def __post_init__(self,
-                      event,
-                      status,
-                      strata=None,
-                      start=None):
-        """
-        Initialize the StratifiedCoxDeviance object with survival data.
-        
-        Parameters
-        ----------
-        event : np.ndarray
-            Event times for each observation.
-        status : np.ndarray
-            Event indicators (1 for event, 0 for censored).
-        strata : np.ndarray
-            Stratum indicators for each observation.
-        start : np.ndarray, optional
-            Start times for left-truncated data.
-        """
-        # Convert status to int32 and validate
-        status_arr = np.asarray(status)
-        if not np.issubdtype(status_arr.dtype, np.integer):
-            raise ValueError(f"status must be integer type, got {status_arr.dtype}")
-        status = status_arr.astype(np.int32)
-        
-        # Convert strata to int32 and validate
+
+    def __post_init__(self, event, status, strata=None, start=None):
+        event = np.asarray(event)
+        status = np.asarray(status).astype(np.int32)
+        n = event.shape[0]
+
         if strata is None:
-            strata = np.zeros_like(status)
-            
-        strata_arr = np.asarray(strata)
-        if not np.issubdtype(strata_arr.dtype, np.integer):
-            raise ValueError(f"strata must be integer type, got {strata_arr.dtype}")
-        strata = strata_arr.astype(np.int32)
-        
-        # Validate input lengths
-        if len(event) != len(status) or len(event) != len(strata):
-            raise ValueError("event, status, and strata must have the same length")
+            strata = np.zeros(n, dtype=np.int32)
+        else:
+            strata = np.asarray(strata).astype(np.int32)
+        if start is None:
+            start = -np.ones(n) * np.inf
+            have_start = False
+        else:
+            start = np.asarray(start)
+            have_start = True
 
-        # Store the original data
-        self._event = np.asarray(event)
-        self._status = np.asarray(status)
-        self._start = start
-        
-        # Get unique strata
-        self._unique_strata = np.unique(strata)
-        
-        # Create mapping from stratum to indices
-        self._stratum_indices = {}
-        for stratum in self._unique_strata:
-            self._stratum_indices[stratum] = np.where(strata == stratum)[0]
-        
-        # Create separate CoxDeviance instances for each stratum
-        self._stratum_coxdevs = {}
-
-        for stratum in self._unique_strata:
-            indices = self._stratum_indices[stratum]
-            
-            # Extract data for this stratum
-            stratum_event = self._event[indices]
-            stratum_status = self._status[indices]
-            stratum_start = None if start is None else start[indices]
-            
-            # Create CoxDeviance instance for this stratum
-            self._stratum_coxdevs[stratum] = CoxDeviance(
-                event=stratum_event,
-                status=stratum_status,
-                start=stratum_start,
-                tie_breaking=self.tie_breaking
-            )
-        
-        # Set up attributes for compatibility with parent class
-        self._have_start_times = start is not None
+        self._have_start_times = have_start
         self._efron = self.tie_breaking == 'efron'
-        
-        # Initialize result cache
-        self._result = None
-        self._last_hash = None
+        self._efron_stratum = []
+        self._unique_strata = np.unique(strata)
+        self._stratum_indices = [np.where(strata == s)[0] for s in self._unique_strata]
+        self._n_strata = len(self._unique_strata)
 
-    def __call__(self,
-                 linear_predictor,
-                 sample_weight=None):
-        """
-        Compute stratified Cox model deviance and related quantities.
-        
-        Parameters
-        ----------
-        linear_predictor : np.ndarray
-            Linear predictor values (X @ beta).
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, uses equal weights.
-            
-        Returns
-        -------
-        CoxDevianceResult
-            Object containing deviance, gradient, and Hessian diagonal.
-        """
+        # Store for later
+        self._strata = strata
+        self._event = event
+        self._status = status
+        self._start = start
+
+        # Preprocess and allocate buffers for each stratum
+
+        self._preproc = []
+        self._event_order = []
+        self._start_order = []
+        self._status_list = []
+        self._event_list = []
+        self._start_list = []
+        self._first = []
+        self._last = []
+        self._scaling = []
+        self._event_map = []
+        self._start_map = []
+        self._first_start = []
+        self._T_1_term = []
+        self._T_2_term = []
+        self._event_reorder_buffers = []
+        self._forward_cumsum_buffers = []
+        self._forward_scratch_buffer = []
+        self._reverse_cumsum_buffers = []
+        self._risk_sum_buffers = []
+        self._hess_matvec_buffer = []
+        self._grad_buffer = []
+        self._diag_hessian_buffer = []
+        self._diag_part_buffer = []
+        self._w_avg_buffer = []
+        self._exp_w_buffer = []
+
+        # allocate and preprocess
+
+        for idx in self._stratum_indices:
+            e = event[idx]
+            s = status[idx]
+            st = start[idx]
+            preproc, event_order, start_order = c_preprocess(st, e, s)
+            self._efron_stratum.append(self._efron and (np.linalg.norm(preproc['scaling']) > 0))
+            n_stratum = len(idx)
+            self._preproc.append(preproc)
+            self._event_order.append(event_order.astype(np.int32))
+            self._start_order.append(start_order.astype(np.int32))
+            self._status_list.append(np.asarray(preproc['status']))
+            self._event_list.append(np.asarray(preproc['event']))
+            self._start_list.append(np.asarray(preproc['start']))
+            self._first.append(np.asarray(preproc['first']).astype(np.int32))
+            self._last.append(np.asarray(preproc['last']).astype(np.int32))
+            self._scaling.append(np.asarray(preproc['scaling']))
+            self._event_map.append(np.asarray(preproc['event_map']).astype(np.int32))
+            self._start_map.append(np.asarray(preproc['start_map']).astype(np.int32))
+            self._first_start.append(self._first[-1][self._start_map[-1]])
+            self._T_1_term.append(np.zeros(n_stratum))
+            self._T_2_term.append(np.zeros(n_stratum))
+            self._event_reorder_buffers.append([np.zeros(n_stratum) for _ in range(3)])
+            self._forward_cumsum_buffers.append([np.zeros(n_stratum+1) for _ in range(5)])
+            self._forward_scratch_buffer.append(np.zeros(n_stratum))
+            self._reverse_cumsum_buffers.append([np.zeros(n_stratum+1) for _ in range(4)])
+            self._risk_sum_buffers.append([np.zeros(n_stratum) for _ in range(2)])
+            self._hess_matvec_buffer.append(np.zeros(n_stratum))
+            self._grad_buffer.append(np.zeros(n_stratum))
+            self._diag_hessian_buffer.append(np.zeros(n_stratum))
+            self._diag_part_buffer.append(np.zeros(n_stratum))
+            self._w_avg_buffer.append(np.zeros(n_stratum))
+            self._exp_w_buffer.append(np.zeros(n_stratum))
+
+    def __call__(self, linear_predictor, sample_weight=None):
+        linear_predictor = np.asarray(linear_predictor)
         if sample_weight is None:
             sample_weight = np.ones_like(linear_predictor)
         else:
             sample_weight = np.asarray(sample_weight)
-
-        linear_predictor = np.asarray(linear_predictor)
-        
-        # Check if we need to recompute
-        cur_hash = _hash([linear_predictor, sample_weight])
-        if self._last_hash != cur_hash:
-            
-            # Initialize accumulators
-            total_deviance = 0.0
-            total_loglik_sat = 0.0
-            total_gradient = np.zeros_like(linear_predictor)
-            total_diag_hessian = np.zeros_like(linear_predictor)
-            
-            # Compute results for each stratum
-            for stratum in self._unique_strata:
-                indices = self._stratum_indices[stratum]
-                coxdev = self._stratum_coxdevs[stratum]
-                
-                # Extract data for this stratum
-                stratum_linear_predictor = linear_predictor[indices]
-                stratum_sample_weight = sample_weight[indices]
-                
-                # Compute results for this stratum
-                stratum_result = coxdev(stratum_linear_predictor, stratum_sample_weight)
-                
-                # Accumulate results
-                total_deviance += stratum_result.deviance
-                total_loglik_sat += stratum_result.loglik_sat
-                total_gradient[indices] = stratum_result.gradient
-                total_diag_hessian[indices] = stratum_result.diag_hessian
-            
-            # Create combined result
-            self._result = CoxDevianceResult(
-                linear_predictor=linear_predictor,
-                sample_weight=sample_weight,
-                loglik_sat=total_loglik_sat,
-                deviance=total_deviance,
-                gradient=total_gradient,
-                diag_hessian=total_diag_hessian,
-                __hash_args__=cur_hash
+        # Prepare outputs
+        deviance = 0.0
+        loglik_sat = 0.0
+        grad = np.zeros_like(linear_predictor)
+        diag_hess = np.zeros_like(linear_predictor)
+        # Loop over strata
+        for i, idx in enumerate(self._stratum_indices):
+            eta = linear_predictor[idx]
+            weight = sample_weight[idx]
+            eta = eta - eta.mean()
+            self._exp_w_buffer[i][:] = weight * np.exp(np.clip(eta, -np.inf, 30))
+            loglik_sat_i = _compute_sat_loglik(
+                self._first[i], self._last[i], weight, self._event_order[i], self._status_list[i], self._forward_cumsum_buffers[i][0]
             )
-            
-            self._last_hash = cur_hash
-        
-        return self._result
 
-    def information(self,
-                    linear_predictor,
-                    sample_weight=None):
-        """
-        Compute the information matrix (negative Hessian) as a linear operator.
-        
-        The information matrix is block diagonal by stratum, with each block
-        given by the individual CoxDeviance.information blocks.
-        
-        Parameters
-        ----------
-        linear_predictor : np.ndarray
-            Linear predictor values (X @ beta).
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, uses equal weights.
-            
-        Returns
-        -------
-        StratifiedCoxInformation
-            Linear operator representing the block diagonal information matrix.
-        """
-        result = self(linear_predictor, sample_weight)
-        return StratifiedCoxInformation(result=result, stratified_coxdev=self)
+            loglik_sat += loglik_sat_i
+            dev = _cox_dev(
+                eta,
+                weight,
+                self._exp_w_buffer[i],
+                self._event_order[i],
+                self._start_order[i],
+                self._status_list[i],
+                self._first[i],
+                self._last[i],
+                self._scaling[i],
+                self._event_map[i],
+                self._start_map[i],
+                loglik_sat_i,
+                self._T_1_term[i],
+                self._T_2_term[i],
+                self._grad_buffer[i],
+                self._diag_hessian_buffer[i],
+                self._diag_part_buffer[i],
+                self._w_avg_buffer[i],
+                self._event_reorder_buffers[i],
+                self._risk_sum_buffers[i],
+                self._forward_cumsum_buffers[i],
+                self._forward_scratch_buffer[i],
+                self._reverse_cumsum_buffers[i],
+                self._have_start_times,
+                self._efron_stratum[i]
+            )
+            deviance += dev
+            grad[idx] = self._grad_buffer[i]
+            diag_hess[idx] = self._diag_hessian_buffer[i]
+
+        return CoxDevianceResult(
+            linear_predictor=linear_predictor,
+            sample_weight=sample_weight,
+            loglik_sat=loglik_sat,
+            deviance=deviance,
+            gradient=grad,
+            diag_hessian=diag_hess,
+            __hash_args__=""
+        )
 
 
-@dataclass
+    def information(self, linear_predictor, sample_weight=None):
+        """Return a block-diagonal LinearOperator representing the information matrix."""
+        return StratifiedCoxInformation(self, linear_predictor, sample_weight)
+
+
 class StratifiedCoxInformation(LinearOperator):
-    """
-    Linear operator representing the stratified Cox model information matrix.
-    
-    This class provides matrix-vector multiplication with the block diagonal
-    information matrix (negative Hessian) of the stratified Cox model.
-    
-    Parameters
-    ----------
-    stratified_coxdev : StratifiedCoxDeviance
-        The StratifiedCoxDeviance object used for computations.
-    result : CoxDevianceResult
-        Result from the most recent deviance computation.
-        
-    Attributes
-    ----------
-    shape : tuple
-        Shape of the information matrix (n, n).
-    dtype : type
-        Data type of the matrix elements.
-    """
 
-    stratified_coxdev: StratifiedCoxDeviance
-    result: CoxDevianceResult
-
-    def __post_init__(self):
-        """Initialize the linear operator dimensions."""
-        n = len(self.result.linear_predictor)
-        self.shape = (n, n)
+    def __init__(self, strat_cox, linear_predictor, sample_weight):
+        self.strat_cox = strat_cox
+        self.linear_predictor = np.asarray(linear_predictor)
+        self.sample_weight = np.ones_like(self.linear_predictor) if sample_weight is None else np.asarray(sample_weight)
+        self.n = self.linear_predictor.shape[0]
+        self.shape = (self.n, self.n)
         self.dtype = float
-        
-    def _matvec(self, arg):
-        """
-        Compute matrix-vector product with the block diagonal information matrix.
-        
-        Parameters
-        ----------
-        arg : np.ndarray
-            Vector to multiply with the information matrix.
-            
-        Returns
-        -------
-        np.ndarray
-            Result of the matrix-vector multiplication.
-        """
-        arg = np.asarray(arg).reshape(-1)
-        result = np.zeros_like(arg)
-        
-        # Apply each stratum's information matrix to its corresponding indices
-        for stratum in self.stratified_coxdev._unique_strata:
-            indices = self.stratified_coxdev._stratum_indices[stratum]
-            coxdev = self.stratified_coxdev._stratum_coxdevs[stratum]
-            
-            # Extract the part of arg corresponding to this stratum
-            stratum_arg = arg[indices]
-            
-            # Get the information matrix for this stratum
-            stratum_info = coxdev.information(
-                self.result.linear_predictor[indices],
-                self.result.sample_weight[indices]
+        # Precompute per-stratum information operators
+        self._block_infos = []
+        for i, idx in enumerate(self.strat_cox._stratum_indices):
+            # Use the same buffers as in __call__
+            eta = self.linear_predictor[idx]
+            weight = self.sample_weight[idx]
+            # Call __call__ to ensure buffers are up to date
+            self.strat_cox.__call__(self.linear_predictor, self.sample_weight)
+            # Build a LinearOperator for this block
+            # We mimic the logic from StratifiedCoxDeviance: use the same CoxInformation logic
+
+            # Build a fake CoxDevianceResult for this block
+            result = CoxDevianceResult(
+                linear_predictor=eta,
+                sample_weight=weight,
+                loglik_sat=0.0,  # not used
+                deviance=0.0,    # not used
+                gradient=self.strat_cox._grad_buffer[i],
+                diag_hessian=self.strat_cox._diag_hessian_buffer[i],
+                __hash_args__=""
             )
-            
-            # Apply the information matrix
-            stratum_result = stratum_info @ stratum_arg
-            
-            # Store the result in the appropriate positions
-            result[indices] = stratum_result
-        
+            # Build a fake CoxDeviance-like object for this block
+            class BlockCoxDev:
+                pass
+            blockdev = BlockCoxDev()
+            blockdev._status = self.strat_cox._status_list[i]
+            blockdev._risk_sum_buffers = self.strat_cox._risk_sum_buffers[i]
+            blockdev._diag_part_buffer = self.strat_cox._diag_part_buffer[i]
+            blockdev._w_avg_buffer = self.strat_cox._w_avg_buffer[i]
+            blockdev._exp_w_buffer = self.strat_cox._exp_w_buffer[i]
+            blockdev._event_cumsum = self.strat_cox._reverse_cumsum_buffers[i][0]
+            blockdev._start_cumsum = self.strat_cox._reverse_cumsum_buffers[i][1]
+            blockdev._event_order = self.strat_cox._event_order[i]
+            blockdev._start_order = self.strat_cox._start_order[i]
+            blockdev._first = self.strat_cox._first[i]
+            blockdev._last = self.strat_cox._last[i]
+            blockdev._scaling = self.strat_cox._scaling[i]
+            blockdev._event_map = self.strat_cox._event_map[i]
+            blockdev._start_map = self.strat_cox._start_map[i]
+            blockdev._forward_cumsum_buffers = self.strat_cox._forward_cumsum_buffers[i]
+            blockdev._forward_scratch_buffer = self.strat_cox._forward_scratch_buffer[i]
+            blockdev._reverse_cumsum_buffers = self.strat_cox._reverse_cumsum_buffers[i]
+            blockdev._hess_matvec_buffer = self.strat_cox._hess_matvec_buffer[i]
+            blockdev._have_start_times = self.strat_cox._have_start_times
+            blockdev._efron = self.strat_cox._efron
+            # Use CoxInformation
+            block_info = CoxInformation(result=result, coxdev=blockdev)
+            self._block_infos.append((idx, block_info))
+
+    def _matvec(self, v):
+        v = np.asarray(v).reshape(-1)
+        result = np.zeros_like(v)
+        for idx, block_info in self._block_infos:
+            result[idx] = block_info @ v[idx]
         return result
 
-    def _adjoint(self, arg):
-        """
-        Compute the adjoint (transpose) matrix-vector product.
-        
-        Since the information matrix is symmetric, this is the same as _matvec.
-        
-        Parameters
-        ----------
-        arg : np.ndarray
-            Vector to multiply with the adjoint matrix.
-            
-        Returns
-        -------
-        np.ndarray
-            Result of the adjoint matrix-vector multiplication.
-        """
-        # The information matrix is symmetric
-        return self._matvec(arg) 
+    def _adjoint(self, v):
+        return self._matvec(v)
+
