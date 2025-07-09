@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from coxdev import CoxDeviance
 #from coxdev.base import _reverse_cumsums
-from coxc import reverse_cumsums as _reverse_cumsums
+from coxdev.coxc import reverse_cumsums as _reverse_cumsums
 
 from simulate import (simulate_df, 
                       all_combos,

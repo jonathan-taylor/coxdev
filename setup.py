@@ -78,38 +78,20 @@ def ensure_eigen_available():
 # Cox extension
 
 EXTS=[Extension(
-    'coxc',
-    sources=[f'src/coxdev.cpp'],
+    'coxdev.coxc',
+    sources=['R_pkg/coxdev/src/coxdev.cpp',
+             f'R_pkg/coxdev/src/coxdev_strata.cpp'][:1],
     include_dirs=[pybind11.get_include(),
                   eigendir,
-                  "src"],
-    depends=["src/coxdev.h"],
+                  "R_pkg/coxdev/inst/include"],
+    depends=["R_pkg/coxdev/inst/include/coxdev.h",
+             "R_pkg/coxdev/inst/include/coxdev_strata.h"][:1],
     language='c++',
     extra_compile_args=['-std=c++17', '-DPY_INTERFACE=1'])]
-
-# The cox extension shares the same C++ source as R and
-# we will copy it to the src directory before setup.
-# That way we have one true source. Should probably also add
-# src/coxdev.cpp and src/coxdev.h to .gitignore
-
-# Do some tasks before build
-def do_prebuild_tasks():
-    # Ensure Eigen headers are available
-    ensure_eigen_available()
-    
-    # copy the C++ source from R package
-    if not os.path.exists('src/coxdev.cpp'):
-        src_files = ['R_pkg/coxdev/src/coxdev.cpp', 'R_pkg/coxdev/inst/include/coxdev.h']
-        dest = 'src'
-        if not os.path.exists(dest):
-            os.makedirs(dest)
-        for f in src_files:
-            shutil.copy(f, dest)
 
 cmdclass = versioneer.get_cmdclass()
 
 def main(**extra_args):
-    do_prebuild_tasks()
     
     # All metadata is now handled by pyproject.toml
     # But we still need version from versioneer

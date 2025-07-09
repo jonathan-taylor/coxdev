@@ -18,10 +18,10 @@ __version__ = _version.get_versions()['version']
 import numpy as np
 from joblib import hash as _hash
 
-from coxc import (cox_dev as _cox_dev,
-                  hessian_matvec as _hessian_matvec,
-                  compute_sat_loglik as _compute_sat_loglik,
-                  c_preprocess)
+from .coxc import (cox_dev as _cox_dev,
+                   hessian_matvec as _hessian_matvec,
+                   compute_sat_loglik as _compute_sat_loglik,
+                   c_preprocess)
 
     
 @dataclass
