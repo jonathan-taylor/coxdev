@@ -151,12 +151,12 @@ def create_stratified_data(n_samples=100, n_strata=3):
     # Create strata
     strata = np.random.randint(0, n_strata, n_samples)
     
-    # Create survival data
-    event = np.random.exponential(1.0, n_samples)
     status = np.random.binomial(1, 0.7, n_samples)
     
     # Add some start times for some tests
     start = np.random.exponential(0.5, n_samples)
+    # Create survival data
+    event = np.random.exponential(1.0, n_samples) + start
     
     # Create covariates
     n_features = 3
@@ -399,27 +399,26 @@ def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
     if not has_rpy2:
         pytest.skip("rpy2 not available")
     
-    # Create data with uneven stratum sizes
-    np.random.seed(42)
+    # Create data with uneven stratum sizes using create_stratified_data
     n_samples = 200
+    n_features = 2
+    data = create_stratified_data(n_samples=n_samples, n_strata=3)
     
-    # Create strata with different sizes
+    # Override strata with custom sizes
     strata = np.concatenate([
         np.zeros(50),   # 50 samples in stratum 0
         np.ones(80),    # 80 samples in stratum 1  
         np.full(70, 2)  # 70 samples in stratum 2
     ])
+    data['strata'] = strata
     
-    # Create survival data
-    event = np.random.exponential(1.0, n_samples)
-    status = np.random.binomial(1, 0.7, n_samples)
-    start = np.random.exponential(0.5, n_samples)
-    
-    # Create covariates
-    n_features = 2
-    X = np.random.standard_normal((n_samples, n_features))
-    beta = np.random.standard_normal(n_features) / np.sqrt(n_samples)
-    weight = np.random.uniform(0.5, 2.0, n_samples)
+    # Use the rest of the generated data
+    event = data['event']
+    status = data['status']
+    start = data['start']
+    X = data['X']
+    beta = data['beta']
+    weight = data['weight']
     
     # Create StratifiedCoxDeviance
     stratdev = StratifiedCoxDeviance(
