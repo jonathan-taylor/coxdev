@@ -1,10 +1,12 @@
 import numpy as np
 from dataclasses import dataclass, InitVar
 from typing import Optional, Literal
-from coxdev import CoxDevianceResult
-from .coxc import c_preprocess, cox_dev as _cox_dev, compute_sat_loglik as _compute_sat_loglik
 from scipy.sparse.linalg import LinearOperator
-from coxdev import CoxInformation, CoxDevianceResult
+
+from .base import (CoxDevianceResult,
+                   CoxInformation,
+                   CoxDevianceResult)
+from .coxc import c_preprocess, cox_dev as _cox_dev, compute_sat_loglik as _compute_sat_loglik
 
 @dataclass
 class StratifiedCoxDeviance:

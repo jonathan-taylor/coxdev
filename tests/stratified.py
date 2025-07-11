@@ -12,7 +12,7 @@ import numpy as np
 from scipy.sparse import block_diag
 from scipy.sparse.linalg import LinearOperator
 
-from coxdev import CoxDeviance, CoxDevianceResult, CoxInformation
+from coxdev.base import CoxDeviance, CoxDevianceResult, CoxInformation
 
 from joblib import hash as _hash
 
