@@ -18,7 +18,7 @@ class StratifiedCoxDeviance:
     tie_breaking: Literal['efron', 'breslow'] = 'efron'
 
     def __post_init__(self, event, status, strata=None, start=None):
-        event = np.asarray(event)
+        event = np.asarray(event).astype(float)
         status = np.asarray(status)
         if not set(np.unique(status)).issubset(set([0,1])):
             raise ValueError('status must be binary')
@@ -117,6 +117,38 @@ class StratifiedCoxDeviance:
             self._w_avg_buffer.append(np.zeros(n_stratum))
             self._exp_w_buffer.append(np.zeros(n_stratum))
 
+    """
+    Stratified Cox Proportional Hazards Model Deviance Calculator.
+
+    Efficiently computes deviance, gradient, and block-diagonal information matrix for the
+    stratified Cox model, supporting Efron and Breslow tie-breaking and left truncation.
+
+    Parameters
+    ----------
+    event : np.ndarray
+        Event (failure) times.
+    status : np.ndarray
+        Event indicators (1=event, 0=censored).
+    strata : np.ndarray, optional
+        Stratum labels for each observation.
+    start : np.ndarray, optional
+        Start times for left-truncated data.
+    tie_breaking : {'efron', 'breslow'}, default='efron'
+        Tie-breaking method.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from coxdev import StratifiedCoxDeviance
+    >>> event = np.array([3, 6, 8, 4, 6, 4, 3, 2, 2, 5, 3, 4])
+    >>> status = np.array([1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1])
+    >>> strata = np.repeat([0, 1, 2], 4)
+    >>> cox = StratifiedCoxDeviance(event=event, status=status, strata=strata)
+    >>> eta = np.linspace(-1, 1, len(event))
+    >>> result = cox(eta)
+    >>> print(round(result.deviance, 4))
+    14.2741
+    """
     def __call__(self, linear_predictor, sample_weight=None):
         linear_predictor = np.asarray(linear_predictor)
         if sample_weight is None:

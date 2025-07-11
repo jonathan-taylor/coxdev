@@ -84,6 +84,18 @@ class CoxDeviance(object):
         Whether start times are provided.
     _efron : bool
         Whether Efron's method is being used for tie-breaking.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from coxdev import CoxDeviance
+    >>> event = np.array([3, 6, 8, 4, 6, 4, 3, 2, 2, 5, 3, 4])
+    >>> status = np.array([1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1])
+    >>> cox = CoxDeviance(event=event, status=status)
+    >>> eta = np.linspace(-1, 1, len(event))
+    >>> result = cox(eta)
+    >>> print(round(result.deviance, 4))
+    20.7998
     """
     
     event: InitVar[np.ndarray]
@@ -107,7 +119,7 @@ class CoxDeviance(object):
         start : np.ndarray, optional
             Start times for left-truncated data.
         """
-        event = np.asarray(event)
+        event = np.asarray(event).astype(float)
 
         status_arr = np.asarray(status)
         if not set(np.unique(status_arr)).issubset(set([0,1])):
