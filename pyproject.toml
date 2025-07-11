@@ -1,10 +1,10 @@
 [project]
 name = "coxdev"
-dependencies = ["numpy>=1.7.1",
-	        "joblib",
-		"pybind11",
-		"scipy",
-               ]
+dependencies = [
+    "numpy>=1.7.1",
+    "joblib",
+    "scipy",
+]
 description  = "Library for computing Cox deviance"
 readme = "README.md"
 requires-python = ">=3.9"
