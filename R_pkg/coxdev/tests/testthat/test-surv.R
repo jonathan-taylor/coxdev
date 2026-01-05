@@ -20,6 +20,8 @@ get_coxph <- function(event,
   } else {
     y <- Surv(event, status)
   }
+  # Note the use of `timefix=FALSE` needed when we use simulated data.
+  # See "Roundoff error and Tied Times" vignette in survival package.
   F <- coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0, timefix=FALSE), ties=ties, robust=FALSE)
   G <- colSums(coxph.detail(F)$scor)
   D <- F$loglik
