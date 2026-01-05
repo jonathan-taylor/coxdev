@@ -95,7 +95,7 @@ def get_coxph(event,
             rpy.r('y = Surv(start, event, status)')
         else:
             rpy.r('y = Surv(event, status)')
-        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE)')
+        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0, timefix=FALSE), ties=ties, robust=FALSE)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')
@@ -136,7 +136,7 @@ def get_stratified_coxph(event,
         else:
             rpy.r('y = Surv(event, status)')
             
-        rpy.r('F = coxph(y ~ X + strata(strata), init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE)')
+        rpy.r('F = coxph(y ~ X + strata(strata), init=beta, weights=sample_weight, control=coxph.control(iter.max=0, timefix=FALSE), ties=ties, robust=FALSE)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')

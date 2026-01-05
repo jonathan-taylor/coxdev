@@ -26,7 +26,7 @@ coxdev/*~
 *.lo
 
 # Shared objects (inc. Windows DLLs)
-*.dll
+*.dllg
 *.so
 *.so.*
 *.dylib
