@@ -1,4 +1,4 @@
-context("Check against survival package")
+## context("Check against survival package")
 
 tol  <- 1e-10
 i  <- j <- 0
@@ -20,7 +20,7 @@ get_coxph <- function(event,
   } else {
     y <- Surv(event, status)
   }
-  F <- coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE)
+  F <- coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0, timefix=FALSE), ties=ties, robust=FALSE)
   G <- colSums(coxph.detail(F)$scor)
   D <- F$loglik
   cov <- vcov(F)

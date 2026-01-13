@@ -701,7 +701,10 @@ HESSIAN_MATVEC_TYPE hessian_matvec(const EIGEN_REF<Eigen::VectorXd> arg, // # ar
   // # forward_scratch_buffer[:] = status * w_avg * E_arg / risk_sums
 
   // # one less step to compute from above representation
-  forward_scratch_buffer = ( status.cast<double>().array() * w_avg.array() * risk_sums_arg.array() ) / risk_sums.array().pow(2);
+  // # Use safe division: when risk_sums is 0, set result to 0 (no contribution from empty risk sets)
+  Eigen::ArrayXd risk_sums_sq = risk_sums.array().pow(2);
+  Eigen::ArrayXd numerator = status.cast<double>().array() * w_avg.array() * risk_sums_arg.array();
+  forward_scratch_buffer = (risk_sums_sq > 0.0).select(numerator / risk_sums_sq, 0.0);
 
   if (have_start_times) {
     sum_over_events(event_order,

@@ -33,12 +33,20 @@
     invisible(.Call(`_coxdev_sum_over_risk_set`, arg, event_order, start_order, first, last, event_map, scaling, efron, risk_sum_buffers, risk_sum_buffers_offset, reverse_cumsum_buffers, reverse_cumsum_buffers_offset))
 }
 
-.cox_dev <- function(eta, sample_weight, exp_w, event_order, start_order, status, first, last, scaling, event_map, start_map, loglik_sat, T_1_term, T_2_term, grad_buffer, diag_hessian_buffer, diag_part_buffer, w_avg_buffer, event_reorder_buffers, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, have_start_times = TRUE, efron = FALSE) {
-    .Call(`_coxdev_cox_dev`, eta, sample_weight, exp_w, event_order, start_order, status, first, last, scaling, event_map, start_map, loglik_sat, T_1_term, T_2_term, grad_buffer, diag_hessian_buffer, diag_part_buffer, w_avg_buffer, event_reorder_buffers, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, have_start_times, efron)
+.cox_dev <- function(eta, sample_weight, exp_w, event_order, start_order, status, first, last, scaling, event_map, start_map, loglik_sat, T_1_term, T_2_term, grad_buffer, diag_hessian_buffer, diag_part_buffer, w_avg_buffer, effective_cluster_sizes, zero_weight_mask, event_reorder_buffers, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, have_start_times = TRUE, efron = FALSE) {
+    .Call(`_coxdev_cox_dev`, eta, sample_weight, exp_w, event_order, start_order, status, first, last, scaling, event_map, start_map, loglik_sat, T_1_term, T_2_term, grad_buffer, diag_hessian_buffer, diag_part_buffer, w_avg_buffer, effective_cluster_sizes, zero_weight_mask, event_reorder_buffers, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, have_start_times, efron)
 }
 
 .hessian_matvec <- function(arg, eta, sample_weight, risk_sums, diag_part, w_avg, exp_w, event_cumsum, start_cumsum, event_order, start_order, status, first, last, scaling, event_map, start_map, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, hess_matvec_buffer, have_start_times = TRUE, efron = FALSE) {
     .Call(`_coxdev_hessian_matvec`, arg, eta, sample_weight, risk_sums, diag_part, w_avg, exp_w, event_cumsum, start_cumsum, event_order, start_order, status, first, last, scaling, event_map, start_map, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, hess_matvec_buffer, have_start_times, efron)
+}
+
+.compute_effective_cluster_sizes <- function(weights, first, last, effective_sizes) {
+    invisible(.Call(`_coxdev_compute_effective_cluster_sizes`, weights, first, last, effective_sizes))
+}
+
+.compute_weighted_scaling <- function(weights, first, last, scaling) {
+    invisible(.Call(`_coxdev_compute_weighted_scaling`, weights, first, last, scaling))
 }
 
 .preprocess <- function(start, event, status) {

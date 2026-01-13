@@ -1,4 +1,4 @@
-context("Check against glmnet package")
+## context("Check against glmnet package")
 tol  <- 1e-10
 
 get_glmnet_result <- function(event,

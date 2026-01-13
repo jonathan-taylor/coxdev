@@ -174,6 +174,7 @@ make_cox_deviance <- function(event,
   first <- preproc[['first']]
   last <- preproc[['last']]
   scaling <- preproc[['scaling']]
+  original_scaling <- scaling  # Store original for restoration
   event_map <- preproc[['event_map']]
   start_map <- preproc[['start_map']]
 
@@ -204,6 +205,7 @@ make_cox_deviance <- function(event,
   diag_part_buffer <- numeric(n)
   w_avg_buffer <- numeric(n)
   exp_w_buffer <- numeric(n)
+  effective_cluster_sizes <- numeric(n)  # for zero-weight handling
 
   coxdev <- function (linear_predictor, sample_weight = NULL) {
     if (is.null(sample_weight)) {
@@ -217,8 +219,38 @@ make_cox_deviance <- function(event,
                                        event_order,
                                        status,
                                        forward_cumsum_buffers[[1]])
-    eta <- linear_predictor - mean(linear_predictor)
+    # Center eta using weighted mean so zero-weight obs don't affect centering
+    weight_sum <- sum(sample_weight)
+    if (weight_sum > 0) {
+      eta <- linear_predictor - weighted.mean(linear_predictor, sample_weight)
+    } else {
+      eta <- linear_predictor - mean(linear_predictor)
+    }
     exp_w_buffer <<- sample_weight * exp(eta) ## Note the double arrow
+
+    # Compute corrected scaling and effective cluster sizes when some weights are zero
+    has_zero_weights <- any(sample_weight == 0)
+    if (efron) {
+      if (has_zero_weights) {
+        # Reorder weights to event order
+        w_event <- sample_weight[event_order + 1L]  # +1 for R 1-based indexing
+        .compute_weighted_scaling(w_event, first, last, scaling)
+        .compute_effective_cluster_sizes(w_event, first, last, effective_cluster_sizes)
+      } else {
+        # Restore original scaling when all weights are positive
+        scaling <<- original_scaling
+      }
+    }
+
+    # Pass effective_cluster_sizes and zero_weight_mask only when there are zero weights with Efron
+    if (efron && has_zero_weights) {
+      eff_sizes <- effective_cluster_sizes
+      w_event <- sample_weight[event_order + 1L]
+      zero_weight_mask <- as.numeric(w_event > 0)
+    } else {
+      eff_sizes <- numeric(0)
+      zero_weight_mask <- numeric(0)
+    }
 
     ## The C++ code has to be modified for R lists!
     deviance  <- .cox_dev(eta,
@@ -239,6 +271,8 @@ make_cox_deviance <- function(event,
                           diag_hessian_buffer,
                           diag_part_buffer,
                           w_avg_buffer,
+                          eff_sizes,
+                          zero_weight_mask,
                           event_reorder_buffers,
                           risk_sum_buffers, #[[1]] is for coxdev, [[2]] is for hessian...
                           forward_cumsum_buffers,

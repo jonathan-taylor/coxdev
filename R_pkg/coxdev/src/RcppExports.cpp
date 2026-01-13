@@ -139,8 +139,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // cox_dev
-double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, const EIGEN_REF<Eigen::VectorXd> sample_weight, const EIGEN_REF<Eigen::VectorXd> exp_w, const EIGEN_REF<Eigen::VectorXi> event_order, const EIGEN_REF<Eigen::VectorXi> start_order, const EIGEN_REF<Eigen::VectorXi> status, const EIGEN_REF<Eigen::VectorXi> first, const EIGEN_REF<Eigen::VectorXi> last, const EIGEN_REF<Eigen::VectorXd> scaling, const EIGEN_REF<Eigen::VectorXi> event_map, const EIGEN_REF<Eigen::VectorXi> start_map, double loglik_sat, EIGEN_REF<Eigen::VectorXd> T_1_term, EIGEN_REF<Eigen::VectorXd> T_2_term, EIGEN_REF<Eigen::VectorXd> grad_buffer, EIGEN_REF<Eigen::VectorXd> diag_hessian_buffer, EIGEN_REF<Eigen::VectorXd> diag_part_buffer, EIGEN_REF<Eigen::VectorXd> w_avg_buffer, BUFFER_LIST event_reorder_buffers, BUFFER_LIST risk_sum_buffers, BUFFER_LIST forward_cumsum_buffers, EIGEN_REF<Eigen::VectorXd> forward_scratch_buffer, BUFFER_LIST reverse_cumsum_buffers, bool have_start_times, bool efron);
-RcppExport SEXP _coxdev_cox_dev(SEXP etaSEXP, SEXP sample_weightSEXP, SEXP exp_wSEXP, SEXP event_orderSEXP, SEXP start_orderSEXP, SEXP statusSEXP, SEXP firstSEXP, SEXP lastSEXP, SEXP scalingSEXP, SEXP event_mapSEXP, SEXP start_mapSEXP, SEXP loglik_satSEXP, SEXP T_1_termSEXP, SEXP T_2_termSEXP, SEXP grad_bufferSEXP, SEXP diag_hessian_bufferSEXP, SEXP diag_part_bufferSEXP, SEXP w_avg_bufferSEXP, SEXP event_reorder_buffersSEXP, SEXP risk_sum_buffersSEXP, SEXP forward_cumsum_buffersSEXP, SEXP forward_scratch_bufferSEXP, SEXP reverse_cumsum_buffersSEXP, SEXP have_start_timesSEXP, SEXP efronSEXP) {
+double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, const EIGEN_REF<Eigen::VectorXd> sample_weight, const EIGEN_REF<Eigen::VectorXd> exp_w, const EIGEN_REF<Eigen::VectorXi> event_order, const EIGEN_REF<Eigen::VectorXi> start_order, const EIGEN_REF<Eigen::VectorXi> status, const EIGEN_REF<Eigen::VectorXi> first, const EIGEN_REF<Eigen::VectorXi> last, const EIGEN_REF<Eigen::VectorXd> scaling, const EIGEN_REF<Eigen::VectorXi> event_map, const EIGEN_REF<Eigen::VectorXi> start_map, double loglik_sat, EIGEN_REF<Eigen::VectorXd> T_1_term, EIGEN_REF<Eigen::VectorXd> T_2_term, EIGEN_REF<Eigen::VectorXd> grad_buffer, EIGEN_REF<Eigen::VectorXd> diag_hessian_buffer, EIGEN_REF<Eigen::VectorXd> diag_part_buffer, EIGEN_REF<Eigen::VectorXd> w_avg_buffer, const EIGEN_REF<Eigen::VectorXd> effective_cluster_sizes, const EIGEN_REF<Eigen::VectorXd> zero_weight_mask, BUFFER_LIST event_reorder_buffers, BUFFER_LIST risk_sum_buffers, BUFFER_LIST forward_cumsum_buffers, EIGEN_REF<Eigen::VectorXd> forward_scratch_buffer, BUFFER_LIST reverse_cumsum_buffers, bool have_start_times, bool efron);
+RcppExport SEXP _coxdev_cox_dev(SEXP etaSEXP, SEXP sample_weightSEXP, SEXP exp_wSEXP, SEXP event_orderSEXP, SEXP start_orderSEXP, SEXP statusSEXP, SEXP firstSEXP, SEXP lastSEXP, SEXP scalingSEXP, SEXP event_mapSEXP, SEXP start_mapSEXP, SEXP loglik_satSEXP, SEXP T_1_termSEXP, SEXP T_2_termSEXP, SEXP grad_bufferSEXP, SEXP diag_hessian_bufferSEXP, SEXP diag_part_bufferSEXP, SEXP w_avg_bufferSEXP, SEXP effective_cluster_sizesSEXP, SEXP zero_weight_maskSEXP, SEXP event_reorder_buffersSEXP, SEXP risk_sum_buffersSEXP, SEXP forward_cumsum_buffersSEXP, SEXP forward_scratch_bufferSEXP, SEXP reverse_cumsum_buffersSEXP, SEXP have_start_timesSEXP, SEXP efronSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -162,6 +162,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< EIGEN_REF<Eigen::VectorXd> >::type diag_hessian_buffer(diag_hessian_bufferSEXP);
     Rcpp::traits::input_parameter< EIGEN_REF<Eigen::VectorXd> >::type diag_part_buffer(diag_part_bufferSEXP);
     Rcpp::traits::input_parameter< EIGEN_REF<Eigen::VectorXd> >::type w_avg_buffer(w_avg_bufferSEXP);
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXd> >::type effective_cluster_sizes(effective_cluster_sizesSEXP);
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXd> >::type zero_weight_mask(zero_weight_maskSEXP);
     Rcpp::traits::input_parameter< BUFFER_LIST >::type event_reorder_buffers(event_reorder_buffersSEXP);
     Rcpp::traits::input_parameter< BUFFER_LIST >::type risk_sum_buffers(risk_sum_buffersSEXP);
     Rcpp::traits::input_parameter< BUFFER_LIST >::type forward_cumsum_buffers(forward_cumsum_buffersSEXP);
@@ -169,7 +171,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< BUFFER_LIST >::type reverse_cumsum_buffers(reverse_cumsum_buffersSEXP);
     Rcpp::traits::input_parameter< bool >::type have_start_times(have_start_timesSEXP);
     Rcpp::traits::input_parameter< bool >::type efron(efronSEXP);
-    rcpp_result_gen = Rcpp::wrap(cox_dev(eta, sample_weight, exp_w, event_order, start_order, status, first, last, scaling, event_map, start_map, loglik_sat, T_1_term, T_2_term, grad_buffer, diag_hessian_buffer, diag_part_buffer, w_avg_buffer, event_reorder_buffers, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, have_start_times, efron));
+    rcpp_result_gen = Rcpp::wrap(cox_dev(eta, sample_weight, exp_w, event_order, start_order, status, first, last, scaling, event_map, start_map, loglik_sat, T_1_term, T_2_term, grad_buffer, diag_hessian_buffer, diag_part_buffer, w_avg_buffer, effective_cluster_sizes, zero_weight_mask, event_reorder_buffers, risk_sum_buffers, forward_cumsum_buffers, forward_scratch_buffer, reverse_cumsum_buffers, have_start_times, efron));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -207,6 +209,32 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// compute_effective_cluster_sizes
+void compute_effective_cluster_sizes(const EIGEN_REF<Eigen::VectorXd> weights, const EIGEN_REF<Eigen::VectorXi> first, const EIGEN_REF<Eigen::VectorXi> last, EIGEN_REF<Eigen::VectorXd> effective_sizes);
+RcppExport SEXP _coxdev_compute_effective_cluster_sizes(SEXP weightsSEXP, SEXP firstSEXP, SEXP lastSEXP, SEXP effective_sizesSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXd> >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXi> >::type first(firstSEXP);
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXi> >::type last(lastSEXP);
+    Rcpp::traits::input_parameter< EIGEN_REF<Eigen::VectorXd> >::type effective_sizes(effective_sizesSEXP);
+    compute_effective_cluster_sizes(weights, first, last, effective_sizes);
+    return R_NilValue;
+END_RCPP
+}
+// compute_weighted_scaling
+void compute_weighted_scaling(const EIGEN_REF<Eigen::VectorXd> weights, const EIGEN_REF<Eigen::VectorXi> first, const EIGEN_REF<Eigen::VectorXi> last, EIGEN_REF<Eigen::VectorXd> scaling);
+RcppExport SEXP _coxdev_compute_weighted_scaling(SEXP weightsSEXP, SEXP firstSEXP, SEXP lastSEXP, SEXP scalingSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXd> >::type weights(weightsSEXP);
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXi> >::type first(firstSEXP);
+    Rcpp::traits::input_parameter< const EIGEN_REF<Eigen::VectorXi> >::type last(lastSEXP);
+    Rcpp::traits::input_parameter< EIGEN_REF<Eigen::VectorXd> >::type scaling(scalingSEXP);
+    compute_weighted_scaling(weights, first, last, scaling);
+    return R_NilValue;
+END_RCPP
+}
 // preprocess
 PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start, const EIGEN_REF<Eigen::VectorXd> event, const EIGEN_REF<Eigen::VectorXi> status);
 RcppExport SEXP _coxdev_preprocess(SEXP startSEXP, SEXP eventSEXP, SEXP statusSEXP) {
@@ -230,8 +258,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_compute_sat_loglik", (DL_FUNC) &_coxdev_compute_sat_loglik, 6},
     {"_coxdev_sum_over_events", (DL_FUNC) &_coxdev_sum_over_events, 11},
     {"_coxdev_sum_over_risk_set", (DL_FUNC) &_coxdev_sum_over_risk_set, 12},
-    {"_coxdev_cox_dev", (DL_FUNC) &_coxdev_cox_dev, 25},
+    {"_coxdev_cox_dev", (DL_FUNC) &_coxdev_cox_dev, 27},
     {"_coxdev_hessian_matvec", (DL_FUNC) &_coxdev_hessian_matvec, 24},
+    {"_coxdev_compute_effective_cluster_sizes", (DL_FUNC) &_coxdev_compute_effective_cluster_sizes, 4},
+    {"_coxdev_compute_weighted_scaling", (DL_FUNC) &_coxdev_compute_weighted_scaling, 4},
     {"_coxdev_preprocess", (DL_FUNC) &_coxdev_preprocess, 3},
     {NULL, NULL, 0}
 };
