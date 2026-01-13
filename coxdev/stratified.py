@@ -6,7 +6,11 @@ from scipy.sparse.linalg import LinearOperator
 from .base import (CoxDevianceResult,
                    CoxInformation,
                    CoxDevianceResult)
-from .coxc import c_preprocess, cox_dev as _cox_dev, compute_sat_loglik as _compute_sat_loglik
+from .coxc import (c_preprocess,
+                   cox_dev as _cox_dev,
+                   compute_sat_loglik as _compute_sat_loglik,
+                   compute_weighted_scaling as _compute_weighted_scaling,
+                   compute_effective_cluster_sizes as _compute_effective_cluster_sizes)
 
 @dataclass
 class StratifiedCoxDeviance:
@@ -65,6 +69,7 @@ class StratifiedCoxDeviance:
         self._first = []
         self._last = []
         self._scaling = []
+        self._original_scaling = []
         self._event_map = []
         self._start_map = []
         self._first_start = []
@@ -81,6 +86,7 @@ class StratifiedCoxDeviance:
         self._diag_part_buffer = []
         self._w_avg_buffer = []
         self._exp_w_buffer = []
+        self._effective_cluster_sizes = []
 
         # allocate and preprocess
 
@@ -100,6 +106,7 @@ class StratifiedCoxDeviance:
             self._first.append(np.asarray(preproc['first']).astype(np.int32))
             self._last.append(np.asarray(preproc['last']).astype(np.int32))
             self._scaling.append(np.asarray(preproc['scaling']))
+            self._original_scaling.append(np.asarray(preproc['scaling']).copy())
             self._event_map.append(np.asarray(preproc['event_map']).astype(np.int32))
             self._start_map.append(np.asarray(preproc['start_map']).astype(np.int32))
             self._first_start.append(self._first[-1][self._start_map[-1]])
@@ -116,6 +123,7 @@ class StratifiedCoxDeviance:
             self._diag_part_buffer.append(np.zeros(n_stratum))
             self._w_avg_buffer.append(np.zeros(n_stratum))
             self._exp_w_buffer.append(np.zeros(n_stratum))
+            self._effective_cluster_sizes.append(np.zeros(n_stratum))
 
     """
     Stratified Cox Proportional Hazards Model Deviance Calculator.
@@ -164,8 +172,39 @@ class StratifiedCoxDeviance:
         for i, idx in enumerate(self._stratum_indices):
             eta = linear_predictor[idx]
             weight = sample_weight[idx]
-            eta = eta - eta.mean()
+            # Center eta using weighted mean so zero-weight obs don't affect centering
+            weight_sum = weight.sum()
+            if weight_sum > 0:
+                eta = eta - np.average(eta, weights=weight)
+            else:
+                eta = eta - eta.mean()
             self._exp_w_buffer[i][:] = weight * np.exp(np.clip(eta, -np.inf, 30))
+
+            # Compute corrected scaling and effective cluster sizes when some weights are zero
+            has_zero_weights = np.any(weight == 0)
+            if self._efron_stratum[i]:
+                if has_zero_weights:
+                    w_event = weight[self._event_order[i]]
+                    _compute_weighted_scaling(w_event,
+                                              self._first[i],
+                                              self._last[i],
+                                              self._scaling[i])
+                    _compute_effective_cluster_sizes(w_event,
+                                                     self._first[i],
+                                                     self._last[i],
+                                                     self._effective_cluster_sizes[i])
+                else:
+                    self._scaling[i][:] = self._original_scaling[i]
+
+            # Pass effective_cluster_sizes and zero_weight_mask only when there are zero weights with Efron
+            if self._efron_stratum[i] and has_zero_weights:
+                eff_sizes = self._effective_cluster_sizes[i]
+                w_event = weight[self._event_order[i]]
+                zero_weight_mask = (w_event > 0).astype(float)
+            else:
+                eff_sizes = np.array([])
+                zero_weight_mask = np.array([])
+
             loglik_sat_i = _compute_sat_loglik(
                 self._first[i], self._last[i], weight, self._event_order[i], self._status_list[i], self._forward_cumsum_buffers[i][0]
             )
@@ -190,6 +229,8 @@ class StratifiedCoxDeviance:
                 self._diag_hessian_buffer[i],
                 self._diag_part_buffer[i],
                 self._w_avg_buffer[i],
+                eff_sizes,
+                zero_weight_mask,
                 self._event_reorder_buffers[i],
                 self._risk_sum_buffers[i],
                 self._forward_cumsum_buffers[i],

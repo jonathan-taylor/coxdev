@@ -117,14 +117,17 @@ void forward_prework(const EIGEN_REF<Eigen::VectorXi> status,
                      int i,
                      int j,
                      EIGEN_REF<Eigen::VectorXd> moment_buffer,
-		     const EIGEN_REF<Eigen::VectorXd> arg,		     
+		     const EIGEN_REF<Eigen::VectorXd> arg,
                      bool use_w_avg = true)
 {
   // No checks on size compatibility yet.
+  // Use safe division to avoid inf when risk_sums is 0 (can happen with zero-weight observations)
+  // Use 1e-100 as minimum to avoid underflow when raised to powers (1e-300^2 = 0 in double precision)
+  Eigen::VectorXd safe_risk_sums = risk_sums.array().max(1e-100);
   if (use_w_avg) {
-    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / risk_sums.array().pow(j);
+    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / safe_risk_sums.array().pow(j);
   } else {
-    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / risk_sums.array().pow(j);    
+    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / safe_risk_sums.array().pow(j);
   }
   if (arg.size() > 0) {
     moment_buffer = moment_buffer.array() * arg.array();
@@ -307,7 +310,7 @@ void sum_over_risk_set(const EIGEN_REF<Eigen::VectorXd> arg,
 double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -- assumes centered (or otherwise normalized for numeric stability)
 	       const EIGEN_REF<Eigen::VectorXd> sample_weight, //sample_weight is in native order
 	       const EIGEN_REF<Eigen::VectorXd> exp_w,
-	       const EIGEN_REF<Eigen::VectorXi> event_order,   
+	       const EIGEN_REF<Eigen::VectorXi> event_order,
 	       const EIGEN_REF<Eigen::VectorXi> start_order,
 	       const EIGEN_REF<Eigen::VectorXi> status,        //everything below in event order
 	       const EIGEN_REF<Eigen::VectorXi> first,
@@ -322,6 +325,8 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
 	       EIGEN_REF<Eigen::VectorXd> diag_hessian_buffer,
 	       EIGEN_REF<Eigen::VectorXd> diag_part_buffer,
 	       EIGEN_REF<Eigen::VectorXd> w_avg_buffer,
+	       const EIGEN_REF<Eigen::VectorXd> effective_cluster_sizes, // for zero-weight handling
+	       const EIGEN_REF<Eigen::VectorXd> zero_weight_mask, // mask for zero-weight observations (1=non-zero, 0=zero weight)
 	       BUFFER_LIST event_reorder_buffers,
 	       BUFFER_LIST risk_sum_buffers,
 	       BUFFER_LIST forward_cumsum_buffers,
@@ -472,12 +477,31 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
   // after computing w_avg
 
   // For us w_cumsum is forward_cumsum_buffers[0] which in C++ is forward_cumsum_buffers0
-  for (int i = 0; i < w_avg_buffer.size(); ++i) {
-    w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (last(i) + 1 - first(i)));
+  // Use effective_cluster_sizes if provided (for zero-weight handling), otherwise use standard cluster sizes
+  if (effective_cluster_sizes.size() > 0) {
+    for (int i = 0; i < w_avg_buffer.size(); ++i) {
+      // Zero out w_avg for zero-weight observations
+      if (zero_weight_mask.size() > 0 && zero_weight_mask(i) == 0.0) {
+        w_avg_buffer(i) = 0.0;
+        continue;
+      }
+      double eff_size = effective_cluster_sizes(i);
+      if (eff_size > 0) {
+        w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / eff_size;
+      } else {
+        w_avg_buffer(i) = 0.0;
+      }
+    }
+  } else {
+    for (int i = 0; i < w_avg_buffer.size(); ++i) {
+      w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (last(i) + 1 - first(i)));
+    }
   }
   // w_avg = w_avg_buffer # shorthand
+  // Use safe log to avoid log(0) when risk_sum is 0 (can happen with zero-weight observations)
+  Eigen::VectorXd safe_log_risk_sums = risk_sums.array().max(1e-100).log();
   double loglik = ( w_event.array() * eta_event.array() * status.cast<double>().array() ).sum() -
-		   ( risk_sums.array().log() * w_avg_buffer.array() * status.cast<double>().array() ).sum();
+		   ( safe_log_risk_sums.array() * w_avg_buffer.array() * status.cast<double>().array() ).sum();
     
   // forward cumsums for gradient and Hessian
   
@@ -719,6 +743,100 @@ HESSIAN_MATVEC_TYPE hessian_matvec(const EIGEN_REF<Eigen::VectorXd> arg, // # ar
 #include <vector>
 #include <tuple>
 #include <algorithm> // For std::sort and other algorithms
+
+/**
+ * Computes effective cluster sizes (count of non-zero weight observations per tie group).
+ *
+ * @param weights weights in event order
+ * @param first first indices for tie groups (event order)
+ * @param last last indices for tie groups (event order)
+ * @param effective_sizes output buffer for effective cluster sizes
+ */
+// [[Rcpp::export(.compute_effective_cluster_sizes)]]
+void compute_effective_cluster_sizes(
+    const EIGEN_REF<Eigen::VectorXd> weights,
+    const EIGEN_REF<Eigen::VectorXi> first,
+    const EIGEN_REF<Eigen::VectorXi> last,
+    EIGEN_REF<Eigen::VectorXd> effective_sizes
+) {
+    int nevent = weights.size();
+
+    for (int i = 0; i < nevent; ++i) {
+        int fi = first(i);
+        int li = last(i);
+
+        // Calculate the effective cluster size (count of non-zero weights)
+        int effective_cluster_size = 0;
+        for (int j = fi; j <= li; ++j) {
+            if (weights(j) > 0.0) {
+                effective_cluster_size++;
+            }
+        }
+        effective_sizes(i) = static_cast<double>(effective_cluster_size);
+    }
+}
+
+/**
+ * Updates the scaling vector to account for zero-weighted observations.
+ *
+ * Logic:
+ * 1. For each cluster of tied values (defined by first and last),
+ *    calculate the "effective size" (count of observations where weights > 0).
+ * 2. For each element i, calculate the "effective rank" (count of non-zero
+ *    weighted observations in the same cluster appearing before index i).
+ * 3. scaling(i) = effective_rank / effective_size.
+ *
+ * @param weights weights in event order
+ * @param first first indices for tie groups (event order)
+ * @param last last indices for tie groups (event order)
+ * @param scaling output buffer for corrected scaling values
+ */
+// [[Rcpp::export(.compute_weighted_scaling)]]
+void compute_weighted_scaling(
+    const EIGEN_REF<Eigen::VectorXd> weights,
+    const EIGEN_REF<Eigen::VectorXi> first,
+    const EIGEN_REF<Eigen::VectorXi> last,
+    EIGEN_REF<Eigen::VectorXd> scaling
+) {
+    int nevent = weights.size();
+
+    for (int i = 0; i < nevent; ++i) {
+        // If the weight is 0, the scaling value is effectively ignored in survival calculations,
+        // but we'll set it to 0.0 for consistency.
+        if (weights(i) <= 0.0) {
+            scaling(i) = 0.0;
+            continue;
+        }
+
+        int fi = first(i);
+        int li = last(i);
+
+        // 1. Calculate the effective cluster size (denominator)
+        // This is the count of all non-zero weights in the range [fi, li]
+        int effective_cluster_size = 0;
+        for (int j = fi; j <= li; ++j) {
+            if (weights(j) > 0.0) {
+                effective_cluster_size++;
+            }
+        }
+
+        // 2. Calculate the effective rank (numerator)
+        // This is the count of non-zero weights in the range [fi, i-1]
+        int effective_rank = 0;
+        for (int j = fi; j < i; ++j) {
+            if (weights(j) > 0.0) {
+                effective_rank++;
+            }
+        }
+
+        // 3. Perform division with safety check for clusters with only zero weights
+        if (effective_cluster_size > 0) {
+            scaling(i) = static_cast<double>(effective_rank) / static_cast<double>(effective_cluster_size);
+        } else {
+            scaling(i) = 0.0;
+        }
+    }
+}
 
 /**
  * Equivalent of numpy.lexsort for our case where a is stacked_is_start, b is stacked_status_c,
@@ -972,6 +1090,8 @@ PYBIND11_MODULE(coxc, m) {
   m.def("cox_dev", &cox_dev, "Compute Cox deviance");
   m.def("hessian_matvec", &hessian_matvec, "Hessian Matrix Vector");
   m.def("c_preprocess", &preprocess, "C Preprocessing");
-  
+  m.def("compute_weighted_scaling", &compute_weighted_scaling, "Compute scaling corrected for zero weights");
+  m.def("compute_effective_cluster_sizes", &compute_effective_cluster_sizes, "Compute effective cluster sizes for zero-weight handling");
+
 }
 #endif

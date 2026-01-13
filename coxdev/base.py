@@ -21,6 +21,8 @@ from joblib import hash as _hash
 from .coxc import (cox_dev as _cox_dev,
                    hessian_matvec as _hessian_matvec,
                    compute_sat_loglik as _compute_sat_loglik,
+                   compute_weighted_scaling as _compute_weighted_scaling,
+                   compute_effective_cluster_sizes as _compute_effective_cluster_sizes,
                    c_preprocess)
 
     
@@ -151,6 +153,7 @@ class CoxDeviance(object):
         self._first = np.asarray(self._preproc['first']).astype(np.int32)
         self._last = np.asarray(self._preproc['last']).astype(np.int32)
         self._scaling = np.asarray(self._preproc['scaling'])
+        self._original_scaling = self._scaling.copy()  # Store original for restoration
         self._event_map = np.asarray(self._preproc['event_map']).astype(np.int32)
         self._start_map = np.asarray(self._preproc['start_map']).astype(np.int32)
         self._first_start = self._first[self._start_map]
@@ -175,6 +178,7 @@ class CoxDeviance(object):
         self._diag_part_buffer = np.zeros(n)
         self._w_avg_buffer = np.zeros(n)
         self._exp_w_buffer = np.zeros(n)
+        self._effective_cluster_sizes = np.zeros(n)  # for zero-weight handling
 
     def __call__(self,
                  linear_predictor,
@@ -213,11 +217,41 @@ class CoxDeviance(object):
             
             eta = np.asarray(linear_predictor)
             sample_weight = np.asarray(sample_weight)
-            eta = eta - eta.mean()
+            # Center eta using weighted mean so zero-weight obs don't affect centering
+            weight_sum = sample_weight.sum()
+            if weight_sum > 0:
+                eta = eta - np.average(eta, weights=sample_weight)
+            else:
+                eta = eta - eta.mean()
             self._exp_w_buffer[:] = sample_weight * np.exp(np.clip(eta, -np.inf, 30))
 
+            # Compute corrected scaling and effective cluster sizes when some weights are zero
+            # Otherwise restore original scaling
+            has_zero_weights = np.any(sample_weight == 0)
+            if self._efron:
+                if has_zero_weights:
+                    # Reorder weights to event order
+                    w_event = sample_weight[self._event_order]
+                    _compute_weighted_scaling(w_event,
+                                              self._first,
+                                              self._last,
+                                              self._scaling)
+                    _compute_effective_cluster_sizes(w_event,
+                                                     self._first,
+                                                     self._last,
+                                                     self._effective_cluster_sizes)
+                else:
+                    # Restore original scaling when all weights are positive
+                    self._scaling[:] = self._original_scaling
 
-
+            # Pass effective_cluster_sizes and zero_weight_mask only when there are zero weights with Efron
+            if self._efron and has_zero_weights:
+                eff_sizes = self._effective_cluster_sizes
+                w_event = sample_weight[self._event_order]
+                zero_weight_mask = (w_event > 0).astype(float)
+            else:
+                eff_sizes = np.array([])
+                zero_weight_mask = np.array([])
 
             deviance = _cox_dev(eta,
                                 sample_weight,
@@ -237,6 +271,8 @@ class CoxDeviance(object):
                                 self._diag_hessian_buffer,
                                 self._diag_part_buffer,
                                 self._w_avg_buffer,
+                                eff_sizes,
+                                zero_weight_mask,
                                 self._event_reorder_buffers,
                                 self._risk_sum_buffers, #[0] is for coxdev, [1] is for hessian...
                                 self._forward_cumsum_buffers,
