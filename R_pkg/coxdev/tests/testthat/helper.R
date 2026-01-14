@@ -15,15 +15,28 @@ rel_diff_norm <- function(a, b) {
 }
 
 # Function to sample weights
-sample_weights <- function(size = 1) {
+# @param size Number of weights to generate
+# @param zero_weight_fraction Fraction of weights to set to zero (0.0 to 1.0). Default 0.0.
+sample_weights <- function(size = 1, zero_weight_fraction = 0.0) {
   W <- rpois(size, lambda = 2) + runif(size)
   W[(size %/% 3) + 1] <- W[(size %/% 3) + 1] + 2
   W[((size %/% 3) + 1):(size %/% 2)] <- W[((size %/% 3) + 1):(size %/% 2)] + 1
+
+  if (zero_weight_fraction > 0) {
+    n_zero <- max(1, as.integer(size * zero_weight_fraction))
+    n_zero <- min(n_zero, size - 1)  # Keep at least one non-zero
+    zero_idx <- sample(size, n_zero)
+    W[zero_idx] <- 0.0
+  }
+
   W
 }
 
 # Ones for weights
 just_ones <- function(size) rep(1.0, size)
+
+# Weight function factories for parametrized tests
+sample_weights_with_zeros <- function(size) sample_weights(size, zero_weight_fraction = 0.2)
 
 # Function to sample times
 sample_times <- function(size = 1) {

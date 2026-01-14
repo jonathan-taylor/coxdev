@@ -30,6 +30,83 @@ import pytest
 from coxdev import CoxDeviance, StratifiedCoxDeviance
 from simulate import simulate_df, all_combos
 
+# R interface for comparison tests
+try:
+    import rpy2.robjects as rpy
+    from rpy2.robjects.packages import importr
+    from rpy2.robjects import numpy2ri
+    from rpy2.robjects import default_converter
+    has_rpy2 = True
+    np_cv_rules = default_converter + numpy2ri.converter
+    survivalR = importr('survival')
+except ImportError:
+    has_rpy2 = False
+
+
+def compute_sat_loglik_R(event, status, weight):
+    """
+    Compute saturated log-likelihood using R.
+
+    The saturated log-likelihood is computed as:
+        sum over unique event times: -s * log(s)
+    where s is the sum of weights for events at that time.
+    """
+    with np_cv_rules.context():
+        rpy.r.assign('event', np.asarray(event))
+        rpy.r.assign('status', np.asarray(status).astype(int))
+        rpy.r.assign('weight', np.asarray(weight))
+
+        rpy.r('''
+        compute_sat_loglik <- function(event, status, weight) {
+            event_times <- event[status == 1]
+            event_weights <- weight[status == 1]
+            unique_times <- unique(event_times)
+            loglik_sat <- 0
+            for (t in unique_times) {
+                s <- sum(event_weights[event_times == t])
+                if (s > 0) {
+                    loglik_sat <- loglik_sat - s * log(s)
+                }
+            }
+            return(loglik_sat)
+        }
+        ''')
+
+        loglik_sat_R = rpy.r('compute_sat_loglik(event, status, weight)')[0]
+
+    return loglik_sat_R
+
+
+def get_coxph_result(event, status, X, beta, weight, start=None, ties='efron'):
+    """
+    Get Cox model results from R's coxph for comparison.
+
+    Returns deviance (-2*loglik), gradient, and log-likelihood.
+    """
+    with np_cv_rules.context():
+        rpy.r.assign('event', np.asarray(event))
+        rpy.r.assign('status', np.asarray(status).astype(int))
+        rpy.r.assign('X', X)
+        rpy.r.assign('beta', beta)
+        rpy.r.assign('sample_weight', np.asarray(weight))
+        rpy.r.assign('ties', ties)
+        rpy.r('sample_weight = as.numeric(sample_weight)')
+
+        if start is not None:
+            rpy.r.assign('start', np.asarray(start))
+            rpy.r('y <- Surv(start, event, status)')
+        else:
+            rpy.r('y <- Surv(event, status)')
+
+        rpy.r('fit <- coxph(y ~ X, init=beta, weights=sample_weight, '
+              'control=coxph.control(iter.max=0), ties=ties, robust=FALSE)')
+
+        loglik = rpy.r('fit$loglik')
+        rpy.r('score <- colSums(coxph.detail(fit)$scor)')
+        gradient = rpy.r('score')
+
+    return -2 * gradient, -2 * loglik[1], loglik[1]
+
 
 def generate_data_with_ties(n_zero, have_start_times, rng, tie_types=None):
     """
@@ -236,6 +313,120 @@ def test_zero_weights_stratified(tie_breaking, have_start_times, request):
     # Compare diagonal Hessian for non-zero weight observations
     assert np.allclose(result_full.diag_hessian[nonzero_idx], result_subset.diag_hessian, rtol=1e-10), \
         "Stratified diagonal Hessian mismatch"
+
+
+@pytest.mark.skipif(not has_rpy2, reason="rpy2 not available")
+class TestZeroWeightsCompareR:
+    """Tests comparing zero-weight results against R's survival package."""
+
+    @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+    def test_sat_loglik_zero_weights_no_ties(self, tie_breaking):
+        """Compare saturated log-likelihood with R when some weights are zero (no ties)."""
+        event = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        status = np.array([1, 1, 1, 1, 1])
+        weight = np.array([0.0, 2.0, 0.0, 3.0, 1.5])
+
+        cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
+        result = cox(np.zeros(5), weight)
+
+        loglik_sat_R = compute_sat_loglik_R(event, status, weight)
+
+        assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
+            f"Python: {result.loglik_sat}, R: {loglik_sat_R}"
+
+    @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+    def test_sat_loglik_zero_weights_with_ties(self, tie_breaking):
+        """Compare saturated log-likelihood with R when zero weights occur at tied events."""
+        event = np.array([1.0, 1.0, 2.0, 2.0, 3.0])
+        status = np.array([1, 1, 1, 1, 1])
+        weight = np.array([0.0, 2.0, 1.5, 0.0, 3.0])
+
+        cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
+        result = cox(np.zeros(5), weight)
+
+        loglik_sat_R = compute_sat_loglik_R(event, status, weight)
+
+        assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
+            f"Python: {result.loglik_sat}, R: {loglik_sat_R}"
+
+    @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+    def test_sat_loglik_all_zero_at_one_time(self, tie_breaking):
+        """Compare with R when all events at one time have zero weight."""
+        event = np.array([1.0, 1.0, 2.0, 3.0])
+        status = np.array([1, 1, 1, 1])
+        weight = np.array([0.0, 0.0, 2.0, 3.0])
+
+        cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
+        result = cox(np.zeros(4), weight)
+
+        loglik_sat_R = compute_sat_loglik_R(event, status, weight)
+
+        assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
+            f"Python: {result.loglik_sat}, R: {loglik_sat_R}"
+
+    @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+    @pytest.mark.parametrize('have_start_times', [True, False])
+    def test_sat_loglik_zero_weights_simulated(self, tie_breaking, have_start_times):
+        """Compare saturated log-likelihood with R on simulated data with zero weights."""
+        rng = np.random.default_rng(789)
+        data = generate_data_with_ties(n_zero=20, have_start_times=have_start_times, rng=rng)
+
+        cox = CoxDeviance(
+            event=data['event'],
+            status=data['status'],
+            start=data['start'],
+            tie_breaking=tie_breaking
+        )
+        result = cox(data['eta'], data['weights'])
+
+        loglik_sat_R = compute_sat_loglik_R(data['event'], data['status'], data['weights'])
+
+        assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
+            f"Python: {result.loglik_sat}, R: {loglik_sat_R}"
+
+    @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+    @pytest.mark.parametrize('have_start_times', [True, False])
+    def test_deviance_consistency_zero_weights(self, tie_breaking, have_start_times):
+        """
+        Test deviance consistency with R's coxph when zero weights present.
+
+        Verifies: deviance - 2*loglik_sat = -2*loglik_R
+        """
+        rng = np.random.default_rng(101)
+        data = generate_data_with_ties(n_zero=15, have_start_times=have_start_times, rng=rng)
+
+        # Only use non-zero weight subset for R comparison (R's coxph with zero weights)
+        nonzero_idx = data['nonzero_idx']
+        event_sub = data['event'][nonzero_idx]
+        status_sub = data['status'][nonzero_idx]
+        weights_sub = data['weights'][nonzero_idx]
+        start_sub = data['start'][nonzero_idx] if data['start'] is not None else None
+
+        n_sub = len(event_sub)
+        p = max(2, n_sub // 10)
+        X = rng.standard_normal((n_sub, p))
+        beta = rng.standard_normal(p) / np.sqrt(n_sub)
+        eta_sub = X @ beta
+
+        cox = CoxDeviance(
+            event=event_sub,
+            status=status_sub,
+            start=start_sub,
+            tie_breaking=tie_breaking
+        )
+        result = cox(eta_sub, weights_sub)
+
+        _, _, loglik_R = get_coxph_result(
+            event_sub, status_sub, X, beta, weights_sub,
+            start=start_sub, ties=tie_breaking
+        )
+
+        # deviance - 2*loglik_sat should equal -2*loglik_R
+        lhs = result.deviance - 2 * result.loglik_sat
+        rhs = -2 * loglik_R
+
+        assert np.isclose(lhs, rhs, rtol=1e-9), \
+            f"deviance - 2*loglik_sat = {lhs}, -2*loglik_R = {rhs}"
 
 
 if __name__ == "__main__":

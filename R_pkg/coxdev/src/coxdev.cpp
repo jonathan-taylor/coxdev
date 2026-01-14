@@ -702,9 +702,12 @@ HESSIAN_MATVEC_TYPE hessian_matvec(const EIGEN_REF<Eigen::VectorXd> arg, // # ar
 
   // # one less step to compute from above representation
   // # Use safe division: when risk_sums is 0, set result to 0 (no contribution from empty risk sets)
+  // Note: Eigen's select evaluates both branches before selecting, so numerator/risk_sums_sq
+  // would compute 0/0=NaN even when we want to select 0. Inline .max() avoids allocation and
+  // only affects zero elements which get replaced by select anyway.
   Eigen::ArrayXd risk_sums_sq = risk_sums.array().pow(2);
   Eigen::ArrayXd numerator = status.cast<double>().array() * w_avg.array() * risk_sums_arg.array();
-  forward_scratch_buffer = (risk_sums_sq > 0.0).select(numerator / risk_sums_sq, 0.0);
+  forward_scratch_buffer = (risk_sums_sq > 0.0).select(numerator / risk_sums_sq.max(1e-100), 0.0);
 
   if (have_start_times) {
     sum_over_events(event_order,
