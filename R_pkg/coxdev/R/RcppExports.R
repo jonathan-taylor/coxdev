@@ -53,3 +53,23 @@
     .Call(`_coxdev_preprocess`, start, event, status)
 }
 
+.preprocess_stratified <- function(start, event, status, strata, efron) {
+    .Call(`_coxdev_preprocess_stratified_r`, start, event, status, strata, efron)
+}
+
+.cox_dev_stratified <- function(strat_data_xptr, eta, sample_weight) {
+    .Call(`_coxdev_cox_dev_stratified_r`, strat_data_xptr, eta, sample_weight)
+}
+
+.hessian_matvec_stratified <- function(strat_data_xptr, arg, eta, sample_weight) {
+    .Call(`_coxdev_hessian_matvec_stratified_r`, strat_data_xptr, arg, eta, sample_weight)
+}
+
+.get_n_strata <- function(strat_data_xptr) {
+    .Call(`_coxdev_get_n_strata_r`, strat_data_xptr)
+}
+
+.get_n_total <- function(strat_data_xptr) {
+    .Call(`_coxdev_get_n_total_r`, strat_data_xptr)
+}
+

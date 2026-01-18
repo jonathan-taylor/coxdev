@@ -248,6 +248,70 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// preprocess_stratified_r
+SEXP preprocess_stratified_r(const Eigen::Map<Eigen::VectorXd> start, const Eigen::Map<Eigen::VectorXd> event, const Eigen::Map<Eigen::VectorXi> status, const Eigen::Map<Eigen::VectorXi> strata, bool efron);
+RcppExport SEXP _coxdev_preprocess_stratified_r(SEXP startSEXP, SEXP eventSEXP, SEXP statusSEXP, SEXP strataSEXP, SEXP efronSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type start(startSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type event(eventSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXi> >::type status(statusSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXi> >::type strata(strataSEXP);
+    Rcpp::traits::input_parameter< bool >::type efron(efronSEXP);
+    rcpp_result_gen = Rcpp::wrap(preprocess_stratified_r(start, event, status, strata, efron));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cox_dev_stratified_r
+Rcpp::List cox_dev_stratified_r(SEXP strat_data_xptr, const Eigen::Map<Eigen::VectorXd> eta, const Eigen::Map<Eigen::VectorXd> sample_weight);
+RcppExport SEXP _coxdev_cox_dev_stratified_r(SEXP strat_data_xptrSEXP, SEXP etaSEXP, SEXP sample_weightSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type strat_data_xptr(strat_data_xptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type sample_weight(sample_weightSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_dev_stratified_r(strat_data_xptr, eta, sample_weight));
+    return rcpp_result_gen;
+END_RCPP
+}
+// hessian_matvec_stratified_r
+Eigen::VectorXd hessian_matvec_stratified_r(SEXP strat_data_xptr, const Eigen::Map<Eigen::VectorXd> arg, const Eigen::Map<Eigen::VectorXd> eta, const Eigen::Map<Eigen::VectorXd> sample_weight);
+RcppExport SEXP _coxdev_hessian_matvec_stratified_r(SEXP strat_data_xptrSEXP, SEXP argSEXP, SEXP etaSEXP, SEXP sample_weightSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type strat_data_xptr(strat_data_xptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type arg(argSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type sample_weight(sample_weightSEXP);
+    rcpp_result_gen = Rcpp::wrap(hessian_matvec_stratified_r(strat_data_xptr, arg, eta, sample_weight));
+    return rcpp_result_gen;
+END_RCPP
+}
+// get_n_strata_r
+int get_n_strata_r(SEXP strat_data_xptr);
+RcppExport SEXP _coxdev_get_n_strata_r(SEXP strat_data_xptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type strat_data_xptr(strat_data_xptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(get_n_strata_r(strat_data_xptr));
+    return rcpp_result_gen;
+END_RCPP
+}
+// get_n_total_r
+int get_n_total_r(SEXP strat_data_xptr);
+RcppExport SEXP _coxdev_get_n_total_r(SEXP strat_data_xptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type strat_data_xptr(strat_data_xptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(get_n_total_r(strat_data_xptr));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_forward_cumsum", (DL_FUNC) &_coxdev_forward_cumsum, 2},
@@ -263,6 +327,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_compute_effective_cluster_sizes", (DL_FUNC) &_coxdev_compute_effective_cluster_sizes, 4},
     {"_coxdev_compute_weighted_scaling", (DL_FUNC) &_coxdev_compute_weighted_scaling, 4},
     {"_coxdev_preprocess", (DL_FUNC) &_coxdev_preprocess, 3},
+    {"_coxdev_preprocess_stratified_r", (DL_FUNC) &_coxdev_preprocess_stratified_r, 5},
+    {"_coxdev_cox_dev_stratified_r", (DL_FUNC) &_coxdev_cox_dev_stratified_r, 3},
+    {"_coxdev_hessian_matvec_stratified_r", (DL_FUNC) &_coxdev_hessian_matvec_stratified_r, 4},
+    {"_coxdev_get_n_strata_r", (DL_FUNC) &_coxdev_get_n_strata_r, 1},
+    {"_coxdev_get_n_total_r", (DL_FUNC) &_coxdev_get_n_total_r, 1},
     {NULL, NULL, 0}
 };
 

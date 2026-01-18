@@ -1084,6 +1084,9 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
 
 
 #ifdef PY_INTERFACE
+// Forward declaration for stratified bindings
+void bind_stratified(pybind11::module& m);
+
 // pybind11 module stuff
 PYBIND11_MODULE(coxc, m) {
   m.doc() = "Cumsum implementations";
@@ -1099,5 +1102,7 @@ PYBIND11_MODULE(coxc, m) {
   m.def("compute_weighted_scaling", &compute_weighted_scaling, "Compute scaling corrected for zero weights");
   m.def("compute_effective_cluster_sizes", &compute_effective_cluster_sizes, "Compute effective cluster sizes for zero-weight handling");
 
+  // Add stratified Cox bindings
+  bind_stratified(m);
 }
 #endif
