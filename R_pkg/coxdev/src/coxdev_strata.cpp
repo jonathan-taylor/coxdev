@@ -26,26 +26,81 @@
 #include <cmath>
 #include <numeric>
 
-// Forward declarations for functions from coxdev.cpp that we'll reuse
-void forward_cumsum(const EIGEN_REF<Eigen::VectorXd> sequence,
-                    EIGEN_REF<Eigen::VectorXd> output);
+// ============================================================================
+// HELPER FUNCTIONS (moved from coxdev.cpp for consolidation)
+// ============================================================================
 
+// Compute cumsum with a padding of 0 at the beginning
+void forward_cumsum(const EIGEN_REF<Eigen::VectorXd> sequence,
+                    EIGEN_REF<Eigen::VectorXd> output)
+{
+  if (sequence.size() + 1 != output.size()) {
+    ERROR_MSG("forward_cumsum: output size must be one longer than input's.");
+  }
+  double sum = 0.0;
+  output(0) = sum;
+  for (int i = 1; i < output.size(); ++i) {
+    sum = sum + sequence(i - 1);
+    output(i) = sum;
+  }
+}
+
+// Compute reversed cumsums of a sequence in start and/or event order
 void reverse_cumsums(const EIGEN_REF<Eigen::VectorXd> sequence,
                      EIGEN_REF<Eigen::VectorXd> event_buffer,
                      EIGEN_REF<Eigen::VectorXd> start_buffer,
                      const EIGEN_REF<Eigen::VectorXi> event_order,
                      const EIGEN_REF<Eigen::VectorXi> start_order,
-                     bool do_event,
-                     bool do_start);
+                     bool do_event = false,
+                     bool do_start = false)
+{
+  double sum = 0.0;
+  int n = sequence.size();
+  if (do_event) {
+    if (sequence.size() + 1 != event_buffer.size()) {
+      ERROR_MSG("reverse_cumsums: event_buffer size must be one more than input's.");
+    }
+    event_buffer(n) = sum;
+    for (int i = n - 1; i >= 0; --i) {
+      sum = sum + sequence(event_order(i));
+      event_buffer(i) = sum;
+    }
+  }
+  if (do_start) {
+    if (sequence.size() + 1 != start_buffer.size()) {
+      ERROR_MSG("reverse_cumsums: start_buffer size must be one more than input's.");
+    }
+    sum = 0.0;
+    start_buffer(n) = sum;
+    for (int i = n - 1; i >= 0; --i) {
+      sum = sum + sequence(start_order(i));
+      start_buffer(i) = sum;
+    }
+  }
+}
 
+// Reorder an event-ordered vector into native order
 void to_native_from_event(EIGEN_REF<Eigen::VectorXd> arg,
                           const EIGEN_REF<Eigen::VectorXi> event_order,
-                          EIGEN_REF<Eigen::VectorXd> reorder_buffer);
+                          EIGEN_REF<Eigen::VectorXd> reorder_buffer)
+{
+  reorder_buffer = arg;
+  for (int i = 0; i < event_order.size(); ++i) {
+    arg(event_order(i)) = reorder_buffer(i);
+  }
+}
 
+// Reorder a native-ordered vector into event order
 void to_event_from_native(const EIGEN_REF<Eigen::VectorXd> arg,
                           const EIGEN_REF<Eigen::VectorXi> event_order,
-                          EIGEN_REF<Eigen::VectorXd> reorder_buffer);
+                          EIGEN_REF<Eigen::VectorXd> reorder_buffer)
+{
+  for (int i = 0; i < event_order.size(); ++i) {
+    reorder_buffer(i) = arg(event_order(i));
+  }
+}
 
+// Compute cumsums of scaling**i / risk_sums**j weighted by w_avg (within status==1)
 void forward_prework(const EIGEN_REF<Eigen::VectorXi> status,
                      const EIGEN_REF<Eigen::VectorXd> w_avg,
                      const EIGEN_REF<Eigen::VectorXd> scaling,
@@ -54,24 +109,91 @@ void forward_prework(const EIGEN_REF<Eigen::VectorXi> status,
                      int j,
                      EIGEN_REF<Eigen::VectorXd> moment_buffer,
                      const EIGEN_REF<Eigen::VectorXd> arg,
-                     bool use_w_avg);
+                     bool use_w_avg = true)
+{
+  // Use safe division to avoid inf when risk_sums is 0
+  Eigen::VectorXd safe_risk_sums = risk_sums.array().max(1e-100);
+  if (use_w_avg) {
+    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / safe_risk_sums.array().pow(j);
+  } else {
+    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / safe_risk_sums.array().pow(j);
+  }
+  if (arg.size() > 0) {
+    moment_buffer = moment_buffer.array() * arg.array();
+  }
+}
 
-void compute_weighted_scaling(
-    const EIGEN_REF<Eigen::VectorXd> weights,
-    const EIGEN_REF<Eigen::VectorXi> first,
-    const EIGEN_REF<Eigen::VectorXi> last,
-    EIGEN_REF<Eigen::VectorXd> scaling);
-
+// Compute effective cluster sizes (count of non-zero weight observations per tie group)
 void compute_effective_cluster_sizes(
     const EIGEN_REF<Eigen::VectorXd> weights,
     const EIGEN_REF<Eigen::VectorXi> first,
     const EIGEN_REF<Eigen::VectorXi> last,
-    EIGEN_REF<Eigen::VectorXd> effective_sizes);
+    EIGEN_REF<Eigen::VectorXd> effective_sizes)
+{
+    int nevent = weights.size();
+    for (int i = 0; i < nevent; ++i) {
+        int fi = first(i);
+        int li = last(i);
+        int effective_cluster_size = 0;
+        for (int j = fi; j <= li; ++j) {
+            if (weights(j) > 0.0) {
+                effective_cluster_size++;
+            }
+        }
+        effective_sizes(i) = static_cast<double>(effective_cluster_size);
+    }
+}
 
-// lexsort from coxdev.cpp
+// Update scaling vector to account for zero-weighted observations
+void compute_weighted_scaling(
+    const EIGEN_REF<Eigen::VectorXd> weights,
+    const EIGEN_REF<Eigen::VectorXi> first,
+    const EIGEN_REF<Eigen::VectorXi> last,
+    EIGEN_REF<Eigen::VectorXd> scaling)
+{
+    int nevent = weights.size();
+    for (int i = 0; i < nevent; ++i) {
+        if (weights(i) <= 0.0) {
+            scaling(i) = 0.0;
+            continue;
+        }
+        int fi = first(i);
+        int li = last(i);
+        int effective_cluster_size = 0;
+        for (int j = fi; j <= li; ++j) {
+            if (weights(j) > 0.0) {
+                effective_cluster_size++;
+            }
+        }
+        int effective_rank = 0;
+        for (int j = fi; j < i; ++j) {
+            if (weights(j) > 0.0) {
+                effective_rank++;
+            }
+        }
+        if (effective_cluster_size > 0) {
+            scaling(i) = static_cast<double>(effective_rank) / static_cast<double>(effective_cluster_size);
+        } else {
+            scaling(i) = 0.0;
+        }
+    }
+}
+
+// Lexicographic sort for preprocessing
 std::vector<int> lexsort(const Eigen::VectorXi & a,
                          const Eigen::VectorXi & b,
-                         const Eigen::VectorXd & c);
+                         const Eigen::VectorXd & c)
+{
+  std::vector<int> idx(a.size());
+  std::iota(idx.begin(), idx.end(), 0);
+  auto comparator = [&](int i, int j) {
+    if (c[i] != c[j]) return c[i] < c[j];
+    if (b[i] != b[j]) return b[i] < b[j];
+    return a[i] < a[j];
+  };
+  std::sort(idx.begin(), idx.end(), comparator);
+  return idx;
+}
 
 // ============================================================================
 // SINGLE STRATUM HELPER FUNCTIONS
@@ -1057,8 +1179,81 @@ public:
     int n_total() const { return strat_data.n_total; }
 };
 
-// Register Python bindings in the existing coxc module
-void bind_stratified(py::module_& m) {
+// Preprocessing function for Python (returns dict with arrays)
+py::tuple c_preprocess(
+    py::array_t<double> start_arr,
+    py::array_t<double> event_arr,
+    py::array_t<int> status_arr)
+{
+    auto start_buf = start_arr.request();
+    auto event_buf = event_arr.request();
+    auto status_buf = status_arr.request();
+
+    int nevent = status_buf.size;
+    Eigen::Map<Eigen::VectorXd> start((double*)start_buf.ptr, nevent);
+    Eigen::Map<Eigen::VectorXd> event((double*)event_buf.ptr, nevent);
+    Eigen::Map<Eigen::VectorXi> status((int*)status_buf.ptr, nevent);
+
+    // Use the existing preprocessing logic
+    CoxPreprocessed<double, int> preproc;
+    preprocess_single_stratum(start, event, status, preproc, true);
+
+    // Create output arrays
+    py::array_t<int> event_order_out(nevent);
+    py::array_t<int> start_order_out(nevent);
+    auto eo_ptr = event_order_out.mutable_data();
+    auto so_ptr = start_order_out.mutable_data();
+    for (int i = 0; i < nevent; ++i) {
+        eo_ptr[i] = preproc.event_order(i);
+        so_ptr[i] = preproc.start_order(i);
+    }
+
+    // Create dict with preprocessing results
+    py::dict result;
+
+    py::array_t<int> first_out(nevent), last_out(nevent);
+    py::array_t<int> event_map_out(nevent), start_map_out(nevent);
+    py::array_t<double> scaling_out(nevent);
+    py::array_t<int> status_out(nevent);
+    py::array_t<double> event_out(nevent), start_out(nevent);
+
+    auto first_ptr = first_out.mutable_data();
+    auto last_ptr = last_out.mutable_data();
+    auto event_map_ptr = event_map_out.mutable_data();
+    auto start_map_ptr = start_map_out.mutable_data();
+    auto scaling_ptr = scaling_out.mutable_data();
+    auto status_ptr_out = status_out.mutable_data();
+    auto event_ptr_out = event_out.mutable_data();
+    auto start_ptr_out = start_out.mutable_data();
+
+    for (int i = 0; i < nevent; ++i) {
+        first_ptr[i] = preproc.first(i);
+        last_ptr[i] = preproc.last(i);
+        event_map_ptr[i] = preproc.event_map(i);
+        start_map_ptr[i] = preproc.start_map(i);
+        scaling_ptr[i] = preproc.scaling(i);
+        status_ptr_out[i] = preproc.status(i);
+        event_ptr_out[i] = preproc.event(i);
+        start_ptr_out[i] = preproc.start(i);
+    }
+
+    result["first"] = first_out;
+    result["last"] = last_out;
+    result["event_map"] = event_map_out;
+    result["start_map"] = start_map_out;
+    result["scaling"] = scaling_out;
+    result["status"] = status_out;
+    result["event"] = event_out;
+    result["start"] = start_out;
+
+    return py::make_tuple(result, event_order_out, start_order_out);
+}
+
+// Main module initialization
+PYBIND11_MODULE(coxc, m) {
+    m.doc() = "Cox deviance implementations (unified stratified)";
+
+    // StratifiedCoxDevianceCpp class
     py::class_<StratifiedCoxDevianceCpp>(m, "StratifiedCoxDevianceCpp")
         .def(py::init<py::array_t<double>, py::array_t<int>, py::array_t<int>, py::array_t<double>, bool>(),
              py::arg("event"), py::arg("status"), py::arg("strata"), py::arg("start"), py::arg("efron") = true)
@@ -1068,6 +1263,12 @@ void bind_stratified(py::module_& m) {
              py::arg("arg"), py::arg("linear_predictor"), py::arg("sample_weight"))
         .def_property_readonly("n_strata", &StratifiedCoxDevianceCpp::n_strata)
         .def_property_readonly("n_total", &StratifiedCoxDevianceCpp::n_total);
+
+    // Preprocessing function
+    m.def("c_preprocess", &c_preprocess, "Preprocess survival data");
+
+    // Helper functions (for tests that use them directly)
+    m.def("reverse_cumsums", &reverse_cumsums, "Reversed cumsum a vector");
 }
 
 #endif // PY_INTERFACE

@@ -18,7 +18,6 @@ __version__ = _version.get_versions()['version']
 import numpy as np
 
 from .coxc import (StratifiedCoxDevianceCpp as _StratifiedCoxDevianceCpp,
-                   hessian_matvec as _hessian_matvec,
                    c_preprocess)
 
     
@@ -235,20 +234,14 @@ class CoxInformation(LinearOperator):
     matrix (negative Hessian) of the Cox model, allowing efficient computation
     without explicitly forming the full matrix.
 
-    Supports two calling conventions:
-    - New: CoxInformation(coxdev, linear_predictor, sample_weight) for unified C++ path
-    - Legacy: CoxInformation(result=result, coxdev=coxdev) for pure Python StratifiedCoxDeviance
-
     Parameters
     ----------
     coxdev : CoxDeviance
         The CoxDeviance object used for computations.
-    linear_predictor : np.ndarray, optional
-        Linear predictor values (X @ beta). Required for new path.
+    linear_predictor : np.ndarray
+        Linear predictor values (X @ beta).
     sample_weight : np.ndarray, optional
         Sample weights. If None, uses equal weights.
-    result : CoxDevianceResult, optional
-        Result object from deviance computation. For legacy path.
 
     Attributes
     ----------
@@ -259,34 +252,22 @@ class CoxInformation(LinearOperator):
     """
 
     def __init__(self,
-                 coxdev: CoxDeviance = None,
-                 linear_predictor: np.ndarray = None,
-                 sample_weight: np.ndarray = None,
-                 *,
-                 result: CoxDevianceResult = None):
+                 coxdev: CoxDeviance,
+                 linear_predictor: np.ndarray,
+                 sample_weight: np.ndarray = None):
         """Initialize the linear operator dimensions."""
-        # Legacy calling convention: CoxInformation(result=result, coxdev=coxdev)
-        if result is not None:
-            self.coxdev = coxdev
-            self.linear_predictor = np.asarray(result.linear_predictor).astype(float)
-            self.sample_weight = np.asarray(result.sample_weight).astype(float)
-            self._legacy_mode = True
-            n = self.coxdev._status.shape[0]
+        self.coxdev = coxdev
+        self.linear_predictor = np.asarray(linear_predictor).astype(float)
+
+        if sample_weight is None:
+            self.sample_weight = np.ones_like(self.linear_predictor)
         else:
-            # New calling convention: CoxInformation(coxdev, linear_predictor, sample_weight)
-            self.coxdev = coxdev
-            self.linear_predictor = np.asarray(linear_predictor).astype(float)
+            self.sample_weight = np.asarray(sample_weight).astype(float)
 
-            if sample_weight is None:
-                self.sample_weight = np.ones_like(self.linear_predictor)
-            else:
-                self.sample_weight = np.asarray(sample_weight).astype(float)
+        n = coxdev._n
 
-            self._legacy_mode = False
-            n = coxdev._n
-
-            # Ensure buffers are computed by calling __call__
-            self.coxdev(self.linear_predictor, self.sample_weight)
+        # Ensure buffers are computed by calling __call__
+        self.coxdev(self.linear_predictor, self.sample_weight)
 
         self.shape = (n, n)
         self.dtype = float
@@ -307,41 +288,10 @@ class CoxInformation(LinearOperator):
         """
         # Negate the input (information = -Hessian of log-likelihood)
         v = -np.asarray(arg).reshape(-1).astype(float)
-
-        if self._legacy_mode:
-            # Legacy mode: use _hessian_matvec with internal buffers
-            coxdev = self.coxdev
-            _hessian_matvec(v,
-                            self.linear_predictor,
-                            self.sample_weight,
-                            coxdev._risk_sum_buffers[0],
-                            coxdev._diag_part_buffer,
-                            coxdev._w_avg_buffer,
-                            coxdev._exp_w_buffer,
-                            coxdev._event_cumsum,
-                            coxdev._start_cumsum,
-                            coxdev._event_order,
-                            coxdev._start_order,
-                            coxdev._status,
-                            coxdev._first,
-                            coxdev._last,
-                            coxdev._scaling,
-                            coxdev._event_map,
-                            coxdev._start_map,
-                            coxdev._risk_sum_buffers,
-                            coxdev._forward_cumsum_buffers,
-                            coxdev._forward_scratch_buffer,
-                            coxdev._reverse_cumsum_buffers,
-                            coxdev._hess_matvec_buffer,
-                            coxdev._have_start_times,
-                            coxdev._efron)
-            return coxdev._hess_matvec_buffer.copy()
-        else:
-            # New mode: use C++ stratified implementation
-            result = self.coxdev._cpp.hessian_matvec(
-                v, self.linear_predictor, self.sample_weight
-            )
-            return result
+        result = self.coxdev._cpp.hessian_matvec(
+            v, self.linear_predictor, self.sample_weight
+        )
+        return result
 
     def _adjoint(self, arg):
         """

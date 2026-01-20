@@ -159,9 +159,9 @@ test_that("zero weight at first event-ordered position works correctly", {
   start <- event - runif(n, 0.1, 0.5)
   status <- as.integer(c(1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1))
 
-  # Get the event order
-  prep <- coxdev:::.preprocess(start, event, status)
-  event_order <- prep[[2]]
+  # Get the event order (order by event time, then by status descending for ties)
+  # This matches the preprocessing logic: events before censoring at same time
+  event_order <- order(event, -status) - 1L  # -1L for 0-based indexing to match C++
 
   # Create weights where the first observation in event order has zero weight
   weights <- rep(1.0, n)
