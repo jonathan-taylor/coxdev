@@ -466,10 +466,10 @@ static double cox_dev_single_stratum(
     }
 
     // Compute w_avg
-    if (ws.effective_cluster_sizes(0) > 0.0) {
+    if (ws.use_zero_weight_handling) {
         // Use effective cluster sizes (for zero-weight handling)
         for (int i = 0; i < n; ++i) {
-            if (ws.zero_weight_mask.size() > 0 && ws.zero_weight_mask(i) == 0.0) {
+            if (ws.zero_weight_mask(i) == 0.0) {
                 ws.w_avg_buffer(i) = 0.0;
                 continue;
             }
@@ -840,11 +840,16 @@ static double cox_dev_stratified_impl(
             for (int i = 0; i < n_s; ++i) {
                 ws.zero_weight_mask(i) = (w_event(i) > 0.0) ? 1.0 : 0.0;
             }
+            ws.use_zero_weight_handling = true;  // enable zero-weight handling
         } else if (strat_data.efron_stratum[s]) {
             // Restore original scaling
             preproc.scaling = preproc.original_scaling;
             // Reset effective_cluster_sizes to indicate standard mode
             ws.effective_cluster_sizes.setZero();
+            ws.use_zero_weight_handling = false;  // disable zero-weight handling
+        } else {
+            // Breslow or no ties - no zero-weight handling needed
+            ws.use_zero_weight_handling = false;
         }
 
         // Compute saturated log-likelihood for this stratum

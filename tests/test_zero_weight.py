@@ -429,5 +429,78 @@ class TestZeroWeightsCompareR:
             f"deviance - 2*loglik_sat = {lhs}, -2*loglik_R = {rhs}"
 
 
+def test_zero_weight_at_first_event_ordered_position():
+    """
+    Regression test for bug where first observation in event order has zero weight.
+
+    This tests that the stratified C++ implementation correctly handles the case
+    where effective_cluster_sizes[0] = 0 because the first event-ordered observation
+    has zero weight. Previously, the code checked effective_cluster_sizes[0] > 0
+    to decide whether to use zero-weight handling, which failed in this case.
+
+    The fix was to use an explicit flag (use_zero_weight_handling) instead of
+    checking the first element of effective_cluster_sizes.
+    """
+    from coxdev.stratified_cpp import StratifiedCoxDevianceCpp
+
+    rng = np.random.default_rng(42)
+
+    # Create data where first observation in event order will have zero weight
+    # Use ties to ensure Efron correction is needed
+    n = 20
+    event = np.array([1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], dtype=float)
+    start = event - rng.uniform(0.1, 0.5, n)
+    status = np.array([1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1], dtype=int)
+
+    # Use the unstratified CoxDeviance to get the event order (via preprocessing)
+    cox_temp = CoxDeviance(event=event, start=start, status=status, tie_breaking='efron')
+    event_order = cox_temp._event_order
+
+    # Create weights where the first observation in event order has zero weight
+    weights = np.ones(n)
+    weights[event_order[0]] = 0.0
+
+    # Verify our setup: first event-ordered observation should have zero weight
+    w_event = weights[event_order]
+    assert w_event[0] == 0.0, "First event-ordered observation should have zero weight"
+
+    eta = rng.standard_normal(n) * 0.5
+
+    # Test with stratified implementation (single stratum)
+    strata = np.ones(n, dtype=np.int32)
+    cox_strat = StratifiedCoxDevianceCpp(
+        event=event, start=start, status=status,
+        strata=strata, tie_breaking='efron'
+    )
+    result_strat = cox_strat(eta, sample_weight=weights)
+
+    # Test with unstratified implementation
+    cox_unstrat = CoxDeviance(event=event, start=start, status=status, tie_breaking='efron')
+    result_unstrat = cox_unstrat(eta, sample_weight=weights)
+
+    # The key test: stratified should match unstratified
+    assert np.isclose(result_strat.deviance, result_unstrat.deviance, rtol=1e-10), \
+        f"Deviance mismatch: stratified={result_strat.deviance}, unstratified={result_unstrat.deviance}"
+
+    assert np.isclose(result_strat.loglik_sat, result_unstrat.loglik_sat, rtol=1e-10), \
+        "Loglik_sat mismatch"
+
+    assert np.allclose(result_strat.gradient, result_unstrat.gradient, rtol=1e-10), \
+        "Gradient mismatch"
+
+    # Also verify against subset (non-zero weights only)
+    nonzero_idx = weights > 0
+    cox_subset = CoxDeviance(
+        event=event[nonzero_idx],
+        start=start[nonzero_idx],
+        status=status[nonzero_idx],
+        tie_breaking='efron'
+    )
+    result_subset = cox_subset(eta[nonzero_idx], sample_weight=weights[nonzero_idx])
+
+    assert np.isclose(result_strat.deviance, result_subset.deviance, rtol=1e-10), \
+        f"Deviance mismatch with subset: stratified={result_strat.deviance}, subset={result_subset.deviance}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

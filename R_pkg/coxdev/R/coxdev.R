@@ -142,190 +142,30 @@
 #' cov  <- solve(I)
 #' @export
 make_cox_deviance <- function(event,
-                              start = NA, # if NA, indicates just right censored data
+                              start = NA,
                               status,
                               tie_breaking = c('efron', 'breslow'),
                               weight = rep(1.0, length(event))) {
+  # Unified implementation: use stratified code with single stratum
+  # This reduces code duplication and ensures consistent behavior
+  tie_breaking <- match.arg(tie_breaking)
+  n <- length(event)
 
-  tie_breaking  <- match.arg(tie_breaking)
+  # Create single-stratum vector (all observations in stratum 1)
+  strata <- rep(1L, n)
 
-  event <- as.numeric(event)
-  nevent <- length(event)
-  status <- as.integer(status)
-  if (length(start) != length(status)) {
-    start <- rep(-Inf, nevent)
-    have_start_times <- FALSE
-  } else {
-    start  <- as.numeric(start)
-    have_start_times <- TRUE
-  }
+  # Call stratified implementation
+  result <- make_stratified_cox_deviance(
+    event = event,
+    start = start,
+    status = status,
+    strata = strata,
+    tie_breaking = tie_breaking
+  )
 
-  ## prep_result  <- preprocess(start, event, status) # R version of preprocess
-  ## event_order  <- as.integer(prep_result[[2L]])  - 1L  ## for R 1-based indexing!
-  ## start_order  <- as.integer(prep_result[[3L]])  - 1L  ## for R 1-based indexing!
-  prep_result  <- .preprocess(start, event, status)  # C version of preprocess
-  event_order  <- as.integer(prep_result[[2L]])
-  start_order  <- as.integer(prep_result[[3L]])
-  preproc  <- prep_result[[1L]]
-  efron  <- (tie_breaking == 'efron') && (norm(matrix(preproc$scaling), "2") > 0)
-  status <- preproc[['status']]
-  event <- preproc[['event']]
-  start <- preproc[['start']]
-  first <- preproc[['first']]
-  last <- preproc[['last']]
-  scaling <- preproc[['scaling']]
-  original_scaling <- scaling  # Store original for restoration
-  event_map <- preproc[['event_map']]
-  start_map <- preproc[['start_map']]
-
-  ## This check is now moved in to C++ code.
-  ## first_start <- first[start_map + 1]  ## Only used for next check!
-  ## if (!all(first_start == start_map)) {
-  ##   stop('first_start disagrees with start_map')
-  ## }
-
-  n <- length(status)
-
-  # allocate necessary memory
-
-  T_1_term <- numeric(n)
-  T_2_term <- numeric(n)
-  # event_reorder_buffers = np.zeros((3, n))
-  event_reorder_buffers <- lapply(seq_len(3), function(x) numeric(n))
-  # forward_cumsum_buffers = np.zeros((5, n+1))
-  forward_cumsum_buffers <- lapply(seq_len(5), function(x) numeric(n + 1))
-  forward_scratch_buffer <- numeric(n)
-  # reverse_cumsum_buffers = np.zeros((4, n+1))
-  reverse_cumsum_buffers <- lapply(seq_len(4), function(x) numeric(n + 1))
-  # risk_sum_buffers = np.zeros((2, n))
-  risk_sum_buffers <- list(numeric(n), numeric(n))
-  hess_matvec_buffer <- numeric(n)
-  grad_buffer <- numeric(n)
-  diag_hessian_buffer <- numeric(n)
-  diag_part_buffer <- numeric(n)
-  w_avg_buffer <- numeric(n)
-  exp_w_buffer <- numeric(n)
-  effective_cluster_sizes <- numeric(n)  # for zero-weight handling
-
-  coxdev <- function (linear_predictor, sample_weight = NULL) {
-    if (is.null(sample_weight)) {
-      sample_weight  <- rep(1.0, length(linear_predictor))
-    } else {
-      sample_weight  <- as.numeric(sample_weight)
-    }
-    loglik_sat  <- .compute_sat_loglik(first,
-                                       last,
-                                       sample_weight,
-                                       event_order,
-                                       status,
-                                       forward_cumsum_buffers[[1]])
-    # Center eta using weighted mean so zero-weight obs don't affect centering
-    weight_sum <- sum(sample_weight)
-    if (weight_sum > 0) {
-      eta <- linear_predictor - weighted.mean(linear_predictor, sample_weight)
-    } else {
-      eta <- linear_predictor - mean(linear_predictor)
-    }
-    exp_w_buffer <<- sample_weight * exp(eta) ## Note the double arrow
-
-    # Compute corrected scaling and effective cluster sizes when some weights are zero
-    has_zero_weights <- any(sample_weight == 0)
-    if (efron) {
-      if (has_zero_weights) {
-        # Reorder weights to event order
-        w_event <- sample_weight[event_order + 1L]  # +1 for R 1-based indexing
-        .compute_weighted_scaling(w_event, first, last, scaling)
-        .compute_effective_cluster_sizes(w_event, first, last, effective_cluster_sizes)
-      } else {
-        # Restore original scaling when all weights are positive
-        scaling <<- original_scaling
-      }
-    }
-
-    # Pass effective_cluster_sizes and zero_weight_mask only when there are zero weights with Efron
-    if (efron && has_zero_weights) {
-      eff_sizes <- effective_cluster_sizes
-      w_event <- sample_weight[event_order + 1L]
-      zero_weight_mask <- as.numeric(w_event > 0)
-    } else {
-      eff_sizes <- numeric(0)
-      zero_weight_mask <- numeric(0)
-    }
-
-    ## The C++ code has to be modified for R lists!
-    deviance  <- .cox_dev(eta,
-                          sample_weight,
-                          exp_w_buffer,
-                          event_order,
-                          start_order,
-                          status,
-                          first,
-                          last,
-                          scaling,
-                          event_map,
-                          start_map,
-                          loglik_sat,
-                          T_1_term,
-                          T_2_term,
-                          grad_buffer,
-                          diag_hessian_buffer,
-                          diag_part_buffer,
-                          w_avg_buffer,
-                          eff_sizes,
-                          zero_weight_mask,
-                          event_reorder_buffers,
-                          risk_sum_buffers, #[[1]] is for coxdev, [[2]] is for hessian...
-                          forward_cumsum_buffers,
-                          forward_scratch_buffer,
-                          reverse_cumsum_buffers, #[1:3] are for risk sums, [4:5] used for hessian risk*arg sums
-                          have_start_times,
-                          efron)
-    list(linear_predictor = linear_predictor,
-         sample_weight = sample_weight,
-         loglik_sat = loglik_sat,
-         deviance = deviance,
-         gradient = grad_buffer,
-         diag_hessian = diag_hessian_buffer)
-  }
-  information  <- function(eta, sample_weight = NULL) {
-
-    coxdev_result <- coxdev(eta, sample_weight)
-
-    event_cumsum <- reverse_cumsum_buffers[[1L]]
-    start_cumsum <- reverse_cumsum_buffers[[2L]]
-    risk_sums  <- risk_sum_buffers[[1L]]
-
-    matvec <- function(arg) {
-      # Have to handle both a vector or a matrix
-      arg <- as.matrix(-arg)
-      apply(arg, 2, .hessian_matvec,
-            eta = eta,
-            sample_weight = coxdev_result$sample_weight,
-            risk_sums = risk_sums,
-            diag_part = diag_part_buffer,
-            w_avg = w_avg_buffer,
-            exp_w = exp_w_buffer,
-            event_cumsum = event_cumsum,
-            start_cumsum = start_cumsum,
-            event_order = event_order,
-            start_order = start_order,
-            status = status,
-            first = first,
-            last = last,
-            scaling = scaling,
-            event_map = event_map,
-            start_map = start_map,
-            risk_sum_buffers = risk_sum_buffers,
-            forward_cumsum_buffers = forward_cumsum_buffers,
-            forward_scratch_buffer = forward_scratch_buffer,
-            reverse_cumsum_buffers = reverse_cumsum_buffers,
-            hess_matvec_buffer = hess_matvec_buffer,
-            have_start_times = have_start_times,
-            efron = efron)
-    }
-    matvec
-  }
-  list(coxdev = coxdev, information = information)
+  # Return only coxdev and information for backward compatibility
+  # (stratified version also returns n_strata and n_total)
+  list(coxdev = result$coxdev, information = result$information)
 }
 
 #' Make stratified cox deviance object (C++ implementation)

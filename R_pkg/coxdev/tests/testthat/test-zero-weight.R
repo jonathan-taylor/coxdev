@@ -143,3 +143,67 @@ test_that("zero weights work correctly for breslow without start times", {
     check_zero_weights(tie_type, "breslow", FALSE, nrep = 3, size = 5, tol = tol)
   }
 })
+
+# Regression test for bug where first observation in event order has zero weight
+# This tests that the stratified C++ implementation correctly handles the case
+# where effective_cluster_sizes(0) = 0 because the first event-ordered observation
+# has zero weight. Previously, the code checked effective_cluster_sizes(0) > 0
+# to decide whether to use zero-weight handling, which failed in this case.
+test_that("zero weight at first event-ordered position works correctly", {
+  set.seed(42)  # For reproducibility
+
+  # Create data where first observation in event order will have zero weight
+  # Use ties to ensure Efron correction is needed
+  n <- 20
+  event <- c(1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+  start <- event - runif(n, 0.1, 0.5)
+  status <- as.integer(c(1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1))
+
+  # Get the event order
+  prep <- coxdev:::.preprocess(start, event, status)
+  event_order <- prep[[2]]
+
+  # Create weights where the first observation in event order has zero weight
+  weights <- rep(1.0, n)
+  weights[event_order[1] + 1L] <- 0  # +1 for R 1-based indexing
+
+  # Verify our setup: first event-ordered observation should have zero weight
+  w_event <- weights[event_order + 1L]
+  expect_equal(w_event[1], 0, info = "First event-ordered observation should have zero weight")
+
+  eta <- rnorm(n) * 0.5
+
+  # Create cox deviance with Efron (which exercises the problematic code path)
+  cox <- make_cox_deviance(event = event, start = start, status = status,
+                            tie_breaking = "efron")
+  result_full <- cox$coxdev(eta, weights)
+
+  # Compare with subset (non-zero weights only)
+  nonzero_idx <- weights > 0
+  cox_subset <- make_cox_deviance(
+    event = event[nonzero_idx],
+    start = start[nonzero_idx],
+    status = status[nonzero_idx],
+    tie_breaking = "efron"
+  )
+  result_subset <- cox_subset$coxdev(eta[nonzero_idx], weights[nonzero_idx])
+
+  # The key test: deviance should match
+  expect_true(
+    all_close(result_full$deviance, result_subset$deviance, rtol = 1e-10),
+    info = sprintf("Deviance mismatch: full=%f, subset=%f",
+                   result_full$deviance, result_subset$deviance)
+  )
+
+  # loglik_sat should also match
+  expect_true(
+    all_close(result_full$loglik_sat, result_subset$loglik_sat, rtol = 1e-10),
+    info = "Loglik_sat mismatch"
+  )
+
+  # Gradient for non-zero weights should match
+  expect_true(
+    all_close(result_full$gradient[nonzero_idx], result_subset$gradient, rtol = 1e-10),
+    info = "Gradient mismatch"
+  )
+})

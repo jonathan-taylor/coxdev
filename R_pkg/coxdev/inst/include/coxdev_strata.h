@@ -80,6 +80,7 @@ struct CoxWorkspace {
     // Zero-weight handling
     Eigen::VectorXd effective_cluster_sizes;
     Eigen::VectorXd zero_weight_mask;
+    bool use_zero_weight_handling;  // flag indicating whether to use effective_cluster_sizes
 
     // Input extraction buffers (for scatter/gather from global to local)
     Eigen::VectorXd eta_local_buffer;
@@ -98,6 +99,7 @@ struct CoxWorkspace {
         hess_matvec_buffer.resize(n);
         effective_cluster_sizes.resize(n);
         zero_weight_mask.resize(n);
+        use_zero_weight_handling = false;  // initialize flag
         eta_local_buffer.resize(n);
         weight_local_buffer.resize(n);
         matvec_result_buffer.resize(n);
