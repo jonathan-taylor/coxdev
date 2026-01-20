@@ -4,16 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current Focus
 
-We have been working with `coxdev` and `glmnet` in parallel, making updates in `coxdev` and moving them into `glmnet`. Focus is now back on `coxdev`.
-
-**Current task**: Implement `strata` handling in `coxdev` using pure C/C++ so it is available for both R and Python, with R being the initial focus.
+Stratified Cox C++ implementation is complete. Both Python and R use a single unified C++ codebase (`coxdev_strata.cpp`) that handles stratified and unstratified models (unstratified = single stratum).
 
 ### Related Projects
 
 - **glmnet working copy**: `/Users/naras/research/glmnet/pkg_src`
 - **glmnet repo**: `/Users/naras/GitHub/glmnet`
-
-The reference implementation for stratified Cox models is in the `glmnet` repo but it is in R which can be slow.
 
 ## Build & Development Commands
 
@@ -45,23 +41,24 @@ This library computes Cox proportional hazards model deviance, gradients, and He
 ### Core Structure
 
 - **`coxdev/`** - Python package
-  - `base.py` - Main `CoxDeviance` class and `CoxInformation` linear operator
-  - `stratified.py` - `StratifiedCoxDeviance` for stratified Cox models (independent baseline hazards per stratum)
+  - `base.py` - `CoxDeviance` class (thin wrapper around C++ stratified with n_strata=1) and `CoxInformation` linear operator
+  - `stratified.py` - `StratifiedCoxDeviance` (thin wrapper around C++ `StratifiedCoxDevianceCpp`)
   - `coxc.cpython-*.so` - Compiled C++ extension (pybind11)
 
 - **`R_pkg/coxdev/`** - R package with shared C++ implementation
-  - `inst/include/coxdev.h` - Shared C++ header with interface macros for both Python (pybind11) and R (Rcpp)
-  - `src/coxdev.cpp` - Main C++ implementation used by both Python and R
+  - `inst/include/coxdev_strata.h` - Struct definitions (CoxPreprocessed, CoxWorkspace, StratifiedCoxData)
+  - `src/coxdev_strata.cpp` - **Single C++ source** for both Python and R (stratified implementation)
+  - `R/coxdev.R` - `make_cox_deviance()` and `make_stratified_cox_deviance()` R wrappers
 
-- **`doc/main.tex`** - LaTeX document showing complete calculations used in current implementation
+- **`doc/cox_calculations.tex`** - LaTeX document showing complete calculations used in current implementation
 
 ### Key Design Patterns
 
-1. **Shared C++ Core**: The same `coxdev.cpp` is compiled for both Python and R using preprocessor macros (`PY_INTERFACE` vs `R_INTERFACE`) defined in `coxdev.h`.
+1. **Unified C++ Core**: A single file `coxdev_strata.cpp` implements all Cox deviance computations for both Python (via pybind11) and R (via Rcpp). Unstratified models use n_strata=1.
 
-2. **Pre-allocated Buffers**: `CoxDeviance.__post_init__` allocates all working memory upfront (`_forward_cumsum_buffers`, `_reverse_cumsum_buffers`, etc.) to avoid repeated allocations during optimization loops.
+2. **Pre-allocated Buffers**: `CoxWorkspace` structs allocate all working memory during preprocessing to avoid repeated allocations during optimization loops.
 
-3. **Result Caching**: Results are cached by hashing `(linear_predictor, sample_weight)` to avoid recomputation with identical inputs.
+3. **Thin Python Wrappers**: Both `CoxDeviance` and `StratifiedCoxDeviance` are thin wrappers around the C++ `StratifiedCoxDevianceCpp` class.
 
 4. **LinearOperator Pattern**: Information matrices are returned as `scipy.sparse.linalg.LinearOperator` objects for efficient matrix-vector products without forming the full dense matrix.
 
@@ -169,17 +166,18 @@ Tests in `tests/test_compareR.py` validate against R's `survival::coxph` and `gl
 
 ### Current Status
 
-The stratified C++ implementation is complete and working. Performance optimizations using pre-allocated workspace buffers provide 31-235x speedup in R and 22x mean speedup in Python compared to loop-based approaches.
+Complete and unified. A single C++ file (`coxdev_strata.cpp`) serves both Python and R. The previous `coxdev.cpp` was deleted after consolidating all functionality into the stratified implementation. Performance optimizations using pre-allocated workspace buffers provide 31-235x speedup in R and 22x mean speedup in Python compared to loop-based approaches.
 
 ### Files Structure
 
 | File | Purpose |
 |------|---------|
 | `R_pkg/coxdev/inst/include/coxdev_strata.h` | Struct definitions (CoxPreprocessed, CoxWorkspace, StratifiedCoxData) |
-| `R_pkg/coxdev/src/coxdev_strata.cpp` | Stratified C++ implementation |
-| `coxdev/stratified_cpp.py` | Python wrapper for C++ stratified (working) |
-| `R_pkg/coxdev/R/coxdev.R` | Contains `make_stratified_cox_deviance()` R wrapper |
-| `tests/test_stratified_cpp.py` | Python tests comparing C++ vs Python implementation |
+| `R_pkg/coxdev/src/coxdev_strata.cpp` | **Single C++ source** - all Cox computations for both Python and R |
+| `coxdev/base.py` | Python `CoxDeviance` (uses stratified C++ with n_strata=1) |
+| `coxdev/stratified.py` | Python `StratifiedCoxDeviance` wrapper |
+| `R_pkg/coxdev/R/coxdev.R` | R wrappers: `make_cox_deviance()`, `make_stratified_cox_deviance()` |
+| `tests/test_stratified_cpp.py` | Python tests comparing C++ vs reference |
 | `R_pkg/coxdev/tests/testthat/test-stratified.R` | R tests comparing against survival::coxph |
 
 ### Key Structs (in coxdev_strata.h)
@@ -226,18 +224,11 @@ struct StratifiedCoxData {
 | Member access | `strat_data.n_strata` (dot notation) | `xptr->n_strata` (arrow notation) |
 | Binding function | `bind_stratified(py::module_& m)` | Rcpp attributes `// [[Rcpp::export(.func_name)]]` |
 
-### Refactoring Guidelines (IMPORTANT)
+### Maintenance Guidelines (IMPORTANT)
 
-**DO NOT simplify the algorithm.** The Cox deviance computation involves complex cumsum operations via `forward_prework()`, multiple C_01, C_02, C_11, C_21, C_22 terms for Efron correction, and careful gradient/Hessian calculation. See `coxdev.cpp` lines 460-620 for the actual algorithm.
+**DO NOT simplify the algorithm.** The Cox deviance computation involves complex cumsum operations via `forward_prework()`, multiple C_01, C_02, C_11, C_21, C_22 terms for Efron correction, and careful gradient/Hessian calculation. See `coxdev_strata.cpp` for the algorithm.
 
-**Correct refactoring approach:**
-1. Create `*_impl()` functions that take `StratifiedCoxData<double, int>&` (reference, not macro)
-2. Keep ALL algorithm logic identical to the working version
-3. Python wrapper: call impl directly (strat_data is already a reference)
-4. R wrapper: dereference XPtr then call impl: `StratifiedCoxData& data = *xptr; impl(data);`
-5. Only extract/scatter logic (global↔local indices) should be in impl functions
-
-**Single-stratum helper functions to preserve:**
+**Key single-stratum helper functions:**
 - `preprocess_single_stratum()` - preprocessing for one stratum
 - `compute_sat_loglik_stratum()` - saturated log-likelihood
 - `sum_over_risk_set_internal()` - risk sum computation
