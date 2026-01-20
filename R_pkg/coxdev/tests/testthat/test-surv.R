@@ -1,7 +1,8 @@
 ## context("Check against survival package")
 
+set.seed(12345)  # Ensure reproducible tests regardless of test order
+
 tol  <- 1e-10
-i  <- j <- 0
 get_coxph <- function(event,
                       status,
                       X,
@@ -100,43 +101,13 @@ check_coxph <- function(tie_types,
     # For gradient comparison: use subsetted X and gradient
     tX_nz <- t(X_nz)
     gradient_nz <- C$gradient[nz_mask]
-    if (rel_diff_norm(G_coxph, tX_nz %*% gradient_nz) >= tol) {
-      saveRDS(list(event = data$event,
-                   status = data$status,
-                   beta = beta,
-                   sample_weight = weight,
-                   start = start,
-                   ties = tie_breaking,
-                   X = X), sprintf("~/tmp/g%d.RDS", i))
-      i <<- i + 1
-    }
     expect_true(rel_diff_norm(G_coxph, tX_nz %*% gradient_nz) < tol,
                 info = "Gradient mismatch")
   } else {
-    if (rel_diff_norm(G_coxph, tX %*% C$gradient) >= tol) {
-      saveRDS(list(event = data$event,
-                   status = data$status,
-                   beta = beta,
-                   sample_weight = weight,
-                   start = start,
-                   ties = tie_breaking,
-                   X = X), sprintf("~/tmp/g%d.RDS", i))
-      i <<- i + 1
-    }
     expect_true(rel_diff_norm(G_coxph, tX %*% C$gradient) < tol,
                 info = "Gradient mismatch")
   }
 
-  if (rel_diff_norm(new_cov, cov_coxph) >= tol) {
-    saveRDS(list(event = data$event,
-                 status = data$status,
-                 beta  = beta,
-                 sample_weight = weight,
-                 start = start,
-                 ties = tie_breaking,
-                 X = X), sprintf("~/tmp/h%d.RDS", j))
-    j <<- j + 1
-  }
   expect_true(rel_diff_norm(new_cov, cov_coxph) < tol,
               info = "Covariance mismatch")
 }

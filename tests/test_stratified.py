@@ -631,3 +631,243 @@ def test_coxdeviance2_matches_stratified_and_coxdeviance(tie_breaking, use_weigh
         v = rng.standard_normal(n)
         assert np.allclose(info_cox @ v, info_strat @ v)
         assert np.allclose(info_cox @ v, info2 @ v)
+
+
+# Tests comparing against glmnet with nonzero lambda (requires rpy2)
+
+def _has_rpy2():
+    """Check if rpy2 is available."""
+    try:
+        import rpy2.robjects as ro
+        return True
+    except ImportError:
+        return False
+
+
+@pytest.mark.skipif(not _has_rpy2(), reason="rpy2 not available")
+class TestStratifiedGlmnetComparison:
+    """Tests comparing stratified Cox deviance against glmnet with nonzero lambda."""
+
+    def test_stratified_deviance_matches_glmnet_nonzero_lambda(self):
+        """Test stratified deviance matches glmnet at nonzero lambda values."""
+        import rpy2.robjects as ro
+        from rpy2.robjects import numpy2ri, default_converter
+
+        np_cv_rules = default_converter + numpy2ri.converter
+
+        np.random.seed(42)
+        n = 100
+        p = 5
+        x = np.random.randn(n, p)
+        event = np.random.exponential(1, n)
+        status = np.random.binomial(1, 0.7, n)
+        strata = np.random.choice([0, 1, 2], n)
+
+        with np_cv_rules.context():
+            # Convert to R
+            ro.globalenv['x'] = ro.r.matrix(ro.FloatVector(x.flatten()), nrow=n, ncol=p)
+            ro.globalenv['event'] = ro.FloatVector(event)
+            ro.globalenv['status'] = ro.IntVector(status)
+            ro.globalenv['strata'] = ro.IntVector(strata + 1)  # R is 1-indexed
+            ro.globalenv['lambdas'] = ro.FloatVector([0.1, 0.05, 0.01])
+
+            # Run everything in R
+            ro.r('''
+                library(glmnet)
+                library(survival)
+                y <- stratifySurv(Surv(event, status), strata)
+                fit <- glmnet(x, y, family = "cox", lambda = lambdas)
+            ''')
+
+            # Test at each lambda
+            for lam in [0.1, 0.05, 0.01]:
+                # Get coefficients from glmnet
+                ro.globalenv['lam'] = lam
+                beta = np.array(ro.r('as.numeric(coef(fit, s=lam))')).flatten()
+                eta = x @ beta
+
+                # Get deviance from glmnet (Breslow)
+                ro.globalenv['eta'] = ro.FloatVector(eta)
+                dev_glmnet = ro.r('coxnet.deviance(pred=eta, y=y, weights=rep(1, length(eta)), std.weights=FALSE)')[0]
+
+                # Get deviance from coxdev (must use Breslow)
+                stratdev = StratCox(
+                    event=event,
+                    status=status,
+                    strata=strata,
+                    tie_breaking='breslow'
+                )
+                result = stratdev(eta, None)
+
+                assert np.allclose(result.deviance, dev_glmnet, rtol=1e-10), \
+                    f"Deviance mismatch at lambda={lam}: coxdev={result.deviance}, glmnet={dev_glmnet}"
+
+    def test_stratified_gradient_matches_glmnet_nonzero_lambda(self):
+        """Test stratified gradient matches glmnet at nonzero lambda values."""
+        import rpy2.robjects as ro
+        from rpy2.robjects import numpy2ri, default_converter
+
+        np_cv_rules = default_converter + numpy2ri.converter
+
+        np.random.seed(123)
+        n = 100
+        p = 5
+        x = np.random.randn(n, p)
+        event = np.random.exponential(1, n)
+        status = np.random.binomial(1, 0.7, n)
+        strata = np.random.choice([0, 1, 2], n)
+
+        with np_cv_rules.context():
+            # Convert to R
+            ro.globalenv['x'] = ro.r.matrix(ro.FloatVector(x.flatten()), nrow=n, ncol=p)
+            ro.globalenv['event'] = ro.FloatVector(event)
+            ro.globalenv['status'] = ro.IntVector(status)
+            ro.globalenv['strata'] = ro.IntVector(strata + 1)
+            ro.globalenv['lambdas'] = ro.FloatVector([0.1, 0.05, 0.01])
+
+            # Run everything in R
+            ro.r('''
+                library(glmnet)
+                library(survival)
+                y <- stratifySurv(Surv(event, status), strata)
+                fit <- glmnet(x, y, family = "cox", lambda = lambdas)
+            ''')
+
+            for lam in [0.1, 0.05, 0.01]:
+                ro.globalenv['lam'] = lam
+                beta = np.array(ro.r('as.numeric(coef(fit, s=lam))')).flatten()
+                eta = x @ beta
+
+                # Get gradient from glmnet
+                ro.globalenv['eta'] = ro.FloatVector(eta)
+                grad_glmnet = np.array(ro.r('coxgrad(eta, y, w=rep(1, length(eta)), std.weights=FALSE, diag.hessian=TRUE)'))
+                grad_glmnet_deviance = -2 * grad_glmnet  # Convert to deviance gradient
+
+                # Get from coxdev
+                stratdev = StratCox(
+                    event=event,
+                    status=status,
+                    strata=strata,
+                    tie_breaking='breslow'
+                )
+                result = stratdev(eta, None)
+
+                assert np.allclose(result.gradient, grad_glmnet_deviance, rtol=1e-10), \
+                    f"Gradient mismatch at lambda={lam}"
+
+    def test_stratified_left_truncation_matches_glmnet_nonzero_lambda(self):
+        """Test stratified Cox with left truncation matches glmnet at nonzero lambda."""
+        import rpy2.robjects as ro
+        from rpy2.robjects import numpy2ri, default_converter
+
+        np_cv_rules = default_converter + numpy2ri.converter
+
+        np.random.seed(456)
+        n = 100
+        p = 5
+        x = np.random.randn(n, p)
+        start = np.random.uniform(0, 2, n)
+        event = start + np.random.exponential(2, n)
+        status = np.random.binomial(1, 0.7, n)
+        strata = np.random.choice([0, 1, 2], n)
+
+        with np_cv_rules.context():
+            # Convert to R
+            ro.globalenv['x'] = ro.r.matrix(ro.FloatVector(x.flatten()), nrow=n, ncol=p)
+            ro.globalenv['start'] = ro.FloatVector(start)
+            ro.globalenv['event'] = ro.FloatVector(event)
+            ro.globalenv['status'] = ro.IntVector(status)
+            ro.globalenv['strata'] = ro.IntVector(strata + 1)
+            ro.globalenv['lambdas'] = ro.FloatVector([0.1, 0.05, 0.01])
+
+            # Run everything in R
+            ro.r('''
+                library(glmnet)
+                library(survival)
+                y <- stratifySurv(Surv(start, event, status), strata)
+                fit <- glmnet(x, y, family = "cox", lambda = lambdas)
+            ''')
+
+            for lam in [0.1, 0.05, 0.01]:
+                ro.globalenv['lam'] = lam
+                beta = np.array(ro.r('as.numeric(coef(fit, s=lam))')).flatten()
+                eta = x @ beta
+
+                # Get deviance and gradient from glmnet
+                ro.globalenv['eta'] = ro.FloatVector(eta)
+                dev_glmnet = ro.r('coxnet.deviance(pred=eta, y=y, weights=rep(1, length(eta)), std.weights=FALSE)')[0]
+                grad_glmnet = np.array(ro.r('coxgrad(eta, y, w=rep(1, length(eta)), std.weights=FALSE)'))
+                grad_glmnet_deviance = -2 * grad_glmnet
+
+                # Get from coxdev
+                stratdev = StratCox(
+                    event=event,
+                    start=start,
+                    status=status,
+                    strata=strata,
+                    tie_breaking='breslow'
+                )
+                result = stratdev(eta, None)
+
+                assert np.allclose(result.deviance, dev_glmnet, rtol=1e-10), \
+                    f"Deviance mismatch at lambda={lam}"
+                assert np.allclose(result.gradient, grad_glmnet_deviance, rtol=1e-10), \
+                    f"Gradient mismatch at lambda={lam}"
+
+    def test_stratified_with_weights_matches_glmnet_nonzero_lambda(self):
+        """Test stratified Cox with weights matches glmnet at nonzero lambda."""
+        import rpy2.robjects as ro
+        from rpy2.robjects import numpy2ri, default_converter
+
+        np_cv_rules = default_converter + numpy2ri.converter
+
+        np.random.seed(789)
+        n = 100
+        p = 5
+        x = np.random.randn(n, p)
+        event = np.random.exponential(1, n)
+        status = np.random.binomial(1, 0.7, n)
+        strata = np.random.choice([0, 1, 2], n)
+        weights = np.random.uniform(0.5, 2, n)
+
+        with np_cv_rules.context():
+            # Convert to R
+            ro.globalenv['x'] = ro.r.matrix(ro.FloatVector(x.flatten()), nrow=n, ncol=p)
+            ro.globalenv['event'] = ro.FloatVector(event)
+            ro.globalenv['status'] = ro.IntVector(status)
+            ro.globalenv['strata'] = ro.IntVector(strata + 1)
+            ro.globalenv['weights'] = ro.FloatVector(weights)
+            ro.globalenv['lambdas'] = ro.FloatVector([0.1, 0.05, 0.01])
+
+            # Run everything in R
+            ro.r('''
+                library(glmnet)
+                library(survival)
+                y <- stratifySurv(Surv(event, status), strata)
+                fit <- glmnet(x, y, family = "cox", weights = weights, lambda = lambdas)
+            ''')
+
+            for lam in [0.1, 0.05, 0.01]:
+                ro.globalenv['lam'] = lam
+                beta = np.array(ro.r('as.numeric(coef(fit, s=lam))')).flatten()
+                eta = x @ beta
+
+                # Get deviance and gradient from glmnet
+                ro.globalenv['eta'] = ro.FloatVector(eta)
+                dev_glmnet = ro.r('coxnet.deviance(pred=eta, y=y, weights=weights, std.weights=FALSE)')[0]
+                grad_glmnet = np.array(ro.r('coxgrad(eta, y, w=weights, std.weights=FALSE)'))
+                grad_glmnet_deviance = -2 * grad_glmnet
+
+                # Get from coxdev
+                stratdev = StratCox(
+                    event=event,
+                    status=status,
+                    strata=strata,
+                    tie_breaking='breslow'
+                )
+                result = stratdev(eta, weights)
+
+                assert np.allclose(result.deviance, dev_glmnet, rtol=1e-10), \
+                    f"Deviance mismatch at lambda={lam}"
+                assert np.allclose(result.gradient, grad_glmnet_deviance, rtol=1e-10), \
+                    f"Gradient mismatch at lambda={lam}"

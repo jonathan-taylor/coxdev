@@ -81,6 +81,11 @@ struct CoxWorkspace {
     Eigen::VectorXd effective_cluster_sizes;
     Eigen::VectorXd zero_weight_mask;
 
+    // Input extraction buffers (for scatter/gather from global to local)
+    Eigen::VectorXd eta_local_buffer;
+    Eigen::VectorXd weight_local_buffer;
+    Eigen::VectorXd matvec_result_buffer;  // for hessian_matvec result
+
     void resize(int n) {
         grad_buffer.resize(n);
         diag_hessian_buffer.resize(n);
@@ -93,6 +98,9 @@ struct CoxWorkspace {
         hess_matvec_buffer.resize(n);
         effective_cluster_sizes.resize(n);
         zero_weight_mask.resize(n);
+        eta_local_buffer.resize(n);
+        weight_local_buffer.resize(n);
+        matvec_result_buffer.resize(n);
 
         // Risk sum buffers
         risk_sum_buffers.resize(2);

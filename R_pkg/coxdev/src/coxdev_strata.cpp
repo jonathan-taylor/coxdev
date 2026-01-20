@@ -799,9 +799,9 @@ static double cox_dev_stratified_impl(
         CoxPreprocessed<double, int>& preproc = strat_data.preproc[s];
         CoxWorkspace<double>& ws = strat_data.workspace[s];
 
-        // Extract local eta and weights
-        Eigen::VectorXd eta_local(n_s);
-        Eigen::VectorXd weight_local(n_s);
+        // Extract local eta and weights (using pre-allocated workspace buffers)
+        Eigen::VectorXd& eta_local = ws.eta_local_buffer;
+        Eigen::VectorXd& weight_local = ws.weight_local_buffer;
         for (int i = 0; i < n_s; ++i) {
             eta_local(i) = eta(idx[i]);
             weight_local(i) = sample_weight(idx[i]);
@@ -820,14 +820,14 @@ static double cox_dev_stratified_impl(
         // Handle zero weights for Efron
         bool has_zero_weights = (weight_local.array() == 0).any();
         if (strat_data.efron_stratum[s] && has_zero_weights) {
-            // Compute weight in event order
-            Eigen::VectorXd w_event(n_s);
+            // Compute weight in event order (reuse event_reorder_buffers[1] as temporary)
+            Eigen::VectorXd& w_event = ws.event_reorder_buffers[1];
             for (int i = 0; i < n_s; ++i) {
                 w_event(i) = weight_local(preproc.event_order(i));
             }
 
             // Create maps for the function calls
-            Eigen::Map<Eigen::VectorXd> w_event_map(w_event.data(), w_event.size());
+            Eigen::Map<Eigen::VectorXd> w_event_map(w_event.data(), n_s);
             Eigen::Map<Eigen::VectorXi> first_map(preproc.first.data(), preproc.first.size());
             Eigen::Map<Eigen::VectorXi> last_map(preproc.last.data(), preproc.last.size());
             Eigen::Map<Eigen::VectorXd> scaling_map(preproc.scaling.data(), preproc.scaling.size());

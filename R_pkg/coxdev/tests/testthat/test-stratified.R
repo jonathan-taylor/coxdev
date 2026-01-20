@@ -131,3 +131,190 @@ test_that("stratified information returned correct n_strata and n_total", {
   expect_equal(strat$n_total, n)
   expect_equal(strat$n_strata, length(unique(strata)))
 })
+
+# Tests comparing against glmnet with nonzero lambda
+
+test_that("stratified cox deviance matches glmnet at nonzero lambda", {
+  skip_if_not_installed("glmnet")
+  skip_if_not_installed("survival")
+  library(glmnet)
+  library(survival)
+
+  set.seed(42)
+  n <- 100
+  p <- 5
+  x <- matrix(rnorm(n * p), n, p)
+  event <- rexp(n)
+  status <- rbinom(n, 1, 0.7)
+  strata <- sample(1:3, n, replace = TRUE)
+
+  # Create stratified survival object for glmnet
+  y <- stratifySurv(Surv(event, status), strata)
+
+  # Fit glmnet with several lambda values
+  fit <- glmnet(x, y, family = "cox", lambda = c(0.1, 0.05, 0.01))
+
+  # Test at each lambda value
+  for (lam in fit$lambda) {
+    beta <- as.numeric(coef(fit, s = lam))
+    eta <- as.numeric(x %*% beta)
+
+    # Get deviance from glmnet (uses Breslow)
+    dev_glmnet <- coxnet.deviance(pred = eta, y = y, weights = rep(1, n), std.weights = FALSE)
+
+    # Get deviance from coxdev (must use Breslow to match glmnet)
+    strat <- make_stratified_cox_deviance(
+      event = event,
+      status = status,
+      strata = strata,
+      tie_breaking = "breslow"
+    )
+    result <- strat$coxdev(eta)
+
+    expect_equal(result$deviance, dev_glmnet, tolerance = 1e-10,
+                 info = sprintf("Deviance mismatch at lambda = %g", lam))
+  }
+})
+
+test_that("stratified cox gradient matches glmnet at nonzero lambda", {
+  skip_if_not_installed("glmnet")
+  skip_if_not_installed("survival")
+  library(glmnet)
+  library(survival)
+
+  set.seed(123)
+  n <- 100
+  p <- 5
+  x <- matrix(rnorm(n * p), n, p)
+  event <- rexp(n)
+  status <- rbinom(n, 1, 0.7)
+  strata <- sample(1:3, n, replace = TRUE)
+
+  # Create stratified survival object for glmnet
+  y <- stratifySurv(Surv(event, status), strata)
+
+  # Fit glmnet
+  fit <- glmnet(x, y, family = "cox", lambda = c(0.1, 0.05, 0.01))
+
+  # Test at each lambda value
+  for (lam in fit$lambda) {
+    beta <- as.numeric(coef(fit, s = lam))
+    eta <- as.numeric(x %*% beta)
+
+    # Get gradient from glmnet (uses Breslow)
+    # glmnet returns gradient of log partial likelihood, coxdev returns gradient of deviance
+    # gradient_deviance = -2 * gradient_loglik
+    grad_glmnet <- coxgrad(eta, y, w = rep(1, n), std.weights = FALSE, diag.hessian = TRUE)
+    grad_glmnet_deviance <- -2 * as.numeric(grad_glmnet)
+    diag_hess_glmnet <- -2 * attr(grad_glmnet, "diag_hessian")
+
+    # Get gradient from coxdev (must use Breslow to match glmnet)
+    strat <- make_stratified_cox_deviance(
+      event = event,
+      status = status,
+      strata = strata,
+      tie_breaking = "breslow"
+    )
+    result <- strat$coxdev(eta)
+
+    expect_equal(result$gradient, grad_glmnet_deviance, tolerance = 1e-10,
+                 info = sprintf("Gradient mismatch at lambda = %g", lam))
+    expect_equal(result$diag_hessian, diag_hess_glmnet, tolerance = 1e-10,
+                 info = sprintf("Diagonal Hessian mismatch at lambda = %g", lam))
+  }
+})
+
+test_that("stratified cox with left truncation matches glmnet at nonzero lambda", {
+  skip_if_not_installed("glmnet")
+  skip_if_not_installed("survival")
+  library(glmnet)
+  library(survival)
+
+  set.seed(456)
+  n <- 100
+  p <- 5
+  x <- matrix(rnorm(n * p), n, p)
+  start <- runif(n, 0, 2)
+  event <- start + rexp(n, 0.5)
+  status <- rbinom(n, 1, 0.7)
+  strata <- sample(1:3, n, replace = TRUE)
+
+  # Create stratified survival object for glmnet with start/stop times
+  y <- stratifySurv(Surv(start, event, status), strata)
+
+  # Fit glmnet
+  fit <- glmnet(x, y, family = "cox", lambda = c(0.1, 0.05, 0.01))
+
+  # Test at each lambda value
+  for (lam in fit$lambda) {
+    beta <- as.numeric(coef(fit, s = lam))
+    eta <- as.numeric(x %*% beta)
+
+    # Get deviance and gradient from glmnet
+    dev_glmnet <- coxnet.deviance(pred = eta, y = y, weights = rep(1, n), std.weights = FALSE)
+    grad_glmnet <- coxgrad(eta, y, w = rep(1, n), std.weights = FALSE, diag.hessian = TRUE)
+    grad_glmnet_deviance <- -2 * as.numeric(grad_glmnet)
+
+    # Get from coxdev (must use Breslow to match glmnet)
+    strat <- make_stratified_cox_deviance(
+      event = event,
+      start = start,
+      status = status,
+      strata = strata,
+      tie_breaking = "breslow"
+    )
+    result <- strat$coxdev(eta)
+
+    expect_equal(result$deviance, dev_glmnet, tolerance = 1e-10,
+                 info = sprintf("Deviance mismatch at lambda = %g", lam))
+    expect_equal(result$gradient, grad_glmnet_deviance, tolerance = 1e-10,
+                 info = sprintf("Gradient mismatch at lambda = %g", lam))
+  }
+})
+
+test_that("stratified cox with weights matches glmnet at nonzero lambda", {
+  skip_if_not_installed("glmnet")
+  skip_if_not_installed("survival")
+  library(glmnet)
+  library(survival)
+
+  set.seed(789)
+  n <- 100
+  p <- 5
+  x <- matrix(rnorm(n * p), n, p)
+  event <- rexp(n)
+  status <- rbinom(n, 1, 0.7)
+  strata <- sample(1:3, n, replace = TRUE)
+  weights <- runif(n, 0.5, 2)
+
+  # Create stratified survival object for glmnet
+  y <- stratifySurv(Surv(event, status), strata)
+
+  # Fit glmnet with weights
+  fit <- glmnet(x, y, family = "cox", weights = weights, lambda = c(0.1, 0.05, 0.01))
+
+  # Test at each lambda value
+  for (lam in fit$lambda) {
+    beta <- as.numeric(coef(fit, s = lam))
+    eta <- as.numeric(x %*% beta)
+
+    # Get deviance and gradient from glmnet
+    dev_glmnet <- coxnet.deviance(pred = eta, y = y, weights = weights, std.weights = FALSE)
+    grad_glmnet <- coxgrad(eta, y, w = weights, std.weights = FALSE, diag.hessian = TRUE)
+    grad_glmnet_deviance <- -2 * as.numeric(grad_glmnet)
+
+    # Get from coxdev (must use Breslow to match glmnet)
+    strat <- make_stratified_cox_deviance(
+      event = event,
+      status = status,
+      strata = strata,
+      tie_breaking = "breslow"
+    )
+    result <- strat$coxdev(eta, weights)
+
+    expect_equal(result$deviance, dev_glmnet, tolerance = 1e-10,
+                 info = sprintf("Deviance mismatch at lambda = %g", lam))
+    expect_equal(result$gradient, grad_glmnet_deviance, tolerance = 1e-10,
+                 info = sprintf("Gradient mismatch at lambda = %g", lam))
+  }
+})
