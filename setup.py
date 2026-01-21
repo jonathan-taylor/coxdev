@@ -79,12 +79,11 @@ def ensure_eigen_available():
 
 EXTS=[Extension(
     'coxdev.coxc',
-    sources=['R_pkg/coxdev/src/coxdev_strata.cpp'],
+    sources=['R_pkg/coxdev/src/coxdev.cpp'],
     include_dirs=[pybind11.get_include(),
                   eigendir,
                   "R_pkg/coxdev/inst/include"],
-    depends=["R_pkg/coxdev/inst/include/coxdev.h",
-             "R_pkg/coxdev/inst/include/coxdev_strata.h"],
+    depends=["R_pkg/coxdev/inst/include/coxdev.h"],
     language='c++',
     extra_compile_args=['-std=c++17', '-DPY_INTERFACE=1'])]
 

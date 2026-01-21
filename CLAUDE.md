@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current Focus
 
-Stratified Cox C++ implementation is complete. Both Python and R use a single unified C++ codebase (`coxdev_strata.cpp`) that handles stratified and unstratified models (unstratified = single stratum).
+Stratified Cox C++ implementation is complete. Both Python and R use a single unified C++ codebase (`coxdev.cpp`) that handles stratified and unstratified models (unstratified = single stratum).
 
 ## Completed Features
 
 ### Saturated Likelihood (Efron) - COMPLETE
 
-The `compute_sat_loglik_stratum()` function in `coxdev_strata.cpp` implements both Breslow and Efron formulas for saturated log-likelihood.
+The `compute_sat_loglik_stratum()` function in `coxdev.cpp` implements both Breslow and Efron formulas for saturated log-likelihood.
 
 **Formula:**
 ```
@@ -72,8 +72,8 @@ This library computes Cox proportional hazards model deviance, gradients, and He
   - `coxc.cpython-*.so` - Compiled C++ extension (pybind11)
 
 - **`R_pkg/coxdev/`** - R package with shared C++ implementation
-  - `inst/include/coxdev_strata.h` - Struct definitions (CoxPreprocessed, CoxWorkspace, StratifiedCoxData)
-  - `src/coxdev_strata.cpp` - **Single C++ source** for both Python and R (stratified implementation)
+  - `inst/include/coxdev.h` - Struct definitions (CoxPreprocessed, CoxWorkspace, StratifiedCoxData)
+  - `src/coxdev.cpp` - **Single C++ source** for both Python and R (stratified implementation)
   - `R/coxdev.R` - `make_cox_deviance()` and `make_stratified_cox_deviance()` R wrappers
 
 - **`doc/`** - LaTeX documentation
@@ -82,7 +82,7 @@ This library computes Cox proportional hazards model deviance, gradients, and He
 
 ### Key Design Patterns
 
-1. **Unified C++ Core**: A single file `coxdev_strata.cpp` implements all Cox deviance computations for both Python (via pybind11) and R (via Rcpp). Unstratified models use n_strata=1.
+1. **Unified C++ Core**: A single file `coxdev.cpp` implements all Cox deviance computations for both Python (via pybind11) and R (via Rcpp). Unstratified models use n_strata=1.
 
 2. **Pre-allocated Buffers**: `CoxWorkspace` structs allocate all working memory during preprocessing to avoid repeated allocations during optimization loops.
 
@@ -194,21 +194,21 @@ Tests in `tests/test_compareR.py` validate against R's `survival::coxph` and `gl
 
 ### Current Status
 
-Complete and unified. A single C++ file (`coxdev_strata.cpp`) serves both Python and R. The previous `coxdev.cpp` was deleted after consolidating all functionality into the stratified implementation. Performance optimizations using pre-allocated workspace buffers provide 31-235x speedup in R and 22x mean speedup in Python compared to loop-based approaches.
+Complete and unified. A single C++ file (`coxdev.cpp`) serves both Python and R, handling both stratified and unstratified models (unstratified = single stratum). Performance optimizations using pre-allocated workspace buffers provide 31-235x speedup in R and 22x mean speedup in Python compared to loop-based approaches.
 
 ### Files Structure
 
 | File | Purpose |
 |------|---------|
-| `R_pkg/coxdev/inst/include/coxdev_strata.h` | Struct definitions (CoxPreprocessed, CoxWorkspace, StratifiedCoxData) |
-| `R_pkg/coxdev/src/coxdev_strata.cpp` | **Single C++ source** - all Cox computations for both Python and R |
+| `R_pkg/coxdev/inst/include/coxdev.h` | Struct definitions (CoxPreprocessed, CoxWorkspace, StratifiedCoxData) |
+| `R_pkg/coxdev/src/coxdev.cpp` | **Single C++ source** - all Cox computations for both Python and R |
 | `coxdev/base.py` | Python `CoxDeviance` (uses stratified C++ with n_strata=1) |
 | `coxdev/stratified.py` | Python `StratifiedCoxDeviance` wrapper |
 | `R_pkg/coxdev/R/coxdev.R` | R wrappers: `make_cox_deviance()`, `make_stratified_cox_deviance()` |
 | `tests/test_stratified_cpp.py` | Python tests comparing C++ vs reference |
 | `R_pkg/coxdev/tests/testthat/test-stratified.R` | R tests comparing against survival::coxph |
 
-### Key Structs (in coxdev_strata.h)
+### Key Structs (in coxdev.h)
 
 ```cpp
 // All CoxPreprocessed fields are RO (read-only) after preprocessing
@@ -265,7 +265,7 @@ struct StratifiedCoxData {
 
 ### Maintenance Guidelines (IMPORTANT)
 
-**DO NOT simplify the algorithm.** The Cox deviance computation involves complex cumsum operations via `forward_prework()`, multiple C_01, C_02, C_11, C_21, C_22 terms for Efron correction, and careful gradient/Hessian calculation. See `coxdev_strata.cpp` for the algorithm.
+**DO NOT simplify the algorithm.** The Cox deviance computation involves complex cumsum operations via `forward_prework()`, multiple C_01, C_02, C_11, C_21, C_22 terms for Efron correction, and careful gradient/Hessian calculation. See `coxdev.cpp` for the algorithm.
 
 **Key single-stratum helper functions:**
 - `preprocess_single_stratum()` - preprocessing for one stratum

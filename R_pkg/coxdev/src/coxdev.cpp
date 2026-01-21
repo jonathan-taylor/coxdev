@@ -1,14 +1,12 @@
 /**
- * Stratified Cox Proportional Hazards Model Implementation
+ * Cox Proportional Hazards Model Implementation
  *
- * This file provides C++ implementations for stratified Cox models,
+ * This file provides unified C++ implementations for Cox models,
  * supporting both Python (pybind11) and R (Rcpp) interfaces.
+ * Handles both stratified and unstratified models (unstratified = single stratum).
  *
- * The stratified model fits independent baseline hazards for each stratum
- * while sharing regression coefficients across strata.
- *
- * IMPORTANT: The algorithm in cox_dev_single_stratum MUST be kept identical
- * to cox_dev in coxdev.cpp. Do NOT simplify or "improve" the algorithm.
+ * IMPORTANT: The algorithm in cox_dev_single_stratum is complex and correct.
+ * Do NOT simplify or "improve" the algorithm without thorough testing.
  *
  * Architecture:
  * - Core implementation functions (*_impl) are interface-neutral
@@ -16,10 +14,10 @@
  */
 
 #ifdef PY_INTERFACE
-#include "coxdev_strata.h"
+#include "coxdev.h"
 #endif
 #ifdef R_INTERFACE
-#include "../inst/include/coxdev_strata.h"
+#include "../inst/include/coxdev.h"
 #endif
 
 #include <algorithm>
@@ -27,7 +25,7 @@
 #include <numeric>
 
 // ============================================================================
-// HELPER FUNCTIONS (moved from coxdev.cpp for consolidation)
+// HELPER FUNCTIONS
 // ============================================================================
 
 // Compute cumsum with a padding of 0 at the beginning
@@ -201,8 +199,7 @@ std::vector<int> lexsort(const Eigen::VectorXi & a,
 
 /**
  * Internal function to preprocess a single stratum.
- * Replicates the logic from c_preprocess in coxdev.cpp but stores
- * results directly in CoxPreprocessed struct.
+ * Stores results directly in CoxPreprocessed struct.
  */
 static void preprocess_single_stratum(
     const Eigen::VectorXd& start_local,
@@ -451,8 +448,7 @@ static double compute_sat_loglik_stratum(
 }
 
 /**
- * Internal: sum over risk set for a single stratum.
- * IDENTICAL to sum_over_risk_set in coxdev.cpp but uses workspace buffers.
+ * Internal: sum over risk set for a single stratum using workspace buffers.
  */
 static void sum_over_risk_set_stratum(
     const Eigen::VectorXd& arg,  // native order
@@ -509,8 +505,7 @@ static void sum_over_risk_set_stratum(
 }
 
 /**
- * Internal: sum over events for a single stratum.
- * IDENTICAL to sum_over_events in coxdev.cpp but uses workspace buffers.
+ * Internal: sum over events for a single stratum using workspace buffers.
  */
 static void sum_over_events_stratum(
     const Eigen::VectorXi& event_order,
@@ -566,8 +561,8 @@ static void sum_over_events_stratum(
 /**
  * Internal: Cox deviance for a single stratum.
  *
- * CRITICAL: This function MUST use the EXACT same algorithm as cox_dev in coxdev.cpp.
- * Do NOT simplify or "improve" the algorithm. Every step must match.
+ * CRITICAL: This algorithm is complex and correct. Do NOT simplify or "improve"
+ * without thorough testing against R's survival::coxph and glmnet.
  */
 static double cox_dev_single_stratum(
     const Eigen::VectorXd& eta_local,      // native order, centered
@@ -781,8 +776,8 @@ static double cox_dev_single_stratum(
 /**
  * Internal: Hessian matvec for a single stratum.
  *
- * CRITICAL: This function MUST use the EXACT same algorithm as hessian_matvec in coxdev.cpp.
- * Do NOT simplify or "improve" the algorithm.
+ * CRITICAL: This algorithm is complex and correct. Do NOT simplify or "improve"
+ * without thorough testing.
  */
 static void hessian_matvec_single_stratum(
     const Eigen::VectorXd& arg_local,  // native order
