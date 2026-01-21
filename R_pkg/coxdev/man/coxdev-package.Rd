@@ -2,6 +2,7 @@
 % Please edit documentation in R/coxdev-package.R
 \docType{package}
 \name{coxdev-package}
+\alias{coxdev}
 \alias{coxdev-package}
 \title{R Interface to coxdev C++ routines}
 \description{
