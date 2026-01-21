@@ -358,7 +358,19 @@ static void preprocess_single_stratum(
 
 /**
  * Internal: compute saturated log-likelihood for a single stratum.
- * Uses the EXACT same logic as compute_sat_loglik in coxdev.cpp.
+ *
+ * For Breslow (efron=false):
+ *   LL_sat = -Σ_C W_C * log(W_C)
+ *
+ * For Efron (efron=true):
+ *   LL_sat = -Σ_C W_C * [log(W_C) + (1/K_C+) * (log(K_C+!) - K_C+ * log(K_C+))]
+ *
+ * Where:
+ *   C = cluster of tied failure times
+ *   W_C = total weight of individuals in cluster C
+ *   K_C+ = count of individuals in cluster C with positive weights (w > 0)
+ *
+ * See doc/saturated_likelihood_calc.tex for derivation.
  */
 static double compute_sat_loglik_stratum(
     const Eigen::VectorXi& first,
@@ -366,6 +378,7 @@ static double compute_sat_loglik_stratum(
     const Eigen::VectorXd& weight,  // native order
     const Eigen::VectorXi& event_order,
     const Eigen::VectorXi& status,  // event order
+    bool efron,
     Eigen::VectorXd& W_status_buffer)  // workspace, size n+1
 {
     int n = first.size();
@@ -376,25 +389,60 @@ static double compute_sat_loglik_stratum(
         weight_event_order_times_status(i) = weight(event_order(i)) * status(i);
     }
 
-    // Forward cumsum
+    // Forward cumsum for W_C (total weight in each cluster)
     W_status_buffer(0) = 0.0;
     for (int i = 0; i < n; ++i) {
         W_status_buffer(i + 1) = W_status_buffer(i) + weight_event_order_times_status(i);
     }
 
-    // Compute sums for each element
+    // Compute W_C (sums) for each element
     Eigen::VectorXd sums(n);
     for (int i = 0; i < n; ++i) {
         sums(i) = W_status_buffer(last(i) + 1) - W_status_buffer(first(i));
+    }
+
+    // For Efron, also need K_C+ (effective cluster sizes - count of positive weights)
+    // We compute this using a cumsum of status * (weight > 0)
+    Eigen::VectorXd K_plus;
+    if (efron) {
+        Eigen::VectorXd status_positive_weight(n);
+        for (int i = 0; i < n; ++i) {
+            double w = weight(event_order(i));
+            status_positive_weight(i) = (status(i) > 0 && w > 0) ? 1.0 : 0.0;
+        }
+
+        // Forward cumsum
+        W_status_buffer(0) = 0.0;
+        for (int i = 0; i < n; ++i) {
+            W_status_buffer(i + 1) = W_status_buffer(i) + status_positive_weight(i);
+        }
+
+        // Compute K_C+ for each element
+        K_plus.resize(n);
+        for (int i = 0; i < n; ++i) {
+            K_plus(i) = W_status_buffer(last(i) + 1) - W_status_buffer(first(i));
+        }
     }
 
     double loglik_sat = 0.0;
     int prev_first = -1;
     for (int i = 0; i < n; ++i) {
         int f = first(i);
-        double s = sums(i);
-        if (s > 0 && f != prev_first) {
-            loglik_sat -= s * std::log(s);
+        double W_C = sums(i);
+        if (W_C > 0 && f != prev_first) {
+            // Breslow term: -W_C * log(W_C)
+            loglik_sat -= W_C * std::log(W_C);
+
+            // Efron penalty term: -(W_C / K_C+) * (log(K_C+!) - K_C+ * log(K_C+))
+            if (efron) {
+                double K_C_plus = K_plus(i);
+                if (K_C_plus > 0) {
+                    // log(K_C+!) = lgamma(K_C+ + 1)
+                    double log_factorial = std::lgamma(K_C_plus + 1.0);
+                    double efron_penalty = (W_C / K_C_plus) * (log_factorial - K_C_plus * std::log(K_C_plus));
+                    loglik_sat -= efron_penalty;
+                }
+            }
         }
         prev_first = f;
     }
@@ -981,6 +1029,7 @@ static double cox_dev_stratified_impl(
             weight_local,
             preproc.event_order,
             preproc.status,
+            strat_data.efron_stratum[s],
             ws.forward_cumsum_buffers[0]);
 
         // Compute deviance for this stratum

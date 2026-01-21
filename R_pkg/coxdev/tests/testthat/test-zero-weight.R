@@ -207,3 +207,196 @@ test_that("zero weight at first event-ordered position works correctly", {
     info = "Gradient mismatch"
   )
 })
+
+# =============================================================================
+# Direct tests of saturated log-likelihood formula
+# =============================================================================
+
+#' Compute expected saturated log-likelihood using the formula
+#'
+#' For Breslow: LL_sat = -sum(W_C * log(W_C))
+#' For Efron:   LL_sat = -sum(W_C * [log(W_C) + (1/K_C+) * (log(K_C+!) - K_C+ * log(K_C+))])
+#'
+#' Where:
+#'   W_C = sum of weights for events at time t
+#'   K_C+ = count of events with positive weight at time t
+compute_expected_sat_loglik <- function(event, status, weight, tie_breaking = "breslow") {
+  event_times <- event[status == 1]
+  event_weights <- weight[status == 1]
+  unique_times <- unique(event_times)
+
+  loglik_sat <- 0
+  for (t in unique_times) {
+    mask <- event_times == t
+    w_c <- sum(event_weights[mask])
+    if (w_c > 0) {
+      # Breslow term
+      loglik_sat <- loglik_sat - w_c * log(w_c)
+
+      # Efron penalty term
+      if (tie_breaking == "efron") {
+        k_c_plus <- sum(event_weights[mask] > 0)
+        if (k_c_plus > 0) {
+          efron_penalty <- (w_c / k_c_plus) * (lgamma(k_c_plus + 1) - k_c_plus * log(k_c_plus))
+          loglik_sat <- loglik_sat - efron_penalty
+        }
+      }
+    }
+  }
+  loglik_sat
+}
+
+test_that("saturated log-likelihood matches formula for Breslow (no ties)", {
+  # No ties case: Breslow and Efron should be identical
+  event <- c(1, 2, 3, 4, 5)
+  status <- c(1L, 1L, 1L, 1L, 1L)
+  weight <- c(1.0, 2.0, 1.5, 3.0, 0.5)
+  eta <- rep(0, 5)
+
+  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
+  result <- cox$coxdev(eta, weight)
+
+  expected <- compute_expected_sat_loglik(event, status, weight, "breslow")
+
+  expect_true(
+    all_close(result$loglik_sat, expected, rtol = 1e-10),
+    info = sprintf("Breslow sat loglik: got %f, expected %f", result$loglik_sat, expected)
+  )
+})
+
+test_that("saturated log-likelihood matches formula for Efron (no ties)", {
+  # No ties case: K_C+ = 1 for each cluster, so Efron penalty = 0
+  event <- c(1, 2, 3, 4, 5)
+  status <- c(1L, 1L, 1L, 1L, 1L)
+  weight <- c(1.0, 2.0, 1.5, 3.0, 0.5)
+  eta <- rep(0, 5)
+
+  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
+  result <- cox$coxdev(eta, weight)
+
+  expected <- compute_expected_sat_loglik(event, status, weight, "efron")
+
+  expect_true(
+    all_close(result$loglik_sat, expected, rtol = 1e-10),
+    info = sprintf("Efron sat loglik (no ties): got %f, expected %f", result$loglik_sat, expected)
+  )
+})
+
+test_that("saturated log-likelihood matches formula for Breslow (with ties)", {
+  # Ties at t=1 and t=2
+  event <- c(1, 1, 2, 2, 3)
+  status <- c(1L, 1L, 1L, 1L, 1L)
+  weight <- c(1.0, 2.0, 1.5, 0.5, 3.0)
+  eta <- rep(0, 5)
+
+  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
+  result <- cox$coxdev(eta, weight)
+
+  expected <- compute_expected_sat_loglik(event, status, weight, "breslow")
+
+  expect_true(
+    all_close(result$loglik_sat, expected, rtol = 1e-10),
+    info = sprintf("Breslow sat loglik (ties): got %f, expected %f", result$loglik_sat, expected)
+  )
+})
+
+test_that("saturated log-likelihood matches formula for Efron (with ties)", {
+  # Ties at t=1 and t=2 - Efron should differ from Breslow
+  event <- c(1, 1, 2, 2, 3)
+  status <- c(1L, 1L, 1L, 1L, 1L)
+  weight <- c(1.0, 2.0, 1.5, 0.5, 3.0)
+  eta <- rep(0, 5)
+
+  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
+  result <- cox$coxdev(eta, weight)
+
+  expected <- compute_expected_sat_loglik(event, status, weight, "efron")
+
+  expect_true(
+    all_close(result$loglik_sat, expected, rtol = 1e-10),
+    info = sprintf("Efron sat loglik (ties): got %f, expected %f", result$loglik_sat, expected)
+  )
+})
+
+test_that("saturated log-likelihood matches formula with zero weights (Breslow)", {
+  event <- c(1, 1, 2, 2, 3)
+  status <- c(1L, 1L, 1L, 1L, 1L)
+  weight <- c(0.0, 2.0, 1.5, 0.0, 3.0)  # Zero weights at positions 1 and 4
+  eta <- rep(0, 5)
+
+  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
+  result <- cox$coxdev(eta, weight)
+
+  expected <- compute_expected_sat_loglik(event, status, weight, "breslow")
+
+  expect_true(
+    all_close(result$loglik_sat, expected, rtol = 1e-10),
+    info = sprintf("Breslow sat loglik (zero weights): got %f, expected %f", result$loglik_sat, expected)
+  )
+})
+
+test_that("saturated log-likelihood matches formula with zero weights (Efron)", {
+  event <- c(1, 1, 2, 2, 3)
+  status <- c(1L, 1L, 1L, 1L, 1L)
+  weight <- c(0.0, 2.0, 1.5, 0.0, 3.0)  # Zero weights at positions 1 and 4
+  eta <- rep(0, 5)
+
+  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
+  result <- cox$coxdev(eta, weight)
+
+  expected <- compute_expected_sat_loglik(event, status, weight, "efron")
+
+  expect_true(
+    all_close(result$loglik_sat, expected, rtol = 1e-10),
+    info = sprintf("Efron sat loglik (zero weights): got %f, expected %f", result$loglik_sat, expected)
+  )
+})
+
+test_that("saturated log-likelihood: all zero weights at one time point", {
+  # All events at t=1 have zero weight
+  event <- c(1, 1, 2, 3)
+  status <- c(1L, 1L, 1L, 1L)
+  weight <- c(0.0, 0.0, 2.0, 3.0)
+  eta <- rep(0, 4)
+
+  for (tie_breaking in c("breslow", "efron")) {
+    cox <- make_cox_deviance(event = event, status = status, tie_breaking = tie_breaking)
+    result <- cox$coxdev(eta, weight)
+
+    expected <- compute_expected_sat_loglik(event, status, weight, tie_breaking)
+
+    expect_true(
+      all_close(result$loglik_sat, expected, rtol = 1e-10),
+      info = sprintf("%s sat loglik (all zero at t=1): got %f, expected %f",
+                     tie_breaking, result$loglik_sat, expected)
+    )
+  }
+})
+
+test_that("Efron differs from Breslow when there are ties", {
+  event <- c(1, 1, 1, 2, 2, 3)  # 3 events at t=1, 2 at t=2
+
+  status <- c(1L, 1L, 1L, 1L, 1L, 1L)
+  weight <- c(1.0, 2.0, 1.5, 1.0, 2.0, 3.0)
+  eta <- rep(0, 6)
+
+  cox_breslow <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
+  cox_efron <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
+
+  result_breslow <- cox_breslow$coxdev(eta, weight)
+  result_efron <- cox_efron$coxdev(eta, weight)
+
+  # They should differ when there are ties
+
+  expect_false(
+    all_close(result_breslow$loglik_sat, result_efron$loglik_sat, rtol = 1e-6),
+    info = "Efron and Breslow sat loglik should differ with ties"
+  )
+
+  # Efron should be larger (less negative) due to the penalty term being subtracted
+  expect_true(
+    result_efron$loglik_sat > result_breslow$loglik_sat,
+    info = sprintf("Efron (%f) should be > Breslow (%f) with ties",
+                   result_efron$loglik_sat, result_breslow$loglik_sat)
+  )
+})

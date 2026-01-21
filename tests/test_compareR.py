@@ -513,3 +513,96 @@ def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat, rtol=tol)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
     assert delta_ph < tol
+
+
+# =============================================================================
+# Tests for Breslow saturated log-likelihood against glmnet formula
+# =============================================================================
+
+def compute_breslow_sat_loglik(event, status, weight):
+    """
+    Compute Breslow saturated log-likelihood using the formula from glmnet paper.
+    LL_sat = -sum(W_C * log(W_C)) where W_C is the sum of weights at each unique event time
+    """
+    event_times = event[status == 1]
+    event_weights = weight[status == 1]
+    unique_times = np.unique(event_times)
+
+    loglik_sat = 0.0
+    for t in unique_times:
+        mask = event_times == t
+        w_c = np.sum(event_weights[mask])
+        if w_c > 0:
+            loglik_sat -= w_c * np.log(w_c)
+    return loglik_sat
+
+
+@pytest.mark.skipif(not has_rpy2, reason="rpy2 not available")
+def test_breslow_sat_loglik_unit_weights():
+    """Verify Breslow saturated log-likelihood matches formula (unit weights)."""
+    event = np.array([1, 1, 2, 2, 3, 4, 5, 5, 6, 7, 8, 8, 8, 9, 10, 11, 12, 13, 14, 15], dtype=float)
+    status = np.ones(20, dtype=int)
+    weight = np.ones(20)
+    eta = np.zeros(20)
+
+    expected = compute_breslow_sat_loglik(event, status, weight)
+
+    cox = CoxDeviance(event=event, status=status, tie_breaking='breslow')
+    result = cox(eta, weight)
+
+    assert np.isclose(result.loglik_sat, expected, rtol=1e-10), \
+        f"Breslow sat loglik mismatch: got {result.loglik_sat}, expected {expected}"
+
+    # Also verify deviance matches glmnet (returns D, G, H tuple)
+    D_glmnet, _, _ = get_glmnet_result(event, status, None, eta, weight)
+    assert np.isclose(result.deviance, D_glmnet[0], rtol=1e-10), \
+        "Deviance should match glmnet"
+
+
+@pytest.mark.skipif(not has_rpy2, reason="rpy2 not available")
+def test_breslow_sat_loglik_non_unit_weights():
+    """Verify Breslow saturated log-likelihood matches formula (non-unit weights)."""
+    event = np.array([1, 1, 2, 2, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10, 11], dtype=float)
+    status = np.ones(15, dtype=int)
+    weight = np.array([1.5, 2.0, 1.0, 0.5, 3.0, 2.5, 1.0, 1.5, 2.0, 1.0, 0.5, 3.0, 2.0, 1.5, 1.0])
+    np.random.seed(456)
+    eta = np.random.randn(15) * 0.5
+
+    expected = compute_breslow_sat_loglik(event, status, weight)
+
+    cox = CoxDeviance(event=event, status=status, tie_breaking='breslow')
+    result = cox(eta, weight)
+
+    assert np.isclose(result.loglik_sat, expected, rtol=1e-10), \
+        f"Breslow sat loglik mismatch (weighted): got {result.loglik_sat}, expected {expected}"
+
+    # Also verify deviance matches glmnet (returns D, G, H tuple)
+    D_glmnet, _, _ = get_glmnet_result(event, status, None, eta, weight)
+    assert np.isclose(result.deviance, D_glmnet[0], rtol=1e-10), \
+        "Deviance should match glmnet (weighted)"
+
+
+@pytest.mark.skipif(not has_rpy2, reason="rpy2 not available")
+def test_breslow_sat_loglik_with_start_times():
+    """Verify Breslow saturated log-likelihood matches formula (with start times)."""
+    np.random.seed(789)
+    n = 15
+    event = np.array([1, 1, 2, 2, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10, 11], dtype=float)
+    start = event - np.random.uniform(0.1, 0.5, n)
+    status = np.ones(n, dtype=int)
+    weight = np.array([1.5, 2.0, 1.0, 0.5, 3.0, 2.5, 1.0, 1.5, 2.0, 1.0, 0.5, 3.0, 2.0, 1.5, 1.0])
+    eta = np.random.randn(n) * 0.5
+
+    # Saturated log-likelihood only depends on event times and weights, not start times
+    expected = compute_breslow_sat_loglik(event, status, weight)
+
+    cox = CoxDeviance(event=event, start=start, status=status, tie_breaking='breslow')
+    result = cox(eta, weight)
+
+    assert np.isclose(result.loglik_sat, expected, rtol=1e-10), \
+        f"Breslow sat loglik mismatch (start times): got {result.loglik_sat}, expected {expected}"
+
+    # Also verify deviance matches glmnet (returns D, G, H tuple)
+    D_glmnet, _, _ = get_glmnet_result(event, status, start, eta, weight)
+    assert np.isclose(result.deviance, D_glmnet[0], rtol=1e-10), \
+        "Deviance should match glmnet (start times)"

@@ -1,0 +1,518 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[most]{tcolorbox}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+\tcbset{
+  enhanced,
+  breakable,
+  boxrule=0.4pt,
+  arc=2mm,
+  left=3mm,
+  right=3mm,
+  top=2mm,
+  bottom=2mm,
+  before skip=10pt,
+  after skip=10pt,
+}
+
+\newtcolorbox{UserMsg}{
+  colback=gray!8,
+  colframe=gray!55,
+  title=\textbf{User},
+  fonttitle=\bfseries,
+}
+
+\newtcolorbox{AssistantMsg}{
+  colback=blue!2,
+  colframe=blue!40,
+  title=\textbf{Assistant},
+  fonttitle=\bfseries,
+}
+
+\newtcolorbox{SystemMsg}{
+  colback=yellow!6,
+  colframe=yellow!60!black,
+  title=\textbf{System / Summary},
+  fonttitle=\bfseries,
+}
+
+\setlist[itemize]{leftmargin=2em}
+\setlist[enumerate]{leftmargin=2.5em}
+
+\title{Chat Transcript}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{UserMsg}
+Read this LaTeX file. It describes how to compute a Cox log-likelihood in the case of ties with Efron's correction.
+I want to compute the saturated log-likelihood, i.e.\ the maximum value of the log-likelihood over all $\eta$.
+The equation is labelled \texttt{eq:loglik:final}. It depends on quantities defined earlier in the LaTeX.
+
+The paper \url{https://doi.org/10.18637/jss.v039.i05} reports the answer for the case of ``Breslow'' ties where the scaling ($\sigma$ in the document) is $0$ and the weight vector $w$ is identically $1$.
+The only difference between ``Efron'' and ``Breslow'' is this $\sigma$ vector.
+\end{UserMsg}
+
+\begin{AssistantMsg}
+Based on the notes provided in \texttt{main.tex}, here is the derivation and final formula for the \textbf{saturated log-likelihood} using Efron's tie handling.
+
+\medskip
+\textbf{The Final Formula}
+
+The saturated log-likelihood ($LL_{\text{sat}}$) for the Cox model with Efron's method is:
+\[
+LL_{\text{sat}}
+= - \sum_{C\in \text{Clusters}} W_C
+\left[
+\log(W_C) + \frac{1}{K_C}\Bigl(\log(K_C!) - K_C\log(K_C)\Bigr)
+\right].
+\]
+
+Where:
+\begin{itemize}
+  \item The sum iterates over every unique failure time (cluster $C$).
+  \item $K_C$ is the number of tied failures in cluster $C$.
+  \item $W_C = \sum_{j\in C} w_j$ is the sum of weights for the individuals failing in that cluster.
+\end{itemize}
+
+If you are using the \textbf{Breslow} method (where $\sigma=0$), the second term vanishes, recovering the result from the cited paper:
+\[
+\sum -W_C\log(W_C).
+\]
+
+\medskip
+\textbf{Derivation}
+
+We start from the log-likelihood defined in your document (Eq 37 /):
+\[
+LL(\eta) = \sum_{i=1}^{n} d_i\left[w_i\eta_i - \bar{w}_i \log\!\bigl(\bar{R}_i(we^{\eta})\bigr)\right].
+\]
+
+To find the \textbf{saturated} likelihood, we treat the risk scores $\theta=e^{\eta}$ as free parameters and maximize $LL$ locally for each cluster of tied failures.
+In the saturated limit, the risk scores for the individuals who fail at time $t$ become infinitely large compared to those who do not fail.
+
+\medskip
+\textbf{1. Simplify the Risk Set ($\bar{R}_i$)}
+
+For a specific cluster of tied failures $C$ at time $t$, let the set of indices be $D$.
+As the risk scores for these individuals $(\theta_j)_{j\in D}$ grow arbitrarily large relative to the rest of the risk set, the non-failing individuals in the denominator vanish.
+
+The Efron-adjusted risk sum for an individual $i\in D$ becomes:
+\[
+\bar{R}_i \approx \sum_{j\in D} w_j\theta_j \;-\; \delta\cdot \sigma_i \sum_{j\in D} w_j\theta_j
+= (1-\sigma_i)\sum_{j\in D} w_j\theta_j.
+\]
+(\textit{Note:} $\delta=1$ for Efron.)
+
+\medskip
+\textbf{2. Local Maximization}
+
+Substitute this into the likelihood contribution for the cluster $D$.
+Let $\Theta_D = \sum_{j\in D} w_j\theta_j$:
+\[
+LL_D = \sum_{i\in D}\left[w_i\log(\theta_i) - \bar{w}_i\log\!\bigl((1-\sigma_i)\Theta_D\bigr)\right].
+\]
+
+Using the definition $\bar{w}_i = W_D/K_D$ (the average weight), we know that $\sum_{i\in D}\bar{w}_i = W_D$.
+We can split the log term:
+\[
+LL_D
+= \underbrace{\sum_{i\in D} w_i\log(\theta_i) - W_D\log(\Theta_D)}_{\text{Structural Term}}
+\;-\;
+\underbrace{\sum_{i\in D} \bar{w}_i\log(1-\sigma_i)}_{\text{Efron Penalty}}.
+\]
+
+To maximize the \textbf{Structural Term} with respect to $\theta$, we take derivatives.
+It turns out this term is maximized when all $\theta_i$ within the cluster are \textbf{equal} (e.g., $\theta_i=1$).
+\begin{itemize}
+  \item If $\theta_i=1$, then $\Theta_D = W_D$.
+  \item The Structural Term becomes:
+  \[
+  \sum w_i(0) - W_D\log(W_D) = -W_D\log(W_D).
+  \]
+\end{itemize}
+
+\medskip
+\textbf{3. Calculating the Efron Penalty}
+
+The ``penalty'' term accounts for the tie-breaking fractions.
+\[
+\text{Penalty} = \sum_{i\in D} \bar{w}_i\log(1-\sigma_i).
+\]
+
+Since $\bar{w}_i = W_D/K_D$ is constant for the cluster, we factor it out.
+The values of $\sigma_i$ for a cluster of size $K$ are $\{0, 1/K, 2/K,\ldots,(K-1)/K\}$.
+\[
+\text{Penalty}
+= \frac{W_D}{K_D}\sum_{m=0}^{K_D-1}\log\!\left(1-\frac{m}{K_D}\right)
+= \frac{W_D}{K_D}\sum_{m=0}^{K_D-1}\log\!\left(\frac{K_D-m}{K_D}\right).
+\]
+
+The sum of logs is the log of the product:
+\[
+\sum \log\!\left(\frac{K_D-m}{K_D}\right)
+= \log\!\left(\frac{K_D\cdot (K_D-1)\cdots 1}{K_D^{K_D}}\right)
+= \log(K_D!) - K_D\log(K_D).
+\]
+
+\medskip
+\textbf{4. Combining Terms}
+
+Combining the maximized structural term and the penalty yields the contribution for cluster $C$:
+\[
+LL_{\text{sat},C}
+= -W_C\log(W_C) - \frac{W_C}{K_C}\Bigl[\log(K_C!) - K_C\log(K_C)\Bigr].
+\]
+\end{AssistantMsg}
+
+\begin{UserMsg}
+Does this agree with the paper's answer when all weights are $1$ and using Breslow's formula?
+\end{UserMsg}
+
+\begin{AssistantMsg}
+Yes, this agrees with the paper's answer.
+
+When you apply the \textbf{Breslow} conditions (where all weights $w_i=1$ and the scaling factor $\sigma=0$) to the Efron formula derived above, it simplifies directly to the standard saturated log-likelihood for the Breslow method:
+\[
+-\sum d_i\log(d_i).
+\]
+
+\medskip
+\textbf{Step-by-Step Simplification}
+
+\textbf{1. Apply the Breslow Condition ($\sigma=0$)} \;
+The provided notes state that for the Breslow correction, the scaling vector $\sigma$ is set to $0$.
+In the Efron formula, the ``penalty'' term depends on $\log(1-\sigma_i)$:
+\[
+\text{Penalty}\propto \sum \log(1-\sigma_i).
+\]
+If $\sigma_i=0$, then $\log(1-0)=0$.
+Consequently, the entire second term of the derived equation vanishes.
+
+\medskip
+\textbf{2. Simplify the Remaining Term} \;
+With the second term gone, the formula reduces to just the structural term:
+\[
+LL_{\text{sat}} = -\sum_C W_C\log(W_C).
+\]
+
+\medskip
+\textbf{3. Apply Unit Weights ($w_i=1$)} \;
+If all individual weights are $1$, the cluster weight $W_C$ is simply the sum of the count of tied failures, denoted as $d_i$ (or $K_C$ in the previous notation):
+\[
+W_C = \sum_{j\in C} 1 = d_i.
+\]
+
+\medskip
+\textbf{4. Final Result} \;
+Substituting $d_i$ for $W_C$ yields the standard Breslow saturated log-likelihood found in the paper:
+\[
+LL_{\text{sat},\text{Breslow}}
+= - \sum_{\text{unique times } i} d_i\log(d_i).
+\]
+\end{AssistantMsg}
+
+\begin{UserMsg}
+I also think you have to be careful about weights that are $0$. They shouldn't be included in $K_D$.
+The \texttt{main.tex} does not discuss this. The document also neglects the $0$-weight cases for the likelihood, gradient and Hessian.
+I think the only changes needed are to change the $\sigma$ vector to properly deal with these $0$-weight cases (i.e.\ they are ignored).
+And I think the $\bar{w}$ also need to change. Anything else?
+\end{UserMsg}
+
+\begin{AssistantMsg}
+You are absolutely correct.
+The presence of $0$-weighted individuals in the risk sets creates edge cases that the standard formulas (and the provided \texttt{main.tex}) do not handle.
+If strictly followed, the standard Efron definitions would incorrectly dilute the tie-breaking penalty and the average weights.
+
+Here is a summary of the necessary changes to $\bar{w}$, $\sigma$, and $K_D$, as well as the updated Saturated Likelihood formula.
+
+\medskip
+\textbf{1. The Core Issue}
+
+In the standard Efron approximation, the ``risk removal'' steps $(1/K, 2/K, \ldots)$ assume that every tied individual contributes a share of risk that needs to be removed.
+Individuals with $w_i=0$ have $0$ risk $(w_ie^{\eta_i}=0)$.
+Including them in the count $K$ or the rank assignment distorts the correction for the individuals who \emph{do} have positive weights.
+
+\medskip
+\textbf{2. Required Changes}
+
+You need to modify the inputs before feeding them into the cumsum-based algorithm derived in the paper.
+
+\medskip
+\textbf{A. The Counts ($K_D\to K_D^+$)}
+
+For a cluster of ties $C$, define the effective cluster size as the count of \textbf{positive-weight} failures:
+\[
+K_C^+ = \sum_{j\in C} \mathbf{1}_{\{w_j>0\}}.
+\]
+(\textit{If $K_C^+=0$, the entire contribution of this cluster to the log-likelihood and gradient is $0$.})
+
+\medskip
+\textbf{B. The Average Weights ($\bar{w}$)}
+
+The average weight $\bar{w}_i$ must only distribute the total weight of the cluster, $W_C$, among the valid contributors.
+\begin{itemize}
+  \item If $w_i=0$: set $\bar{w}_i=0$. (This ensures they contribute $0$ to the likelihood/gradient sums.)
+  \item If $w_i>0$: set $\bar{w}_i=\dfrac{W_C}{K_C^+}$.
+\end{itemize}
+
+\medskip
+\textbf{C. The Efron Scaling Vector ($\sigma$)}
+
+The vector $\sigma$ represents the fraction of the risk set removed before the $i$-th event.
+This rank must skip $0$-weight individuals.
+\begin{itemize}
+  \item \textbf{Sort order:} Maintain the arbitrary sort order used for the cluster.
+  \item If $w_i=0$: set $\sigma_i=0$ (irrelevant since $\bar{w}_i=0$, but good for safety).
+  \item If $w_i>0$: let $\operatorname{rank}^+(i)$ be the $0$-based index of this individual among only the positive-weight members of the cluster (ranging from $0$ to $K_C^+-1$), and set
+  \[
+  \sigma_i=\frac{\operatorname{rank}^+(i)}{K_C^+}.
+  \]
+\end{itemize}
+
+\textbf{Example:} If a cluster has weights $[1,0,1]$, the standard method would use $\sigma=[0,1/3,2/3]$.
+The correct method should ignore the middle entry for ranking: $\sigma=[0,0,1/2]$.
+
+\medskip
+\textbf{3. Updated Saturated Log-Likelihood}
+
+The saturated log-likelihood formula must use $K_C^+$ instead of the raw count $d_i$.
+The $0$-weight terms vanish from the optimization entirely.
+\[
+LL_{\text{sat}}
+= -\sum_C W_C\left[
+\log(W_C) + \frac{1}{K_C^+}\Bigl(\log(K_C^+!) - K_C^+\log(K_C^+)\Bigr)
+\right].
+\]
+(\textit{Sum is over unique failure times $C$ where $W_C>0$.})
+
+\medskip
+\textbf{4. ``Anything else?''}
+
+You asked if there are other changes needed. There are two minor but critical implementation details:
+\begin{enumerate}
+  \item \textbf{Safety for $K_C^+=0$:} You must explicitly handle the case where a cluster consists \emph{entirely} of $0$-weight individuals. In this case, $K_C^+=0$. You should skip these clusters entirely to avoid division by zero when calculating $\bar{w}$ or $\sigma$.
+
+  \item \textbf{Compatibility with ``Lemmas'':} The derivation in \texttt{main.tex} (Lemmas 1 \& 2) relies on cumulative sums over the range \texttt{[first, last]}.
+  \begin{itemize}
+    \item You do not need to change the \texttt{first} or \texttt{last} indices or re-sort the data physically to exclude $0$-weights.
+    \item Because you set $\bar{w}_i=0$ and $w_i=0$ for the ``ghost'' individuals, they will naturally contribute $0$ to the cumulative sums of risk ($Z$) and the weighted sums in the gradient/Hessian. The algorithm will correctly ``integrate over'' them without effect, provided your $\sigma$ and $\bar{w}$ values are set as described above.
+  \end{itemize}
+\end{enumerate}
+\end{AssistantMsg}
+
+\begin{SystemMsg}
+\textbf{Summary of Chat: Saturated Log-Likelihood for Cox Models with Ties}
+
+\medskip
+(\textit{Click ``Export to Docs'' below to save this as a shareable document})
+
+\medskip
+\textbf{1. Context \& Problem} \;
+The user provided a LaTeX document (\texttt{main.tex}) deriving the score and Hessian for Cox's partial likelihood using \textbf{Efron's tie-handling} method.
+The goal was to derive the \textbf{saturated log-likelihood} (maximum possible likelihood value) for this specific model configuration to ensure consistency with existing literature (specifically the ``Breslow'' formulation when weights are trivial).
+
+\medskip
+\textbf{2. Key Derivations}
+\begin{itemize}
+  \item \textbf{Saturated Likelihood Formula (Efron):} We derived that the saturated log-likelihood $LL_{\text{sat}}$ for the Cox model using Efron's method is:
+  \[
+  LL_{\text{sat}}
+  = - \sum_{C\in \text{Clusters}} W_C
+  \left[
+  \log(W_C) + \frac{1}{K_C^+}\Bigl(\log(K_C^+!) - K_C^+\log(K_C^+)\Bigr)
+  \right].
+  \]
+  Where:
+  \begin{itemize}
+    \item $C$: A cluster of tied failure times.
+    \item $W_C$: Total weight of individuals in cluster $C$.
+    \item $K_C^+$: Count of individuals in cluster $C$ with \textbf{positive weights} $(w_i>0)$.
+  \end{itemize}
+
+  \item \textbf{Consistency with Breslow:} When applying Breslow conditions (scaling vector $\sigma=0$ and weights $w_i=1$), the ``Efron penalty'' term (the second term with the factorials) vanishes.
+  The formula simplifies to:
+  \[
+  LL_{\text{sat},\text{Breslow}}
+  = - \sum_{\text{unique times } i} d_i\log(d_i).
+  \]
+  This matches the standard result found in statistical software literature (e.g., \texttt{survival} package in R).
+\end{itemize}
+
+\medskip
+\textbf{3. Critical Corrections for Zero Weights} \;
+We identified a flaw in standard implementations (and the user's \texttt{main.tex}) regarding individuals with \textbf{weight = 0}.
+\begin{itemize}
+  \item \textbf{Issue:} Standard Efron logic includes $0$-weight individuals in the tie count $K$ and rank scaling $\sigma$, which incorrectly dilutes the penalty for valid observations.
+  \item \textbf{Solution:}
+  \begin{enumerate}
+    \item \textbf{Effective Count ($K_C^+$):} Sum only individuals where $w_i>0$.
+    \item \textbf{Average Weights ($\bar{w}$):} Compute as $W_C/K_C^+$. If $w_i=0$, then $\bar{w}_i=0$.
+    \item \textbf{Scaling Vector ($\sigma$):} Rank individuals based only on positive-weight members. For $w_i=0$, set $\sigma_i=0$.
+  \end{enumerate}
+\end{itemize}
+\end{SystemMsg}
+
+\begin{UserMsg}
+Can you show me how you optimized the loglikelihood over $\eta$ in Canvas?
+\end{UserMsg}
+
+\begin{AssistantMsg}
+I can certainly demonstrate that optimization.
+It relies on the ``saturated'' assumption: that we can make the risk scores $\theta=e^{\eta}$ for the individuals failing at time $t$ infinitely larger than the risk scores of everyone else, effectively isolating the cluster.
+
+Here is the derivation.
+
+\medskip
+\textbf{Summary of the Logic}
+\begin{enumerate}
+  \item \textbf{Isolation:} By letting the risk scores $\theta$ go to infinity, the cluster becomes its own isolated risk set.
+  \item \textbf{Equality:} Inside this isolated bubble, the likelihood is maximized when everyone has the same risk score ($\theta_i=\text{const}$).
+  \item \textbf{Result:} This leads to the $-W_C\log(W_C)$ term.
+  \item \textbf{Penalty:} The rest of the formula comes purely from summing the Efron weights $\bar{w}_i\log(1-\sigma_i)$.
+\end{enumerate}
+
+\medskip
+\textbf{Saturated Likelihood Derivation}
+
+\medskip
+\textbf{Derivation of the Saturated Log-Likelihood (Efron Method)}
+
+\medskip
+\textbf{1. The Setup}
+
+Consider a single cluster $C$ of individuals who fail at the same time $t$.
+\begin{itemize}
+  \item Let $\theta_j=e^{\eta_j}$ be the risk score for individual $j$.
+  \item Let $w_j$ be the case weight.
+  \item Let $W_C=\sum_{j\in C} w_j$ be the total weight of the cluster.
+  \item Let $K_C^+$ be the number of individuals in the cluster with $w_j>0$.
+\end{itemize}
+
+\medskip
+\textbf{2. The Saturated Limit}
+
+In the ``saturated'' model, we treat the parameters $\theta_j$ for the individuals in $C$ as free parameters.
+To maximize the likelihood that \emph{these specific} individuals failed at time $t$ (versus anyone else in the risk set), the model will drive their risk scores $\theta_j$ to infinity relative to the non-failing individuals.
+
+Consequently, the risk set sums $\bar{R}_i$ become dominated by the contributions from the cluster $C$ itself.
+The contribution from non-failing individuals becomes negligible.
+
+For an individual $i\in C$, the Efron-adjusted risk sum approximates to:
+\[
+\bar{R}_i(\theta)
+\approx \sum_{j\in C} w_j\theta_j - \sigma_i \sum_{j\in C} w_j\theta_j
+= (1-\sigma_i)\Theta_C,
+\]
+where $\Theta_C=\sum_{j\in C} w_j\theta_j$.
+
+\medskip
+\textbf{3. The Objective Function}
+
+The contribution of this cluster to the total log-likelihood is:
+\[
+LL_C(\theta) = \sum_{i\in C}\left[w_i\log(\theta_i) - \bar{w}_i\log\!\bigl(\bar{R}_i(\theta)\bigr)\right].
+\]
+
+Substituting the approximation for $\bar{R}_i$:
+\[
+LL_C(\theta) = \sum_{i\in C} w_i\log(\theta_i) - \sum_{i\in C}\bar{w}_i \log\!\bigl((1-\sigma_i)\Theta_C\bigr).
+\]
+
+We can split the second term using $\log(ab)=\log a+\log b$:
+\[
+LL_C(\theta)
+= \sum_{i\in C} w_i\log(\theta_i)
+- \left(\sum_{i\in C}\bar{w}_i\right)\log(\Theta_C)
+- \sum_{i\in C}\bar{w}_i\log(1-\sigma_i).
+\]
+
+Recall that the average weight $\bar{w}_i$ is defined such that it sums to the total cluster weight $W_C$.
+Therefore, $\sum \bar{w}_i = W_C$.
+
+The equation separates into two parts: a \textbf{Structural Term} that depends on $\theta$, and a \textbf{Penalty Term} that is constant w.r.t.\ $\theta$.
+\[
+LL_C(\theta)
+= \underbrace{\left[\sum_{i\in C} w_i\log(\theta_i) - W_C \log\!\left(\sum_{j\in C} w_j\theta_j\right)\right]}_{\text{Structural Term}}
+- \underbrace{\sum_{i\in C}\bar{w}_i\log(1-\sigma_i)}_{\text{Efron Penalty}}.
+\]
+
+\medskip
+\textbf{4. Optimizing the Structural Term}
+
+We maximize the structural term $S(\theta)$ with respect to $\theta_k$ for any $k\in C$.
+\[
+\frac{\partial S}{\partial \theta_k}
+= \frac{w_k}{\theta_k} - W_C\cdot \frac{w_k}{\sum_{j\in C} w_j\theta_j}
+= 0.
+\]
+
+Dividing by $w_k$ (assuming $w_k>0$):
+\[
+\frac{1}{\theta_k} = \frac{W_C}{\Theta_C}
+\;\Rightarrow\;
+\theta_k = \frac{\Theta_C}{W_C}.
+\]
+
+This result implies that at the optimum, \textbf{all} $\theta_k$ must be equal.
+The absolute scale does not matter for Cox partial likelihood, so we typically set $\theta_k=1$.
+
+Substituting $\theta_k=1$ back into the Structural Term:
+\[
+S(\theta_{\text{opt}})
+= \sum_{i\in C} w_i\log(1) - W_C\log\!\left(\sum_{j\in C} w_j(1)\right)
+= 0 - W_C\log(W_C).
+\]
+
+\medskip
+\textbf{5. Calculating the Efron Penalty}
+
+Now we evaluate the constant penalty term.
+Recall the definitions for zero-weight corrections:
+\begin{itemize}
+  \item $\bar{w}_i=\dfrac{W_C}{K_C^+}$ \; (for valid observations)
+  \item $\sigma_i=\dfrac{m}{K_C^+}$ where $m$ runs from $0$ to $K_C^+-1$.
+\end{itemize}
+
+\[
+\text{Penalty}
+= \sum_{i\in C,\,w_i>0} \frac{W_C}{K_C^+}\log\!\left(1-\frac{m_i}{K_C^+}\right)
+= \frac{W_C}{K_C^+}\sum_{m=0}^{K_C^+-1}\log\!\left(\frac{K_C^+-m}{K_C^+}\right).
+\]
+
+The sum of logs is the log of the product:
+\begin{align*}
+\sum_{m=0}^{K_C^+-1}\log\!\left(\frac{K_C^+-m}{K_C^+}\right)
+&= \log\!\left(\prod_{m=0}^{K_C^+-1}\frac{K_C^+-m}{K_C^+}\right) \\
+&= \log\!\left(\frac{K_C^+\cdot (K_C^+-1)\cdots 1}{(K_C^+)^{K_C^+}}\right) \\
+&= \log(K_C^+!) - K_C^+\log(K_C^+).
+\end{align*}
+
+\medskip
+\textbf{6. Final Result}
+
+Combining the optimized Structural Term and the Penalty Term:
+\[
+LL_{\text{sat},C}
+= -W_C\log(W_C) - \frac{W_C}{K_C^+}\Bigl[\log(K_C^+!) - K_C^+\log(K_C^+)\Bigr].
+\]
+\end{AssistantMsg}
+
+\end{document}

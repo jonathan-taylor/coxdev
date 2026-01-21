@@ -43,36 +43,54 @@ except ImportError:
     has_rpy2 = False
 
 
-def compute_sat_loglik_R(event, status, weight):
+def compute_sat_loglik_R(event, status, weight, tie_breaking='breslow'):
     """
     Compute saturated log-likelihood using R.
 
-    The saturated log-likelihood is computed as:
-        sum over unique event times: -s * log(s)
-    where s is the sum of weights for events at that time.
+    For Breslow (default):
+        LL_sat = sum over unique event times: -W_C * log(W_C)
+
+    For Efron:
+        LL_sat = sum over unique event times:
+            -W_C * [log(W_C) + (1/K_C+) * (log(K_C+!) - K_C+ * log(K_C+))]
+
+    where:
+        W_C = sum of weights for events at time t
+        K_C+ = count of events with positive weight at time t
     """
     with np_cv_rules.context():
         rpy.r.assign('event', np.asarray(event))
         rpy.r.assign('status', np.asarray(status).astype(int))
         rpy.r.assign('weight', np.asarray(weight))
+        rpy.r.assign('tie_breaking', tie_breaking)
 
         rpy.r('''
-        compute_sat_loglik <- function(event, status, weight) {
+        compute_sat_loglik <- function(event, status, weight, tie_breaking) {
             event_times <- event[status == 1]
             event_weights <- weight[status == 1]
             unique_times <- unique(event_times)
             loglik_sat <- 0
             for (t in unique_times) {
-                s <- sum(event_weights[event_times == t])
-                if (s > 0) {
-                    loglik_sat <- loglik_sat - s * log(s)
+                w_c <- sum(event_weights[event_times == t])
+                if (w_c > 0) {
+                    # Breslow term
+                    loglik_sat <- loglik_sat - w_c * log(w_c)
+
+                    # Efron penalty term
+                    if (tie_breaking == "efron") {
+                        k_c_plus <- sum(event_weights[event_times == t] > 0)
+                        if (k_c_plus > 0) {
+                            efron_penalty <- (w_c / k_c_plus) * (lgamma(k_c_plus + 1) - k_c_plus * log(k_c_plus))
+                            loglik_sat <- loglik_sat - efron_penalty
+                        }
+                    }
                 }
             }
             return(loglik_sat)
         }
         ''')
 
-        loglik_sat_R = rpy.r('compute_sat_loglik(event, status, weight)')[0]
+        loglik_sat_R = rpy.r('compute_sat_loglik(event, status, weight, tie_breaking)')[0]
 
     return loglik_sat_R
 
@@ -329,7 +347,7 @@ class TestZeroWeightsCompareR:
         cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
         result = cox(np.zeros(5), weight)
 
-        loglik_sat_R = compute_sat_loglik_R(event, status, weight)
+        loglik_sat_R = compute_sat_loglik_R(event, status, weight, tie_breaking=tie_breaking)
 
         assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
             f"Python: {result.loglik_sat}, R: {loglik_sat_R}"
@@ -344,7 +362,7 @@ class TestZeroWeightsCompareR:
         cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
         result = cox(np.zeros(5), weight)
 
-        loglik_sat_R = compute_sat_loglik_R(event, status, weight)
+        loglik_sat_R = compute_sat_loglik_R(event, status, weight, tie_breaking=tie_breaking)
 
         assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
             f"Python: {result.loglik_sat}, R: {loglik_sat_R}"
@@ -359,7 +377,7 @@ class TestZeroWeightsCompareR:
         cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
         result = cox(np.zeros(4), weight)
 
-        loglik_sat_R = compute_sat_loglik_R(event, status, weight)
+        loglik_sat_R = compute_sat_loglik_R(event, status, weight, tie_breaking=tie_breaking)
 
         assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
             f"Python: {result.loglik_sat}, R: {loglik_sat_R}"
@@ -379,7 +397,8 @@ class TestZeroWeightsCompareR:
         )
         result = cox(data['eta'], data['weights'])
 
-        loglik_sat_R = compute_sat_loglik_R(data['event'], data['status'], data['weights'])
+        loglik_sat_R = compute_sat_loglik_R(data['event'], data['status'], data['weights'],
+                                            tie_breaking=tie_breaking)
 
         assert np.isclose(result.loglik_sat, loglik_sat_R, rtol=1e-10), \
             f"Python: {result.loglik_sat}, R: {loglik_sat_R}"

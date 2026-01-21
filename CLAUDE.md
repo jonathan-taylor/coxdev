@@ -6,6 +6,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Stratified Cox C++ implementation is complete. Both Python and R use a single unified C++ codebase (`coxdev_strata.cpp`) that handles stratified and unstratified models (unstratified = single stratum).
 
+## Upcoming Tasks
+
+### Compute Saturated Likelihood (Efron)
+
+**Status:** The current `compute_sat_loglik_stratum()` function in `coxdev_strata.cpp` only implements the **Breslow** formula: `-W_C * log(W_C)`. It needs to be extended to support the full **Efron** correction.
+
+**Mathematical Details:** See `doc/saturated_likelihood_calc.tex` and `doc/main.tex` for complete derivations.
+
+**Formula:**
+```
+LL_sat = -Σ_C W_C * [log(W_C) + (1/K_C+) * (log(K_C+!) - K_C+ * log(K_C+))]
+```
+
+Where:
+- `C` = cluster of tied failure times
+- `W_C` = total weight of individuals in cluster C: `Σ_{j∈C} w_j`
+- `K_C+` = count of individuals in cluster C with **positive weights** (`w_j > 0`)
+- For **Breslow** (`σ=0`): the second term vanishes, giving `-W_C * log(W_C)`
+- For **Efron** (`σ≠0`): includes the factorial penalty term
+
+**Zero-Weight Handling:**
+- `K_C+` must only count positive-weight individuals
+- If `K_C+ = 0` for a cluster, skip it entirely (avoids division by zero)
+- This is consistent with how `σ` (scaling) is computed for zero-weight cases
+
+**Implementation Requirements:**
+1. Modify `compute_sat_loglik_stratum()` in `coxdev_strata.cpp`
+2. Use existing preprocessing framework (`first`, `last`, `scaling`, workspace buffers)
+3. Add `efron` boolean parameter to select Breslow vs Efron formula
+4. Compute `K_C+` (effective cluster size) using existing `first`/`last` indices
+5. Use `lgamma(K_C+ + 1)` for `log(K_C+!)` to avoid overflow
+6. Single unified implementation for both Python and R bindings
+
 ### Related Projects
 
 - **glmnet working copy**: `/Users/naras/research/glmnet/pkg_src`
@@ -50,7 +83,9 @@ This library computes Cox proportional hazards model deviance, gradients, and He
   - `src/coxdev_strata.cpp` - **Single C++ source** for both Python and R (stratified implementation)
   - `R/coxdev.R` - `make_cox_deviance()` and `make_stratified_cox_deviance()` R wrappers
 
-- **`doc/cox_calculations.tex`** - LaTeX document showing complete calculations used in current implementation
+- **`doc/`** - LaTeX documentation
+  - `main.tex` - Score and Hessian derivations for weighted Cox with ties
+  - `saturated_likelihood_calc.tex` - Saturated log-likelihood derivation (Efron method)
 
 ### Key Design Patterns
 
@@ -245,4 +280,5 @@ C++ stratified vs R loop (evaluation only, preprocessing excluded):
 
 ## Resources
 
-1. The file `doc/cox_calculations.tex` shows the complete calculations that inform the current implementation.
+1. `doc/main.tex` - Score and Hessian derivations for weighted Cox proportional hazards with ties (Breslow and Efron methods)
+2. `doc/saturated_likelihood_calc.tex` - Complete derivation of saturated log-likelihood for Efron method, including zero-weight handling
