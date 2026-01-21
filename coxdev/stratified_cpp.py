@@ -5,23 +5,11 @@ This module provides a Python wrapper around the C++ stratified Cox implementati
 """
 
 import numpy as np
-from dataclasses import dataclass
 from typing import Optional, Literal
 from scipy.sparse.linalg import LinearOperator
 
 from .base import CoxDevianceResult
 from .coxc import StratifiedCoxDevianceCpp as _StratifiedCoxDevianceCpp
-
-
-@dataclass
-class StratifiedCoxDevianceCppResult:
-    """Result from stratified Cox deviance computation."""
-    linear_predictor: np.ndarray
-    sample_weight: np.ndarray
-    loglik_sat: float
-    deviance: float
-    gradient: np.ndarray
-    diag_hessian: np.ndarray
 
 
 class StratifiedCoxDevianceCpp:
@@ -106,10 +94,6 @@ class StratifiedCoxDevianceCpp:
             self._efron
         )
 
-        # Store last linear predictor and sample weight for information matrix
-        self._last_linear_predictor = None
-        self._last_sample_weight = None
-
     def __call__(
         self,
         linear_predictor: np.ndarray,
@@ -136,10 +120,6 @@ class StratifiedCoxDevianceCpp:
             sample_weight = np.ones_like(linear_predictor)
         else:
             sample_weight = np.asarray(sample_weight).astype(float)
-
-        # Store for information matrix
-        self._last_linear_predictor = linear_predictor.copy()
-        self._last_sample_weight = sample_weight.copy()
 
         # Call C++ implementation
         deviance, loglik_sat, gradient, diag_hessian = self._cpp(

@@ -12,23 +12,26 @@
  * Preprocessed data for a single stratum.
  * Contains all the ordering and mapping information computed once
  * during initialization.
+ *
+ * All fields are RO (read-only) after preprocessing - do not modify during computation.
  */
 template <class ValueType = double, class IndexType = int>
 struct CoxPreprocessed {
-    Eigen::VectorXi event_order;    // permutation to sort by event time
-    Eigen::VectorXi start_order;    // permutation to sort by start time
-    Eigen::VectorXi status;         // event indicator in event order
-    Eigen::VectorXi first;          // first index of tie group
-    Eigen::VectorXi last;           // last index of tie group
-    Eigen::VectorXd scaling;        // Efron scaling factors
-    Eigen::VectorXd original_scaling; // original scaling (before zero-weight correction)
-    Eigen::VectorXd event;          // event times in event order
-    Eigen::VectorXd start;          // start times in start order
-    Eigen::VectorXi event_map;      // maps event order to start order
-    Eigen::VectorXi start_map;      // maps start order to event order
-    bool have_start_times;          // whether left truncation is present
-    bool efron;                     // whether to use Efron tie-breaking
-    int n;                          // number of observations in this stratum
+    // RO: All fields set once during preprocessing, then read-only
+    Eigen::VectorXi event_order;      // RO: permutation to sort by event time
+    Eigen::VectorXi start_order;      // RO: permutation to sort by start time
+    Eigen::VectorXi status;           // RO: event indicator in event order
+    Eigen::VectorXi first;            // RO: first index of tie group
+    Eigen::VectorXi last;             // RO: last index of tie group
+    Eigen::VectorXd scaling;          // RO: Efron scaling factors (may be adjusted for zero weights)
+    Eigen::VectorXd original_scaling; // RO: original scaling (before zero-weight correction)
+    Eigen::VectorXd event;            // RO: event times in event order
+    Eigen::VectorXd start;            // RO: start times in start order
+    Eigen::VectorXi event_map;        // RO: maps event order to start order
+    Eigen::VectorXi start_map;        // RO: maps start order to event order
+    bool have_start_times;            // RO: whether left truncation is present
+    bool efron;                       // RO: whether to use Efron tie-breaking
+    int n;                            // RO: number of observations in this stratum
 
     void resize(int n_) {
         n = n_;
@@ -49,43 +52,56 @@ struct CoxPreprocessed {
 /**
  * Working buffers for Cox deviance computation within a single stratum.
  * Pre-allocated to avoid repeated memory allocation during optimization.
+ *
+ * Buffer access patterns:
+ *   RW: Read-write output buffers - primary outputs scattered to caller
+ *   RW-PERSIST: Intermediate values preserved across deviance/hessian_matvec calls
+ *   SCRATCH: Temporary storage, contents not preserved between calls
  */
 template <class ValueType = double>
 struct CoxWorkspace {
-    // Gradient and Hessian outputs
-    Eigen::VectorXd grad_buffer;
-    Eigen::VectorXd diag_hessian_buffer;
-    Eigen::VectorXd diag_part_buffer;
+    // =========================================================================
+    // RW: Output buffers - primary outputs scattered to caller
+    // =========================================================================
+    Eigen::VectorXd grad_buffer;           // RW: gradient output (native order)
+    Eigen::VectorXd diag_hessian_buffer;   // RW: diagonal Hessian output (native order)
+    Eigen::VectorXd matvec_result_buffer;  // RW: hessian_matvec result (native order)
 
-    // Intermediate computation buffers
-    Eigen::VectorXd exp_w_buffer;       // weight * exp(eta)
-    Eigen::VectorXd T_1_term;           // first moment terms
-    Eigen::VectorXd T_2_term;           // second moment terms
-    Eigen::VectorXd w_avg_buffer;       // average weights in tie groups
-    Eigen::VectorXd forward_scratch_buffer;
-    Eigen::VectorXd hess_matvec_buffer;
+    // =========================================================================
+    // RW-PERSIST: Intermediate values preserved across deviance/hessian_matvec
+    // These are computed in cox_dev and reused in hessian_matvec for same eta/weight
+    // =========================================================================
+    Eigen::VectorXd diag_part_buffer;      // RW-PERSIST: exp_eta_w * T_1_term (native order)
+    Eigen::VectorXd exp_w_buffer;          // RW-PERSIST: weight * exp(eta) (native order)
+    Eigen::VectorXd w_avg_buffer;          // RW-PERSIST: weighted averages in tie groups (event order)
+    Eigen::VectorXd eta_local_buffer;      // RW-PERSIST: centered eta for stratum (native order)
+    Eigen::VectorXd weight_local_buffer;   // RW-PERSIST: weights for stratum (native order)
 
-    // Risk sum buffers (length n)
-    std::vector<Eigen::VectorXd> risk_sum_buffers;  // 2 buffers
+    // risk_sum_buffers[0]: RW-PERSIST - risk set sums, reused in hessian_matvec
+    // risk_sum_buffers[1]: SCRATCH - arg-weighted risk sums (hessian_matvec only)
+    std::vector<Eigen::VectorXd> risk_sum_buffers;  // 2 buffers, length n
 
-    // Forward cumsum buffers (length n+1)
-    std::vector<Eigen::VectorXd> forward_cumsum_buffers;  // 5 buffers
+    // =========================================================================
+    // RW: Zero-weight handling buffers (computed per-call when zero weights exist)
+    // =========================================================================
+    Eigen::VectorXd effective_cluster_sizes;  // RW: non-zero weight counts per cluster
+    Eigen::VectorXd zero_weight_mask;         // RW: 1.0 for positive weights, 0.0 otherwise
+    bool use_zero_weight_handling;            // RW: flag for conditional code paths
 
-    // Reverse cumsum buffers (length n+1)
-    std::vector<Eigen::VectorXd> reverse_cumsum_buffers;  // 4 buffers
+    // =========================================================================
+    // SCRATCH: Temporary buffers - contents not preserved between calls
+    // =========================================================================
+    Eigen::VectorXd T_1_term;              // SCRATCH: first moment terms (event order)
+    Eigen::VectorXd T_2_term;              // SCRATCH: second moment terms (event order)
+    Eigen::VectorXd forward_scratch_buffer; // SCRATCH: temporary for cumsum steps
+    Eigen::VectorXd hess_matvec_buffer;    // SCRATCH: intermediate hessian_matvec result
 
-    // Event reorder buffers (length n)
-    std::vector<Eigen::VectorXd> event_reorder_buffers;  // 3 buffers
+    // SCRATCH: Cumsum buffers - reused with different semantics across calls
+    std::vector<Eigen::VectorXd> forward_cumsum_buffers;  // 5 buffers, length n+1
+    std::vector<Eigen::VectorXd> reverse_cumsum_buffers;  // 4 buffers, length n+1
 
-    // Zero-weight handling
-    Eigen::VectorXd effective_cluster_sizes;
-    Eigen::VectorXd zero_weight_mask;
-    bool use_zero_weight_handling;  // flag indicating whether to use effective_cluster_sizes
-
-    // Input extraction buffers (for scatter/gather from global to local)
-    Eigen::VectorXd eta_local_buffer;
-    Eigen::VectorXd weight_local_buffer;
-    Eigen::VectorXd matvec_result_buffer;  // for hessian_matvec result
+    // SCRATCH: Event reorder buffers - coordinate transformations
+    std::vector<Eigen::VectorXd> event_reorder_buffers;   // 3 buffers, length n
 
     void resize(int n) {
         grad_buffer.resize(n);

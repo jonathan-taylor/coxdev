@@ -6,13 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Stratified Cox C++ implementation is complete. Both Python and R use a single unified C++ codebase (`coxdev_strata.cpp`) that handles stratified and unstratified models (unstratified = single stratum).
 
-## Upcoming Tasks
+## Completed Features
 
-### Compute Saturated Likelihood (Efron)
+### Saturated Likelihood (Efron) - COMPLETE
 
-**Status:** The current `compute_sat_loglik_stratum()` function in `coxdev_strata.cpp` only implements the **Breslow** formula: `-W_C * log(W_C)`. It needs to be extended to support the full **Efron** correction.
-
-**Mathematical Details:** See `doc/saturated_likelihood_calc.tex` and `doc/main.tex` for complete derivations.
+The `compute_sat_loglik_stratum()` function in `coxdev_strata.cpp` implements both Breslow and Efron formulas for saturated log-likelihood.
 
 **Formula:**
 ```
@@ -23,21 +21,16 @@ Where:
 - `C` = cluster of tied failure times
 - `W_C` = total weight of individuals in cluster C: `Σ_{j∈C} w_j`
 - `K_C+` = count of individuals in cluster C with **positive weights** (`w_j > 0`)
-- For **Breslow** (`σ=0`): the second term vanishes, giving `-W_C * log(W_C)`
-- For **Efron** (`σ≠0`): includes the factorial penalty term
+- For **Breslow** (`efron=false`): the second term vanishes, giving `-W_C * log(W_C)`
+- For **Efron** (`efron=true`): includes the factorial penalty term using `lgamma(K_C+ + 1)`
 
-**Zero-Weight Handling:**
-- `K_C+` must only count positive-weight individuals
-- If `K_C+ = 0` for a cluster, skip it entirely (avoids division by zero)
-- This is consistent with how `σ` (scaling) is computed for zero-weight cases
+**Zero-Weight Handling:** `K_C+` only counts positive-weight individuals. If `K_C+ = 0` for a cluster, it's skipped entirely.
 
-**Implementation Requirements:**
-1. Modify `compute_sat_loglik_stratum()` in `coxdev_strata.cpp`
-2. Use existing preprocessing framework (`first`, `last`, `scaling`, workspace buffers)
-3. Add `efron` boolean parameter to select Breslow vs Efron formula
-4. Compute `K_C+` (effective cluster size) using existing `first`/`last` indices
-5. Use `lgamma(K_C+ + 1)` for `log(K_C+!)` to avoid overflow
-6. Single unified implementation for both Python and R bindings
+**Documentation:** See `doc/saturated_likelihood_calc.tex` and `doc/main.tex` for complete derivations.
+
+## Upcoming Tasks
+
+(None currently)
 
 ### Related Projects
 
@@ -105,17 +98,20 @@ In workspace structs, clearly document which buffers are read-only (RO) vs read-
 
 ```cpp
 struct CoxWorkspace {
-    // RO after preprocessing - do not modify during computation
-    Eigen::VectorXd scaling;           // RO: tie-breaking scaling factors
+    // RW: Output buffers - primary outputs scattered to caller
+    Eigen::VectorXd grad_buffer;           // RW: gradient output (native order)
+    Eigen::VectorXd diag_hessian_buffer;   // RW: diagonal Hessian output
 
-    // RW during computation - modified by algorithms
-    Eigen::VectorXd grad_buffer;       // RW: gradient output
-    Eigen::VectorXd exp_w_buffer;      // RW: intermediate exp(eta)*weight
+    // RW-PERSIST: Intermediate values preserved across deviance/hessian_matvec
+    Eigen::VectorXd exp_w_buffer;          // RW-PERSIST: weight * exp(eta)
+    Eigen::VectorXd diag_part_buffer;      // RW-PERSIST: exp_eta_w * T_1_term
 
-    // Scratch buffers - temporary storage, contents not preserved
-    Eigen::VectorXd forward_scratch;   // SCRATCH: temporary for forward pass
+    // SCRATCH: Temporary storage, contents not preserved between calls
+    Eigen::VectorXd forward_scratch;       // SCRATCH: temporary for cumsum steps
 };
 ```
+
+Note: `CoxPreprocessed` fields (scaling, first, last, etc.) are all **RO** after preprocessing.
 
 This prevents accidental reuse of buffers that would cause correctness issues (as happened when attempting to reuse `eta_local_buffer` for hessian_matvec).
 
@@ -126,15 +122,12 @@ Use closure patterns to encapsulate mutable state and guard against race conditi
 **R Pattern** (closures with private environments):
 ```r
 make_cox_deviance <- function(event, status, ...) {
-    # Private state in closure environment
-    last_eta <- NULL
-    preprocessed_data <- preprocess(event, status, ...)
+    # Private state in closure environment - each closure has isolated workspace
+    strat_data_ptr <- .preprocess_stratified(...)
 
     coxdev <- function(eta, weights) {
-        # Each call uses its own workspace via preprocessed_data
-        result <- .Call(internal_coxdev, preprocessed_data, eta, weights)
-        last_eta <<- eta  # Safe: only this closure modifies last_eta
-        result
+        # Each call uses its own workspace via strat_data_ptr
+        .cox_dev_stratified(strat_data_ptr, eta, weights)
     }
 
     list(coxdev = coxdev, ...)
@@ -145,15 +138,15 @@ make_cox_deviance <- function(event, status, ...) {
 ```python
 class CoxDeviance:
     def __init__(self, event, status, ...):
-        self._preprocessed = preprocess(event, status, ...)
-        self._last_eta = None  # Instance-private state
+        # Each instance has isolated C++ object with its own workspace
+        self._cpp = StratifiedCoxDevianceCpp(event, status, ...)
 
     def __call__(self, eta, weights):
         # Each instance has isolated state
-        result = internal_coxdev(self._preprocessed, eta, weights)
-        self._last_eta = eta
-        return result
+        return self._cpp(eta, weights)
 ```
+
+The key principle is **isolation**: each CoxDeviance instance (Python) or closure (R) has its own C++ `StratifiedCoxData` object with dedicated workspace buffers. This allows safe parallel execution (e.g., cross-validation folds) without race conditions.
 
 ### 3. Avoid Code Bloat: Unified Code Paths
 
@@ -218,22 +211,33 @@ Complete and unified. A single C++ file (`coxdev_strata.cpp`) serves both Python
 ### Key Structs (in coxdev_strata.h)
 
 ```cpp
+// All CoxPreprocessed fields are RO (read-only) after preprocessing
 template <class ValueType = double, class IndexType = int>
 struct CoxPreprocessed {
-    Eigen::VectorXi event_order, start_order, status, first, last;
-    Eigen::VectorXd scaling, original_scaling, event, start;
-    Eigen::VectorXi event_map, start_map;
-    bool have_start_times, efron;
-    int n;
+    Eigen::VectorXi event_order, start_order, status, first, last;  // RO
+    Eigen::VectorXd scaling, original_scaling, event, start;        // RO
+    Eigen::VectorXi event_map, start_map;                           // RO
+    bool have_start_times, efron;                                   // RO
+    int n;                                                          // RO
 };
 
+// CoxWorkspace buffers: RW (output), RW-PERSIST (reused across calls), SCRATCH (temporary)
 template <class ValueType = double>
 struct CoxWorkspace {
-    Eigen::VectorXd grad_buffer, diag_hessian_buffer, diag_part_buffer;
-    Eigen::VectorXd exp_w_buffer, T_1_term, T_2_term, w_avg_buffer;
-    Eigen::VectorXd forward_scratch_buffer, hess_matvec_buffer;
+    // RW: Output buffers scattered to caller
+    Eigen::VectorXd grad_buffer, diag_hessian_buffer, matvec_result_buffer;
+
+    // RW-PERSIST: Computed in cox_dev, reused in hessian_matvec
+    Eigen::VectorXd diag_part_buffer, exp_w_buffer, w_avg_buffer;
+    Eigen::VectorXd eta_local_buffer, weight_local_buffer;
+    std::vector<Eigen::VectorXd> risk_sum_buffers;  // [0]=RW-PERSIST, [1]=SCRATCH
+
+    // RW: Zero-weight handling (computed per-call when zero weights exist)
     Eigen::VectorXd effective_cluster_sizes, zero_weight_mask;
-    std::vector<Eigen::VectorXd> risk_sum_buffers;        // 2 buffers, length n
+    bool use_zero_weight_handling;
+
+    // SCRATCH: Temporary buffers, contents not preserved
+    Eigen::VectorXd T_1_term, T_2_term, forward_scratch_buffer, hess_matvec_buffer;
     std::vector<Eigen::VectorXd> forward_cumsum_buffers;  // 5 buffers, length n+1
     std::vector<Eigen::VectorXd> reverse_cumsum_buffers;  // 4 buffers, length n+1
     std::vector<Eigen::VectorXd> event_reorder_buffers;   // 3 buffers, length n

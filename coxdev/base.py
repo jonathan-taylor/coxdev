@@ -8,8 +8,6 @@ different tie-breaking methods (Efron and Breslow).
 
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
-# for Hessian
-
 from scipy.sparse.linalg import LinearOperator
 
 from . import _version
@@ -144,8 +142,6 @@ class CoxDeviance:
 
         # Store for compatibility with existing code
         self._status = status
-        self._last_linear_predictor = None
-        self._last_sample_weight = None
 
         # Store preprocessing results for backward compatibility with tests
         # that access internal attributes
@@ -185,10 +181,6 @@ class CoxDeviance:
             sample_weight = np.ones_like(linear_predictor)
         else:
             sample_weight = np.asarray(sample_weight).astype(float)
-
-        # Store for information matrix
-        self._last_linear_predictor = linear_predictor.copy()
-        self._last_sample_weight = sample_weight.copy()
 
         # Call C++ stratified implementation
         deviance, loglik_sat, gradient, diag_hessian = self._cpp(
@@ -311,32 +303,3 @@ class CoxInformation(LinearOperator):
         """
         # it is symmetric
         return self._matvec(arg)
-
-
-# private functions
-
-def _preprocess(start,
-                event,
-                status):
-    """
-    Preprocess survival data for Cox model computations.
-    
-    This function handles data preprocessing including sorting, tie detection,
-    and creation of indexing arrays for efficient computation.
-    
-    Parameters
-    ----------
-    start : np.ndarray
-        Start times for left-truncated data.
-    event : np.ndarray
-        Event times.
-    status : np.ndarray
-        Event indicators.
-        
-    Returns
-    -------
-    tuple
-        Preprocessed data structures for efficient computation.
-    """
-    return c_preprocess(start, event, status)
-

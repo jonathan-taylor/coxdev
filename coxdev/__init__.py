@@ -9,9 +9,9 @@ Main Classes
 CoxDeviance
     Standard Cox model deviance and information computation.
 StratifiedCoxDeviance
-    Stratified Cox model deviance and information computation (Python loop over strata).
+    Stratified Cox model (wrapper around StratifiedCoxDevianceCpp for backward compatibility).
 StratifiedCoxDevianceCpp
-    Stratified Cox model with pure C++ strata processing (faster for many strata).
+    Stratified Cox model with pure C++ strata processing.
 
 See Also
 --------
