@@ -30,7 +30,202 @@ Where:
 
 ## Upcoming Tasks
 
-(None currently)
+### Stateful Incremental C++ Implementation
+
+Design and implement a stateful API for Cox deviance computation that enables efficient IRLS/coordinate descent integration with glmnetpp.
+
+---
+
+## Future Architecture: Stateful Cox Implementation
+
+### Motivation
+
+The current `cox_dev()` function is **stateless** — it recomputes all expensive quantities (exp(η), risk sums, working weights) from scratch on every call. This is clean but inefficient when called repeatedly during coordinate descent.
+
+**Current performance gap**: Dense non-stratified coxnew is ~18x slower than Fortran cox because:
+- Fortran computes exp(η) and risk sums **once per outer IRLS iteration**
+- Current C++ recomputes them **every time cox_dev() is called**
+
+### Design Principle: Follow glmnetpp's Multinomial Pattern
+
+glmnetpp's multinomial implementation (`ElnetPointInternalBinomialMultiClassBase`) demonstrates the correct pattern:
+
+```cpp
+// Multinomial keeps expensive quantities as PERSISTENT STATE
+mat_t q_;     // probability predictions (involves exp())
+vec_t sxp_;   // sum of exponential terms (normalizing constants)
+
+// Updated incrementally, not recomputed from scratch
+void update_irls_class(...) {
+    this->sxp() -= q;                    // subtract old
+    q.array() = pred_buff.array().exp(); // recompute for changed class only
+    this->sxp() += q;                    // add new
+}
+```
+
+Cox should follow the same pattern with its expensive quantities.
+
+### Proposed Layered Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      coxdev C++ Core                            │
+│                                                                 │
+│  Layer 1: Data Preprocessing (computed once per dataset)        │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ CoxPreprocessed: event_order, risk sets, tie groups,      │  │
+│  │                  Efron scaling, start/stop mappings       │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Layer 2: IRLS State (recomputed once per outer iteration)      │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ CoxIRLSState: exp(η), risk_sums, working weights w,       │  │
+│  │               working response z                          │  │
+│  │                                                           │  │
+│  │   - recompute_outer(η)           [O(15n), once per outer] │  │
+│  │   - get_working_weights()        [O(1), accessor]         │  │
+│  │   - get_working_response()       [O(1), accessor]         │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Layer 3: Coordinate Descent Primitives (per inner iteration)   │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │   - coordinate_gradient(j, x_j)  [O(n), uses cached w/z]  │  │
+│  │   - update_residual(j, δ, x_j)   [O(n), incremental]      │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  Convenience API (backward compatible, stateless)               │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ cox_dev(η) → full recompute                [STATELESS]    │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+              │                           │
+              ▼                           ▼
+         R (Rcpp/XPtr)             Python (pybind11)
+```
+
+### Integration with glmnetpp
+
+glmnetpp owns the coordinate descent loop structure; coxdev provides Cox-specific primitives:
+
+```
+glmnetpp (ElnetPointInternalCox)              coxdev
+┌─────────────────────────────────┐          ┌─────────────────────────┐
+│ Outer IRLS loop                 │          │ CoxIRLSState            │
+│   │                             │  ──────► │   recompute_outer(η)    │
+│   ▼                             │          │   get_w(), get_z()      │
+│ Inner CD loop                   │          │                         │
+│   for j in 1..p:                │  ──────► │   coordinate_grad(j,xj) │
+│     update β_j                  │  ──────► │   update_residual(j,δ)  │
+│   until converged               │          │                         │
+└─────────────────────────────────┘          └─────────────────────────┘
+```
+
+**Key principle**: coxdev remains penalty-agnostic. It provides Cox likelihood primitives; glmnetpp handles elastic net penalties, active sets, and convergence.
+
+### Proposed C++ Interface
+
+```cpp
+// In coxdev.h
+
+template <class ValueType = double>
+class CoxIRLSState {
+public:
+    // Construct from preprocessed data (Layer 1)
+    explicit CoxIRLSState(const StratifiedCoxData<ValueType>& data);
+
+    // Layer 2: Called once per outer IRLS iteration
+    // Recomputes exp(η), risk sums, working weights, working response
+    void recompute_outer(const Eigen::Ref<const Eigen::VectorXd>& eta,
+                         const Eigen::Ref<const Eigen::VectorXd>& weights);
+
+    // Accessors for inner CD loop (O(1))
+    const Eigen::VectorXd& working_weights() const;   // w = -diag(Hessian)
+    const Eigen::VectorXd& working_response() const;  // z = η - gradient/w
+
+    // Layer 3: Coordinate descent primitives
+    // Returns (gradient_j, hessian_jj) using cached w, z
+    std::pair<double, double> coordinate_gradient_hessian(
+        int j,
+        const Eigen::Ref<const Eigen::VectorXd>& x_j) const;
+
+    // Update residuals after β_j changes by δ: r ← r - δ·w·x_j
+    void update_after_coordinate_change(
+        int j,
+        double delta,
+        const Eigen::Ref<const Eigen::VectorXd>& x_j);
+
+    // Deviance at current state (for convergence checking)
+    double current_deviance() const;
+
+private:
+    const StratifiedCoxData<ValueType>& data_;
+
+    // Persistent state (like q_, sxp_ in multinomial)
+    Eigen::VectorXd exp_eta_;          // exp(η - mean(η))
+    Eigen::VectorXd risk_sums_;        // cumulative weighted exp sums
+    Eigen::VectorXd working_weights_;  // w = -diag(H)
+    Eigen::VectorXd working_response_; // z = η - g/w
+    Eigen::VectorXd residuals_;        // r = w(z - η)
+    double deviance_;
+};
+
+// Stratified version (handles multiple strata internally)
+template <class ValueType = double>
+class CoxIRLSStateStratified {
+public:
+    explicit CoxIRLSStateStratified(const StratifiedCoxData<ValueType>& data);
+
+    void recompute_outer(const Eigen::Ref<const Eigen::VectorXd>& eta,
+                         const Eigen::Ref<const Eigen::VectorXd>& weights);
+
+    const Eigen::VectorXd& working_weights() const;
+    const Eigen::VectorXd& working_response() const;
+
+    std::pair<double, double> coordinate_gradient_hessian(
+        int j,
+        const Eigen::Ref<const Eigen::VectorXd>& x_j) const;
+
+    void update_after_coordinate_change(
+        int j,
+        double delta,
+        const Eigen::Ref<const Eigen::VectorXd>& x_j);
+
+    double current_deviance() const;
+
+private:
+    std::vector<CoxIRLSState<ValueType>> stratum_states_;
+    // Global vectors assembled from per-stratum results
+    Eigen::VectorXd working_weights_global_;
+    Eigen::VectorXd working_response_global_;
+};
+```
+
+### Expected Performance Improvement
+
+| Implementation | Inner Loop Cost per λ |
+|----------------|----------------------|
+| Current stateless | O(15 × t × k × n) where t=outer iters, k=CD iters |
+| Proposed stateful | O(t × k × n) + O(t × 15n) |
+
+For typical convergence (t~5 outer, k~10 inner), this is approximately **10-15x speedup** for the inner loop, matching Fortran behavior.
+
+### Implementation Phases
+
+1. **Phase 1**: Implement `CoxIRLSState` for single stratum
+2. **Phase 2**: Implement `CoxIRLSStateStratified` wrapper
+3. **Phase 3**: Add R interface via XPtr (like current `StratifiedCoxData`)
+4. **Phase 4**: Add Python interface via pybind11
+5. **Phase 5**: Integrate into glmnetpp's `ElnetPointInternalCox*`
+6. **Phase 6**: Benchmark and optimize hot paths
+
+### Backward Compatibility
+
+The existing stateless API (`cox_dev()`, `hessian_matvec()`) will remain available for:
+- Simple use cases that don't need maximum performance
+- Testing and validation
+- Users who prefer the functional interface
+
+---
 
 ### Related Projects
 
