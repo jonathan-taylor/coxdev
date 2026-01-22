@@ -225,6 +225,42 @@ The existing stateless API (`cox_dev()`, `hessian_matvec()`) will remain availab
 - Testing and validation
 - Users who prefer the functional interface
 
+### Independence Constraint (IMPORTANT)
+
+**coxdev must remain independent of glmnetpp.** The dependency is one-way:
+
+```
+coxdev (independent)              glmnet/glmnetpp (depends on coxdev)
+┌─────────────────────────┐       ┌─────────────────────────────────┐
+│ CoxPreprocessed         │       │ ElnetPointInternalCox*          │
+│ CoxWorkspace            │ ───►  │   - holds CoxIRLSState member   │
+│ StratifiedCoxData       │ copy  │   - calls its methods           │
+│ CoxIRLSState        NEW │       │                                 │
+└─────────────────────────┘       └─────────────────────────────────┘
+```
+
+**coxdev classes may only depend on:**
+- Eigen (linear algebra)
+- Standard C++ library
+- Other coxdev classes
+
+**coxdev classes must NOT depend on:**
+- glmnetpp CRTP classes (`ElnetPoint*`, `ElnetPath*`, etc.)
+- glmnetpp Pack classes (`FitPack`, `PointConfigPack`, etc.)
+- Elastic net penalty logic
+- Any glmnet-specific code
+
+**Deployment workflow:**
+1. Develop and test new features in coxdev
+2. Copy `coxdev.h` and `coxdev.cpp` to glmnet (unmodified)
+3. glmnetpp code uses the copied coxdev classes
+
+**Benefits of independence:**
+- Python users can use coxdev for custom Cox optimizers
+- R users can use coxdev without glmnet
+- coxdev can be tested in isolation
+- Clear separation of concerns: Cox likelihood vs elastic net penalties
+
 ---
 
 ### Related Projects
