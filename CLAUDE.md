@@ -28,27 +28,56 @@ Where:
 
 **Documentation:** See `doc/saturated_likelihood_calc.tex` and `doc/main.tex` for complete derivations.
 
+### Stateful IRLS State Classes - COMPLETE
+
+The `CoxIRLSState` and `CoxIRLSStateStratified` classes in `coxdev.h`/`coxdev.cpp` provide stateful wrappers for efficient IRLS/coordinate descent integration.
+
+**Usage pattern:**
+```cpp
+CoxIRLSStateStratified state;
+state.initialize(strat_data);
+
+// Outer IRLS loop:
+state.recompute_outer(eta, weights);  // O(15n), once per outer
+auto w = state.working_weights();      // O(1), accessor
+auto z = state.working_response();     // O(1), accessor
+
+// Inner CD loop:
+auto [grad_j, hess_jj] = state.weighted_inner_product(x_j);  // O(n)
+state.update_residuals(delta, x_j);  // O(n), incremental
+```
+
+**Key methods:**
+- `recompute_outer(eta, weights)`: Recomputes all expensive quantities (exp(η), risk sums, working weights/response) - O(15n)
+- `working_weights()`, `working_response()`, `residuals()`: O(1) accessors
+- `weighted_inner_product(x_j)`: Returns (gradient_j, hessian_jj) using cached residuals - O(n)
+- `update_residuals(delta, x_j)`: Incremental update r -= delta * w * x_j - O(n)
+- `reset_residuals(eta_current)`: Reset for new inner CD pass
+
+**Working response formula:** `z = eta + grad_buffer / diag_hessian_buffer` (accounting for -2 scaling factors in gradient/Hessian buffers).
+
 ## Upcoming Tasks
 
-### Stateful Incremental C++ Implementation
+### glmnetpp Integration (Phases 3-5)
 
-Design and implement a stateful API for Cox deviance computation that enables efficient IRLS/coordinate descent integration with glmnetpp.
+- **Phase 3**: Add R interface via `Rcpp::XPtr<CoxIRLSStateStratified>`
+- **Phase 4**: Add Python pybind11 bindings for CoxIRLSState classes
+- **Phase 5**: Integrate into glmnetpp's `ElnetPointInternalCox*`
+- **Phase 6**: Benchmark and optimize hot paths
 
 ---
 
-## Future Architecture: Stateful Cox Implementation
+## Architecture: Stateful Cox Implementation
 
 ### Motivation
 
-The current `cox_dev()` function is **stateless** — it recomputes all expensive quantities (exp(η), risk sums, working weights) from scratch on every call. This is clean but inefficient when called repeatedly during coordinate descent.
+The original `cox_dev()` function was **stateless** — it recomputed all expensive quantities (exp(η), risk sums, working weights) from scratch on every call. The new `CoxIRLSState` classes cache these quantities for efficient coordinate descent.
 
-**Current performance gap**: Dense non-stratified coxnew is ~18x slower than Fortran cox because:
-- Fortran computes exp(η) and risk sums **once per outer IRLS iteration**
-- Current C++ recomputes them **every time cox_dev() is called**
+**Expected performance gain:** 10-15x speedup on inner CD loop by computing O(15n) operations once per outer IRLS iteration instead of every inner coordinate descent iteration.
 
 ### Design Principle: Follow glmnetpp's Multinomial Pattern
 
-glmnetpp's multinomial implementation (`ElnetPointInternalBinomialMultiClassBase`) demonstrates the correct pattern:
+glmnetpp's (R package repo: `/Users/naras/GitHub/glmnet`) multinomial implementation (`ElnetPointInternalBinomialMultiClassBase`) demonstrates the correct pattern:
 
 ```cpp
 // Multinomial keeps expensive quantities as PERSISTENT STATE
@@ -211,8 +240,8 @@ For typical convergence (t~5 outer, k~10 inner), this is approximately **10-15x 
 
 ### Implementation Phases
 
-1. **Phase 1**: Implement `CoxIRLSState` for single stratum
-2. **Phase 2**: Implement `CoxIRLSStateStratified` wrapper
+1. **Phase 1**: Implement `CoxIRLSState` for single stratum ✓ COMPLETE
+2. **Phase 2**: Implement `CoxIRLSStateStratified` wrapper ✓ COMPLETE
 3. **Phase 3**: Add R interface via XPtr (like current `StratifiedCoxData`)
 4. **Phase 4**: Add Python interface via pybind11
 5. **Phase 5**: Integrate into glmnetpp's `ElnetPointInternalCox*`

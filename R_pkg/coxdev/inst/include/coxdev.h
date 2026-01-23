@@ -216,6 +216,107 @@ struct StratifiedCoxData {
     }
 };
 
+/**
+ * Stateful wrapper for efficient IRLS/coordinate descent integration.
+ * Caches expensive quantities computed once per outer IRLS iteration.
+ *
+ * Usage pattern:
+ *   CoxIRLSState state;
+ *   state.initialize(preproc, workspace, loglik_sat, efron);
+ *   // Outer IRLS loop:
+ *   state.recompute_outer(eta, weights);  // O(15n), once per outer
+ *   w = state.working_weights();          // O(1), accessor
+ *   z = state.working_response();         // O(1), accessor
+ *   // Inner CD loop:
+ *   auto [grad_j, hess_jj] = state.weighted_inner_product(x_j);  // O(n)
+ */
+template <class ValueType = double, class IndexType = int>
+struct CoxIRLSState {
+    // References to external data (not owned)
+    CoxPreprocessed<ValueType, IndexType>* preproc_;
+    CoxWorkspace<ValueType>* workspace_;
+    double loglik_sat_;
+    bool efron_;
+
+    // Cached state (computed in recompute_outer)
+    Eigen::VectorXd working_weights_;   // w = -diag_hessian / 2 (positive)
+    Eigen::VectorXd working_response_;  // z = eta + grad / diag_hessian
+    Eigen::VectorXd residuals_;         // r = w * (z - eta_current)
+    double deviance_;
+
+    // State tracking
+    bool cache_valid_;
+
+    // Constructor
+    CoxIRLSState() : preproc_(nullptr), workspace_(nullptr),
+                     loglik_sat_(0.0), efron_(false),
+                     deviance_(0.0), cache_valid_(false) {}
+
+    void initialize(CoxPreprocessed<ValueType, IndexType>& preproc,
+                   CoxWorkspace<ValueType>& workspace,
+                   double loglik_sat, bool efron);
+
+    // Layer 2: Called once per outer IRLS iteration
+    double recompute_outer(const Eigen::Ref<const Eigen::VectorXd>& eta,
+                           const Eigen::Ref<const Eigen::VectorXd>& weights);
+
+    // O(1) accessors for inner CD loop
+    const Eigen::VectorXd& working_weights() const { return working_weights_; }
+    const Eigen::VectorXd& working_response() const { return working_response_; }
+    const Eigen::VectorXd& residuals() const { return residuals_; }
+    double current_deviance() const { return deviance_; }
+
+    // Layer 3: Coordinate descent primitives
+    // Returns weighted inner product: sum(x_j * residuals) and sum(w * x_j^2)
+    std::pair<double, double> weighted_inner_product(
+        const Eigen::Ref<const Eigen::VectorXd>& x_j) const;
+
+    // Update residuals after beta_j changes by delta: r -= delta * w * x_j
+    void update_residuals(double delta,
+                         const Eigen::Ref<const Eigen::VectorXd>& x_j);
+
+    // Reset residuals to initial state (for new inner CD pass)
+    void reset_residuals(const Eigen::Ref<const Eigen::VectorXd>& eta_current);
+};
+
+/**
+ * Stratified version of CoxIRLSState.
+ * Handles multiple strata by maintaining per-stratum state and
+ * assembling global vectors.
+ */
+template <class ValueType = double, class IndexType = int>
+struct CoxIRLSStateStratified {
+    StratifiedCoxData<ValueType, IndexType>* strat_data_;
+    std::vector<CoxIRLSState<ValueType, IndexType>> stratum_states_;
+
+    // Global vectors (assembled from per-stratum results)
+    Eigen::VectorXd working_weights_global_;
+    Eigen::VectorXd working_response_global_;
+    Eigen::VectorXd residuals_global_;
+    double deviance_;
+    bool cache_valid_;
+
+    CoxIRLSStateStratified() : strat_data_(nullptr), deviance_(0.0), cache_valid_(false) {}
+
+    void initialize(StratifiedCoxData<ValueType, IndexType>& strat_data);
+
+    double recompute_outer(const Eigen::Ref<const Eigen::VectorXd>& eta,
+                           const Eigen::Ref<const Eigen::VectorXd>& weights);
+
+    const Eigen::VectorXd& working_weights() const { return working_weights_global_; }
+    const Eigen::VectorXd& working_response() const { return working_response_global_; }
+    const Eigen::VectorXd& residuals() const { return residuals_global_; }
+    double current_deviance() const { return deviance_; }
+
+    std::pair<double, double> weighted_inner_product(
+        const Eigen::Ref<const Eigen::VectorXd>& x_j) const;
+
+    void update_residuals(double delta,
+                         const Eigen::Ref<const Eigen::VectorXd>& x_j);
+
+    void reset_residuals(const Eigen::Ref<const Eigen::VectorXd>& eta_current);
+};
+
 // Interface-specific type definitions
 #ifdef PY_INTERFACE
 #define STRAT_DATA_TYPE StratifiedCoxData<double, int>

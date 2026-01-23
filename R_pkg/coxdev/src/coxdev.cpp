@@ -853,6 +853,244 @@ static void hessian_matvec_single_stratum(
 }
 
 // ============================================================================
+// CoxIRLSState IMPLEMENTATION
+// ============================================================================
+
+template <class ValueType, class IndexType>
+void CoxIRLSState<ValueType, IndexType>::initialize(
+    CoxPreprocessed<ValueType, IndexType>& preproc,
+    CoxWorkspace<ValueType>& workspace,
+    double loglik_sat, bool efron)
+{
+    preproc_ = &preproc;
+    workspace_ = &workspace;
+    loglik_sat_ = loglik_sat;
+    efron_ = efron;
+
+    int n = preproc.n;
+    working_weights_.resize(n);
+    working_response_.resize(n);
+    residuals_.resize(n);
+    cache_valid_ = false;
+}
+
+template <class ValueType, class IndexType>
+double CoxIRLSState<ValueType, IndexType>::recompute_outer(
+    const Eigen::Ref<const Eigen::VectorXd>& eta,
+    const Eigen::Ref<const Eigen::VectorXd>& weights)
+{
+    // Call existing cox_dev_single_stratum to compute all quantities
+    deviance_ = cox_dev_single_stratum(
+        eta, weights, *preproc_, *workspace_, loglik_sat_,
+        preproc_->have_start_times, efron_);
+
+    int n = preproc_->n;
+
+    // Extract working weights: w = -diag_hessian / 2 (make positive)
+    // diag_hessian_buffer is already multiplied by -2 in cox_dev_single_stratum
+    // So: diag_hessian_buffer = -2 * diag_hess => diag_hess = -diag_hessian_buffer/2
+    // Working weights w = -diag_hess = diag_hessian_buffer/2
+    working_weights_ = workspace_->diag_hessian_buffer / 2.0;
+
+    // Compute working response: z = eta - gradient/w
+    // grad_buffer = -2 * gradient => gradient = -grad_buffer/2
+    // z = eta - (-grad_buffer/2) / (diag_hessian_buffer/2)
+    //   = eta + grad_buffer / diag_hessian_buffer
+    for (int i = 0; i < n; ++i) {
+        if (std::abs(workspace_->diag_hessian_buffer(i)) > 1e-10) {
+            working_response_(i) = eta(i) + workspace_->grad_buffer(i) /
+                                            workspace_->diag_hessian_buffer(i);
+        } else {
+            working_response_(i) = eta(i);
+        }
+    }
+
+    // Initialize residuals: r = w * (z - eta)
+    residuals_ = working_weights_.array() * (working_response_ - eta).array();
+
+    cache_valid_ = true;
+    return deviance_;
+}
+
+template <class ValueType, class IndexType>
+std::pair<double, double> CoxIRLSState<ValueType, IndexType>::weighted_inner_product(
+    const Eigen::Ref<const Eigen::VectorXd>& x_j) const
+{
+    // gradient_j = sum(x_j * residuals)
+    // hessian_jj = sum(w * x_j^2)
+    double grad_j = (x_j.array() * residuals_.array()).sum();
+    double hess_jj = (working_weights_.array() * x_j.array().square()).sum();
+    return {grad_j, hess_jj};
+}
+
+template <class ValueType, class IndexType>
+void CoxIRLSState<ValueType, IndexType>::update_residuals(
+    double delta,
+    const Eigen::Ref<const Eigen::VectorXd>& x_j)
+{
+    // After beta_j changes by delta: r -= delta * w * x_j
+    residuals_.array() -= delta * working_weights_.array() * x_j.array();
+}
+
+template <class ValueType, class IndexType>
+void CoxIRLSState<ValueType, IndexType>::reset_residuals(
+    const Eigen::Ref<const Eigen::VectorXd>& eta_current)
+{
+    residuals_ = working_weights_.array() * (working_response_ - eta_current).array();
+}
+
+// Explicit template instantiation for CoxIRLSState
+template struct CoxIRLSState<double, int>;
+
+// ============================================================================
+// CoxIRLSStateStratified IMPLEMENTATION
+// ============================================================================
+
+template <class ValueType, class IndexType>
+void CoxIRLSStateStratified<ValueType, IndexType>::initialize(
+    StratifiedCoxData<ValueType, IndexType>& strat_data)
+{
+    strat_data_ = &strat_data;
+    int n_strata = strat_data.n_strata;
+    int n_total = strat_data.n_total;
+
+    stratum_states_.resize(n_strata);
+    for (int s = 0; s < n_strata; ++s) {
+        stratum_states_[s].initialize(
+            strat_data.preproc[s],
+            strat_data.workspace[s],
+            strat_data.loglik_sat[s],
+            strat_data.efron_stratum[s]);
+    }
+
+    working_weights_global_.resize(n_total);
+    working_response_global_.resize(n_total);
+    residuals_global_.resize(n_total);
+    cache_valid_ = false;
+}
+
+template <class ValueType, class IndexType>
+double CoxIRLSStateStratified<ValueType, IndexType>::recompute_outer(
+    const Eigen::Ref<const Eigen::VectorXd>& eta,
+    const Eigen::Ref<const Eigen::VectorXd>& weights)
+{
+    deviance_ = 0.0;
+    int n_strata = strat_data_->n_strata;
+
+    for (int s = 0; s < n_strata; ++s) {
+        const auto& indices = strat_data_->stratum_indices[s];
+        int n_s = static_cast<int>(indices.size());
+        CoxPreprocessed<ValueType, IndexType>& preproc = strat_data_->preproc[s];
+        CoxWorkspace<ValueType>& ws = strat_data_->workspace[s];
+
+        // Extract local eta and weights (using pre-allocated workspace buffers)
+        Eigen::VectorXd& eta_local = ws.eta_local_buffer;
+        Eigen::VectorXd& weight_local = ws.weight_local_buffer;
+        for (int i = 0; i < n_s; ++i) {
+            eta_local(i) = eta(indices[i]);
+            weight_local(i) = weights(indices[i]);
+        }
+
+        // Center eta using weighted mean
+        double weight_sum = weight_local.sum();
+        double eta_mean = 0.0;
+        if (weight_sum > 0) {
+            eta_mean = (eta_local.array() * weight_local.array()).sum() / weight_sum;
+        } else {
+            eta_mean = eta_local.mean();
+        }
+        eta_local.array() -= eta_mean;
+
+        // Handle zero weights for Efron (replicating logic from cox_dev_stratified_impl)
+        bool has_zero_weights = (weight_local.array() == 0).any();
+        if (strat_data_->efron_stratum[s] && has_zero_weights) {
+            // Compute weight in event order (reuse event_reorder_buffers[1] as temporary)
+            Eigen::VectorXd& w_event = ws.event_reorder_buffers[1];
+            for (int i = 0; i < n_s; ++i) {
+                w_event(i) = weight_local(preproc.event_order(i));
+            }
+
+            // Create maps for the function calls
+            Eigen::Map<Eigen::VectorXd> w_event_map(w_event.data(), n_s);
+            Eigen::Map<Eigen::VectorXi> first_map(preproc.first.data(), preproc.first.size());
+            Eigen::Map<Eigen::VectorXi> last_map(preproc.last.data(), preproc.last.size());
+            Eigen::Map<Eigen::VectorXd> scaling_map(preproc.scaling.data(), preproc.scaling.size());
+            Eigen::Map<Eigen::VectorXd> eff_sizes_map(ws.effective_cluster_sizes.data(), ws.effective_cluster_sizes.size());
+
+            compute_weighted_scaling(w_event_map, first_map, last_map, scaling_map);
+            compute_effective_cluster_sizes(w_event_map, first_map, last_map, eff_sizes_map);
+
+            // Set zero_weight_mask
+            for (int i = 0; i < n_s; ++i) {
+                ws.zero_weight_mask(i) = (w_event(i) > 0.0) ? 1.0 : 0.0;
+            }
+            ws.use_zero_weight_handling = true;
+        } else if (strat_data_->efron_stratum[s]) {
+            // Restore original scaling
+            preproc.scaling = preproc.original_scaling;
+            ws.effective_cluster_sizes.setZero();
+            ws.use_zero_weight_handling = false;
+        } else {
+            ws.use_zero_weight_handling = false;
+        }
+
+        // Compute saturated log-likelihood for this stratum
+        strat_data_->loglik_sat[s] = compute_sat_loglik_stratum(
+            preproc.first,
+            preproc.last,
+            weight_local,
+            preproc.event_order,
+            preproc.status,
+            strat_data_->efron_stratum[s],
+            ws.forward_cumsum_buffers[0]);
+
+        // Update the stratum state's loglik_sat
+        stratum_states_[s].loglik_sat_ = strat_data_->loglik_sat[s];
+
+        // Recompute for this stratum
+        deviance_ += stratum_states_[s].recompute_outer(eta_local, weight_local);
+
+        // Scatter to global arrays
+        for (int i = 0; i < n_s; ++i) {
+            working_weights_global_(indices[i]) = stratum_states_[s].working_weights()(i);
+            working_response_global_(indices[i]) = stratum_states_[s].working_response()(i) + eta_mean;
+            residuals_global_(indices[i]) = stratum_states_[s].residuals()(i);
+        }
+    }
+
+    cache_valid_ = true;
+    return deviance_;
+}
+
+template <class ValueType, class IndexType>
+std::pair<double, double> CoxIRLSStateStratified<ValueType, IndexType>::weighted_inner_product(
+    const Eigen::Ref<const Eigen::VectorXd>& x_j) const
+{
+    double grad_j = (x_j.array() * residuals_global_.array()).sum();
+    double hess_jj = (working_weights_global_.array() * x_j.array().square()).sum();
+    return {grad_j, hess_jj};
+}
+
+template <class ValueType, class IndexType>
+void CoxIRLSStateStratified<ValueType, IndexType>::update_residuals(
+    double delta,
+    const Eigen::Ref<const Eigen::VectorXd>& x_j)
+{
+    residuals_global_.array() -= delta * working_weights_global_.array() * x_j.array();
+}
+
+template <class ValueType, class IndexType>
+void CoxIRLSStateStratified<ValueType, IndexType>::reset_residuals(
+    const Eigen::Ref<const Eigen::VectorXd>& eta_current)
+{
+    residuals_global_ = working_weights_global_.array() *
+                        (working_response_global_ - eta_current).array();
+}
+
+// Explicit template instantiation for CoxIRLSStateStratified
+template struct CoxIRLSStateStratified<double, int>;
+
+// ============================================================================
 // CORE IMPLEMENTATION FUNCTIONS (Interface-neutral)
 // ============================================================================
 
