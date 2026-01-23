@@ -21,3 +21,39 @@
     .Call(`_coxdev_get_n_total_r`, strat_data_xptr)
 }
 
+.create_irls_state <- function(strat_data_xptr) {
+    .Call(`_coxdev_create_irls_state_r`, strat_data_xptr)
+}
+
+.irls_recompute_outer <- function(irls_state_xptr, eta, weights) {
+    .Call(`_coxdev_irls_recompute_outer_r`, irls_state_xptr, eta, weights)
+}
+
+.irls_working_weights <- function(irls_state_xptr) {
+    .Call(`_coxdev_irls_working_weights_r`, irls_state_xptr)
+}
+
+.irls_working_response <- function(irls_state_xptr) {
+    .Call(`_coxdev_irls_working_response_r`, irls_state_xptr)
+}
+
+.irls_residuals <- function(irls_state_xptr) {
+    .Call(`_coxdev_irls_residuals_r`, irls_state_xptr)
+}
+
+.irls_current_deviance <- function(irls_state_xptr) {
+    .Call(`_coxdev_irls_current_deviance_r`, irls_state_xptr)
+}
+
+.irls_weighted_inner_product <- function(irls_state_xptr, x_j) {
+    .Call(`_coxdev_irls_weighted_inner_product_r`, irls_state_xptr, x_j)
+}
+
+.irls_update_residuals <- function(irls_state_xptr, delta, x_j) {
+    invisible(.Call(`_coxdev_irls_update_residuals_r`, irls_state_xptr, delta, x_j))
+}
+
+.irls_reset_residuals <- function(irls_state_xptr, eta_current) {
+    invisible(.Call(`_coxdev_irls_reset_residuals_r`, irls_state_xptr, eta_current))
+}
+

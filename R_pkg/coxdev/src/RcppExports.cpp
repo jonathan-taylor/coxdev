@@ -76,6 +76,109 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// create_irls_state_r
+SEXP create_irls_state_r(SEXP strat_data_xptr);
+RcppExport SEXP _coxdev_create_irls_state_r(SEXP strat_data_xptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type strat_data_xptr(strat_data_xptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(create_irls_state_r(strat_data_xptr));
+    return rcpp_result_gen;
+END_RCPP
+}
+// irls_recompute_outer_r
+double irls_recompute_outer_r(SEXP irls_state_xptr, const Eigen::Map<Eigen::VectorXd> eta, const Eigen::Map<Eigen::VectorXd> weights);
+RcppExport SEXP _coxdev_irls_recompute_outer_r(SEXP irls_state_xptrSEXP, SEXP etaSEXP, SEXP weightsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type eta(etaSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type weights(weightsSEXP);
+    rcpp_result_gen = Rcpp::wrap(irls_recompute_outer_r(irls_state_xptr, eta, weights));
+    return rcpp_result_gen;
+END_RCPP
+}
+// irls_working_weights_r
+Eigen::VectorXd irls_working_weights_r(SEXP irls_state_xptr);
+RcppExport SEXP _coxdev_irls_working_weights_r(SEXP irls_state_xptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(irls_working_weights_r(irls_state_xptr));
+    return rcpp_result_gen;
+END_RCPP
+}
+// irls_working_response_r
+Eigen::VectorXd irls_working_response_r(SEXP irls_state_xptr);
+RcppExport SEXP _coxdev_irls_working_response_r(SEXP irls_state_xptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(irls_working_response_r(irls_state_xptr));
+    return rcpp_result_gen;
+END_RCPP
+}
+// irls_residuals_r
+Eigen::VectorXd irls_residuals_r(SEXP irls_state_xptr);
+RcppExport SEXP _coxdev_irls_residuals_r(SEXP irls_state_xptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(irls_residuals_r(irls_state_xptr));
+    return rcpp_result_gen;
+END_RCPP
+}
+// irls_current_deviance_r
+double irls_current_deviance_r(SEXP irls_state_xptr);
+RcppExport SEXP _coxdev_irls_current_deviance_r(SEXP irls_state_xptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(irls_current_deviance_r(irls_state_xptr));
+    return rcpp_result_gen;
+END_RCPP
+}
+// irls_weighted_inner_product_r
+Rcpp::NumericVector irls_weighted_inner_product_r(SEXP irls_state_xptr, const Eigen::Map<Eigen::VectorXd> x_j);
+RcppExport SEXP _coxdev_irls_weighted_inner_product_r(SEXP irls_state_xptrSEXP, SEXP x_jSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type x_j(x_jSEXP);
+    rcpp_result_gen = Rcpp::wrap(irls_weighted_inner_product_r(irls_state_xptr, x_j));
+    return rcpp_result_gen;
+END_RCPP
+}
+// irls_update_residuals_r
+void irls_update_residuals_r(SEXP irls_state_xptr, double delta, const Eigen::Map<Eigen::VectorXd> x_j);
+RcppExport SEXP _coxdev_irls_update_residuals_r(SEXP irls_state_xptrSEXP, SEXP deltaSEXP, SEXP x_jSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    Rcpp::traits::input_parameter< double >::type delta(deltaSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type x_j(x_jSEXP);
+    irls_update_residuals_r(irls_state_xptr, delta, x_j);
+    return R_NilValue;
+END_RCPP
+}
+// irls_reset_residuals_r
+void irls_reset_residuals_r(SEXP irls_state_xptr, const Eigen::Map<Eigen::VectorXd> eta_current);
+RcppExport SEXP _coxdev_irls_reset_residuals_r(SEXP irls_state_xptrSEXP, SEXP eta_currentSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type irls_state_xptr(irls_state_xptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::Map<Eigen::VectorXd> >::type eta_current(eta_currentSEXP);
+    irls_reset_residuals_r(irls_state_xptr, eta_current);
+    return R_NilValue;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_preprocess_stratified_r", (DL_FUNC) &_coxdev_preprocess_stratified_r, 5},
@@ -83,6 +186,15 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_hessian_matvec_stratified_r", (DL_FUNC) &_coxdev_hessian_matvec_stratified_r, 4},
     {"_coxdev_get_n_strata_r", (DL_FUNC) &_coxdev_get_n_strata_r, 1},
     {"_coxdev_get_n_total_r", (DL_FUNC) &_coxdev_get_n_total_r, 1},
+    {"_coxdev_create_irls_state_r", (DL_FUNC) &_coxdev_create_irls_state_r, 1},
+    {"_coxdev_irls_recompute_outer_r", (DL_FUNC) &_coxdev_irls_recompute_outer_r, 3},
+    {"_coxdev_irls_working_weights_r", (DL_FUNC) &_coxdev_irls_working_weights_r, 1},
+    {"_coxdev_irls_working_response_r", (DL_FUNC) &_coxdev_irls_working_response_r, 1},
+    {"_coxdev_irls_residuals_r", (DL_FUNC) &_coxdev_irls_residuals_r, 1},
+    {"_coxdev_irls_current_deviance_r", (DL_FUNC) &_coxdev_irls_current_deviance_r, 1},
+    {"_coxdev_irls_weighted_inner_product_r", (DL_FUNC) &_coxdev_irls_weighted_inner_product_r, 2},
+    {"_coxdev_irls_update_residuals_r", (DL_FUNC) &_coxdev_irls_update_residuals_r, 3},
+    {"_coxdev_irls_reset_residuals_r", (DL_FUNC) &_coxdev_irls_reset_residuals_r, 2},
     {NULL, NULL, 0}
 };
 

@@ -16,6 +16,7 @@ __version__ = _version.get_versions()['version']
 import numpy as np
 
 from .coxc import (StratifiedCoxDevianceCpp as _StratifiedCoxDevianceCpp,
+                   CoxIRLSStateCpp as _CoxIRLSStateCpp,
                    c_preprocess)
 
     
@@ -303,3 +304,178 @@ class CoxInformation(LinearOperator):
         """
         # it is symmetric
         return self._matvec(arg)
+
+
+class CoxIRLSState:
+    """
+    Stateful IRLS/coordinate descent interface for Cox regression.
+
+    This class caches expensive quantities (exp(eta), risk sums, working
+    weights/response) computed once per outer IRLS iteration, enabling
+    efficient coordinate descent optimization.
+
+    Parameters
+    ----------
+    coxdev : CoxDeviance
+        The CoxDeviance object containing preprocessed survival data.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from coxdev import CoxDeviance, CoxIRLSState
+    >>> # Generate data
+    >>> np.random.seed(42)
+    >>> n, p = 100, 5
+    >>> X = np.random.randn(n, p)
+    >>> beta_true = np.array([1, -0.5, 0.3, 0, 0])
+    >>> eta_true = X @ beta_true
+    >>> time = np.random.exponential(1 / np.exp(eta_true))
+    >>> status = np.random.binomial(1, 0.7, n)
+    >>> # Create Cox deviance and IRLS state
+    >>> cox = CoxDeviance(event=time, status=status)
+    >>> irls = CoxIRLSState(cox)
+    >>> # Initialize
+    >>> beta = np.zeros(p)
+    >>> eta = X @ beta
+    >>> weights = np.ones(n)
+    >>> # Outer IRLS iteration
+    >>> irls.recompute_outer(eta, weights)
+    >>> print(f"Initial deviance: {irls.current_deviance():.4f}")
+    >>> # Inner coordinate descent pass
+    >>> for j in range(p):
+    ...     grad_j, hess_jj = irls.weighted_inner_product(X[:, j])
+    ...     delta = grad_j / hess_jj
+    ...     beta[j] += delta
+    ...     irls.update_residuals(delta, X[:, j])
+    """
+
+    def __init__(self, coxdev: CoxDeviance):
+        """
+        Initialize the IRLS state from a CoxDeviance object.
+
+        Parameters
+        ----------
+        coxdev : CoxDeviance
+            The CoxDeviance object containing preprocessed survival data.
+        """
+        self._coxdev = coxdev
+        self._cpp = _CoxIRLSStateCpp(coxdev._cpp)
+
+    def recompute_outer(self,
+                        eta: np.ndarray,
+                        weights: np.ndarray = None) -> float:
+        """
+        Recompute all cached quantities (call once per outer IRLS iteration).
+
+        This is the expensive O(15n) operation that should be called once
+        per outer IRLS iteration, not in the inner coordinate descent loop.
+
+        Parameters
+        ----------
+        eta : np.ndarray
+            Current linear predictor values.
+        weights : np.ndarray, optional
+            Sample weights. If None, uses equal weights.
+
+        Returns
+        -------
+        float
+            Current deviance value.
+        """
+        eta = np.asarray(eta).astype(float)
+        if weights is None:
+            weights = np.ones_like(eta)
+        else:
+            weights = np.asarray(weights).astype(float)
+        return self._cpp.recompute_outer(eta, weights)
+
+    def working_weights(self) -> np.ndarray:
+        """
+        Get cached working weights.
+
+        Returns
+        -------
+        np.ndarray
+            Working weights w = -diag(Hessian) / 2.
+        """
+        return self._cpp.working_weights()
+
+    def working_response(self) -> np.ndarray:
+        """
+        Get cached working response.
+
+        Returns
+        -------
+        np.ndarray
+            Working response z = eta - gradient / diag(Hessian).
+        """
+        return self._cpp.working_response()
+
+    def residuals(self) -> np.ndarray:
+        """
+        Get cached residuals.
+
+        Returns
+        -------
+        np.ndarray
+            Residuals r = w * (z - eta).
+        """
+        return self._cpp.residuals()
+
+    def current_deviance(self) -> float:
+        """
+        Get deviance from the last recompute_outer call.
+
+        Returns
+        -------
+        float
+            Current deviance value.
+        """
+        return self._cpp.current_deviance()
+
+    def weighted_inner_product(self, x_j: np.ndarray) -> tuple:
+        """
+        Compute gradient and Hessian diagonal for coordinate j.
+
+        Parameters
+        ----------
+        x_j : np.ndarray
+            The j-th column of the design matrix.
+
+        Returns
+        -------
+        tuple
+            (gradient_j, hessian_jj) where:
+            - gradient_j = sum(x_j * residuals)
+            - hessian_jj = sum(w * x_j^2)
+        """
+        x_j = np.asarray(x_j).astype(float)
+        return self._cpp.weighted_inner_product(x_j)
+
+    def update_residuals(self, delta: float, x_j: np.ndarray) -> None:
+        """
+        Update residuals after beta_j changes by delta.
+
+        This is an O(n) incremental update: r -= delta * w * x_j
+
+        Parameters
+        ----------
+        delta : float
+            Change in coefficient beta_j.
+        x_j : np.ndarray
+            The j-th column of the design matrix.
+        """
+        x_j = np.asarray(x_j).astype(float)
+        self._cpp.update_residuals(float(delta), x_j)
+
+    def reset_residuals(self, eta_current: np.ndarray) -> None:
+        """
+        Reset residuals for a new coordinate descent pass.
+
+        Parameters
+        ----------
+        eta_current : np.ndarray
+            Current linear predictor values.
+        """
+        eta_current = np.asarray(eta_current).astype(float)
+        self._cpp.reset_residuals(eta_current)

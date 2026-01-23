@@ -52,9 +52,11 @@ make_cox_deviance <- function(event,
     tie_breaking = tie_breaking
   )
 
-  # Return only coxdev and information for backward compatibility
+  # Return coxdev, information, and internal pointer for IRLS state creation
   # (stratified version also returns n_strata and n_total)
-  list(coxdev = result$coxdev, information = result$information)
+  list(coxdev = result$coxdev,
+       information = result$information,
+       .strat_data_ptr = result$.strat_data_ptr)
 }
 
 #' Make stratified cox deviance object (C++ implementation)
@@ -156,6 +158,107 @@ make_stratified_cox_deviance <- function(event,
     coxdev = coxdev,
     information = information,
     n_strata = .get_n_strata(strat_data_ptr),
-    n_total = .get_n_total(strat_data_ptr)
+    n_total = .get_n_total(strat_data_ptr),
+    .strat_data_ptr = strat_data_ptr  # Expose for IRLS state creation
+  )
+}
+
+#' Create IRLS state for Cox model coordinate descent
+#'
+#' Creates a stateful object that caches expensive quantities (exp(eta), risk sums,
+#' working weights/response) computed once per outer IRLS iteration, enabling
+#' efficient coordinate descent.
+#'
+#' @param cox_obj A Cox deviance object created by \code{make_cox_deviance} or
+#'   \code{make_stratified_cox_deviance}
+#' @return A list with methods for IRLS/coordinate descent:
+#'   \itemize{
+#'     \item \code{recompute_outer(eta, weights)}: Recompute all cached quantities (call once per outer IRLS)
+#'     \item \code{working_weights()}: Get cached working weights
+#'     \item \code{working_response()}: Get cached working response
+#'     \item \code{residuals()}: Get cached residuals r = w * (z - eta)
+#'     \item \code{current_deviance()}: Get deviance from last recompute_outer
+#'     \item \code{weighted_inner_product(x_j)}: Returns c(gradient_j, hessian_jj)
+#'     \item \code{update_residuals(delta, x_j)}: Update r -= delta * w * x_j
+#'     \item \code{reset_residuals(eta)}: Reset residuals for new CD pass
+#'   }
+#' @examples
+#' # Simple coordinate descent example
+#' set.seed(42)
+#' n <- 100; p <- 5
+#' X <- matrix(rnorm(n * p), n, p)
+#' beta_true <- c(1, -0.5, 0.3, 0, 0)
+#' eta_true <- X %*% beta_true
+#' time <- rexp(n, exp(eta_true))
+#' status <- rbinom(n, 1, 0.7)
+#'
+#' # Create Cox deviance and IRLS state
+#' cox <- make_cox_deviance(event = time, status = status)
+#' irls <- make_cox_irls_state(cox)
+#'
+#' # Initialize
+#' beta <- rep(0, p)
+#' eta <- X %*% beta
+#' weights <- rep(1, n)
+#'
+#' # Outer IRLS iteration
+#' irls$recompute_outer(eta, weights)
+#' cat("Initial deviance:", irls$current_deviance(), "\n")
+#'
+#' # Inner coordinate descent pass
+#' for (j in 1:p) {
+#'   x_j <- X[, j]
+#'   gh <- irls$weighted_inner_product(x_j)
+#'   delta <- gh["gradient"] / gh["hessian"]
+#'   beta[j] <- beta[j] + delta
+#'   irls$update_residuals(delta, x_j)
+#' }
+#' eta <- X %*% beta
+#' irls$recompute_outer(eta, weights)
+#' cat("After 1 CD pass:", irls$current_deviance(), "\n")
+#' @export
+make_cox_irls_state <- function(cox_obj) {
+  if (is.null(cox_obj$.strat_data_ptr)) {
+    stop("cox_obj must be created by make_cox_deviance or make_stratified_cox_deviance")
+  }
+
+  # Create the IRLS state
+  irls_state_ptr <- .create_irls_state(cox_obj$.strat_data_ptr)
+
+  list(
+    recompute_outer = function(eta, weights = NULL) {
+      if (is.null(weights)) {
+        weights <- rep(1.0, length(eta))
+      }
+      .irls_recompute_outer(irls_state_ptr, as.numeric(eta), as.numeric(weights))
+    },
+
+    working_weights = function() {
+      .irls_working_weights(irls_state_ptr)
+    },
+
+    working_response = function() {
+      .irls_working_response(irls_state_ptr)
+    },
+
+    residuals = function() {
+      .irls_residuals(irls_state_ptr)
+    },
+
+    current_deviance = function() {
+      .irls_current_deviance(irls_state_ptr)
+    },
+
+    weighted_inner_product = function(x_j) {
+      .irls_weighted_inner_product(irls_state_ptr, as.numeric(x_j))
+    },
+
+    update_residuals = function(delta, x_j) {
+      .irls_update_residuals(irls_state_ptr, as.numeric(delta), as.numeric(x_j))
+    },
+
+    reset_residuals = function(eta) {
+      .irls_reset_residuals(irls_state_ptr, as.numeric(eta))
+    }
   )
 }

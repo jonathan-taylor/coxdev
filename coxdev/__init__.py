@@ -8,6 +8,8 @@ Main Classes
 ------------
 CoxDeviance
     Standard Cox model deviance and information computation.
+CoxIRLSState
+    Stateful IRLS/coordinate descent interface for efficient optimization.
 StratifiedCoxDeviance
     Stratified Cox model (wrapper around StratifiedCoxDevianceCpp for backward compatibility).
 StratifiedCoxDevianceCpp
@@ -20,6 +22,6 @@ coxdev.stratified : Stratified Cox model implementation.
 coxdev.stratified_cpp : C++ stratified Cox model implementation.
 """
 
-from .base import CoxDeviance
+from .base import CoxDeviance, CoxIRLSState
 from .stratified import StratifiedCoxDeviance
 from .stratified_cpp import StratifiedCoxDevianceCpp

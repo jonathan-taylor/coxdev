@@ -892,13 +892,19 @@ double CoxIRLSState<ValueType, IndexType>::recompute_outer(
     // Working weights w = -diag_hess = diag_hessian_buffer/2
     working_weights_ = workspace_->diag_hessian_buffer / 2.0;
 
-    // Compute working response: z = eta - gradient/w
-    // grad_buffer = -2 * gradient => gradient = -grad_buffer/2
-    // z = eta - (-grad_buffer/2) / (diag_hessian_buffer/2)
-    //   = eta + grad_buffer / diag_hessian_buffer
+    // Compute working response: z = eta - score/w
+    // where score = d(loglik)/d(eta) = -grad_buffer/2
+    // and w = -d²(loglik)/d(eta)² = diag_hessian_buffer/2
+    // So: z = eta - (-grad_buffer/2) / (diag_hessian_buffer/2)
+    //       = eta + grad_buffer / diag_hessian_buffer
+    //
+    // BUT: we're minimizing deviance, not maximizing likelihood!
+    // For deviance minimization via IRLS, we want:
+    // z = eta - (d deviance/d eta) / (d² deviance/d eta²)
+    //   = eta - grad_buffer / diag_hessian_buffer
     for (int i = 0; i < n; ++i) {
         if (std::abs(workspace_->diag_hessian_buffer(i)) > 1e-10) {
-            working_response_(i) = eta(i) + workspace_->grad_buffer(i) /
+            working_response_(i) = eta(i) - workspace_->grad_buffer(i) /
                                             workspace_->diag_hessian_buffer(i);
         } else {
             working_response_(i) = eta(i);
@@ -1531,6 +1537,93 @@ py::tuple c_preprocess(
     return py::make_tuple(result, event_order_out, start_order_out);
 }
 
+/**
+ * Python wrapper class for CoxIRLSStateStratified.
+ * Provides stateful IRLS/coordinate descent interface.
+ */
+class CoxIRLSStateCpp {
+public:
+    CoxIRLSStateStratified<double, int> state;
+    StratifiedCoxDevianceCpp* cox_dev_ptr;  // Non-owning pointer
+
+    CoxIRLSStateCpp(StratifiedCoxDevianceCpp& cox_dev) : cox_dev_ptr(&cox_dev) {
+        state.initialize(cox_dev.strat_data);
+    }
+
+    double recompute_outer(py::array_t<double> eta, py::array_t<double> weights) {
+        auto eta_buf = eta.request();
+        auto weights_buf = weights.request();
+        int n = static_cast<int>(eta_buf.size);
+
+        Eigen::Map<Eigen::VectorXd> eta_vec(static_cast<double*>(eta_buf.ptr), n);
+        Eigen::Map<Eigen::VectorXd> weights_vec(static_cast<double*>(weights_buf.ptr), n);
+
+        return state.recompute_outer(eta_vec, weights_vec);
+    }
+
+    py::array_t<double> working_weights() {
+        const Eigen::VectorXd& w = state.working_weights();
+        int n = w.size();
+        py::array_t<double> result(n);
+        auto ptr = result.mutable_data();
+        for (int i = 0; i < n; ++i) {
+            ptr[i] = w(i);
+        }
+        return result;
+    }
+
+    py::array_t<double> working_response() {
+        const Eigen::VectorXd& z = state.working_response();
+        int n = z.size();
+        py::array_t<double> result(n);
+        auto ptr = result.mutable_data();
+        for (int i = 0; i < n; ++i) {
+            ptr[i] = z(i);
+        }
+        return result;
+    }
+
+    py::array_t<double> residuals() {
+        const Eigen::VectorXd& r = state.residuals();
+        int n = r.size();
+        py::array_t<double> result(n);
+        auto ptr = result.mutable_data();
+        for (int i = 0; i < n; ++i) {
+            ptr[i] = r(i);
+        }
+        return result;
+    }
+
+    double current_deviance() {
+        return state.current_deviance();
+    }
+
+    py::tuple weighted_inner_product(py::array_t<double> x_j) {
+        auto x_buf = x_j.request();
+        int n = static_cast<int>(x_buf.size);
+        Eigen::Map<Eigen::VectorXd> x_vec(static_cast<double*>(x_buf.ptr), n);
+
+        auto [grad_j, hess_jj] = state.weighted_inner_product(x_vec);
+        return py::make_tuple(grad_j, hess_jj);
+    }
+
+    void update_residuals(double delta, py::array_t<double> x_j) {
+        auto x_buf = x_j.request();
+        int n = static_cast<int>(x_buf.size);
+        Eigen::Map<Eigen::VectorXd> x_vec(static_cast<double*>(x_buf.ptr), n);
+
+        state.update_residuals(delta, x_vec);
+    }
+
+    void reset_residuals(py::array_t<double> eta_current) {
+        auto eta_buf = eta_current.request();
+        int n = static_cast<int>(eta_buf.size);
+        Eigen::Map<Eigen::VectorXd> eta_vec(static_cast<double*>(eta_buf.ptr), n);
+
+        state.reset_residuals(eta_vec);
+    }
+};
+
 // Main module initialization
 PYBIND11_MODULE(coxc, m) {
     m.doc() = "Cox deviance implementations (unified stratified)";
@@ -1545,6 +1638,30 @@ PYBIND11_MODULE(coxc, m) {
              py::arg("arg"), py::arg("linear_predictor"), py::arg("sample_weight"))
         .def_property_readonly("n_strata", &StratifiedCoxDevianceCpp::n_strata)
         .def_property_readonly("n_total", &StratifiedCoxDevianceCpp::n_total);
+
+    // CoxIRLSStateCpp class for efficient IRLS/coordinate descent
+    py::class_<CoxIRLSStateCpp>(m, "CoxIRLSStateCpp")
+        .def(py::init<StratifiedCoxDevianceCpp&>(), py::arg("cox_dev"))
+        .def("recompute_outer", &CoxIRLSStateCpp::recompute_outer,
+             py::arg("eta"), py::arg("weights"),
+             "Recompute all cached quantities (call once per outer IRLS iteration)")
+        .def("working_weights", &CoxIRLSStateCpp::working_weights,
+             "Get cached working weights")
+        .def("working_response", &CoxIRLSStateCpp::working_response,
+             "Get cached working response")
+        .def("residuals", &CoxIRLSStateCpp::residuals,
+             "Get cached residuals r = w * (z - eta)")
+        .def("current_deviance", &CoxIRLSStateCpp::current_deviance,
+             "Get deviance from last recompute_outer")
+        .def("weighted_inner_product", &CoxIRLSStateCpp::weighted_inner_product,
+             py::arg("x_j"),
+             "Returns (gradient_j, hessian_jj) using cached residuals")
+        .def("update_residuals", &CoxIRLSStateCpp::update_residuals,
+             py::arg("delta"), py::arg("x_j"),
+             "Update residuals: r -= delta * w * x_j")
+        .def("reset_residuals", &CoxIRLSStateCpp::reset_residuals,
+             py::arg("eta_current"),
+             "Reset residuals for new CD pass");
 
     // Preprocessing function
     m.def("c_preprocess", &c_preprocess, "Preprocess survival data");
@@ -1666,6 +1783,107 @@ int get_n_strata_r(SEXP strat_data_xptr) {
 int get_n_total_r(SEXP strat_data_xptr) {
     Rcpp::XPtr<StratifiedCoxData<double, int>> xptr(strat_data_xptr);
     return xptr->n_total;
+}
+
+// ============================================================================
+// CoxIRLSStateStratified R Interface
+// ============================================================================
+
+// Custom destructor for CoxIRLSStateStratified
+inline void irls_state_finalizer(CoxIRLSStateStratified<double, int>* ptr) {
+    delete ptr;
+}
+
+// [[Rcpp::export(.create_irls_state)]]
+SEXP create_irls_state_r(SEXP strat_data_xptr) {
+    // Extract the StratifiedCoxData XPtr
+    Rcpp::XPtr<StratifiedCoxData<double, int>> data_xptr(strat_data_xptr);
+
+    // Create the IRLS state on the heap
+    CoxIRLSStateStratified<double, int>* state_ptr = new CoxIRLSStateStratified<double, int>();
+    state_ptr->initialize(*data_xptr);
+
+    // Wrap in XPtr and return
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(state_ptr, true);
+    return xptr;
+}
+
+// [[Rcpp::export(.irls_recompute_outer)]]
+double irls_recompute_outer_r(
+    SEXP irls_state_xptr,
+    const Eigen::Map<Eigen::VectorXd> eta,
+    const Eigen::Map<Eigen::VectorXd> weights)
+{
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+
+    // Convert Maps to VectorXd
+    Eigen::VectorXd eta_copy = eta;
+    Eigen::VectorXd weights_copy = weights;
+
+    return xptr->recompute_outer(eta_copy, weights_copy);
+}
+
+// [[Rcpp::export(.irls_working_weights)]]
+Eigen::VectorXd irls_working_weights_r(SEXP irls_state_xptr) {
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+    return xptr->working_weights();
+}
+
+// [[Rcpp::export(.irls_working_response)]]
+Eigen::VectorXd irls_working_response_r(SEXP irls_state_xptr) {
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+    return xptr->working_response();
+}
+
+// [[Rcpp::export(.irls_residuals)]]
+Eigen::VectorXd irls_residuals_r(SEXP irls_state_xptr) {
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+    return xptr->residuals();
+}
+
+// [[Rcpp::export(.irls_current_deviance)]]
+double irls_current_deviance_r(SEXP irls_state_xptr) {
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+    return xptr->current_deviance();
+}
+
+// [[Rcpp::export(.irls_weighted_inner_product)]]
+Rcpp::NumericVector irls_weighted_inner_product_r(
+    SEXP irls_state_xptr,
+    const Eigen::Map<Eigen::VectorXd> x_j)
+{
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+
+    Eigen::VectorXd x_j_copy = x_j;
+    auto [grad_j, hess_jj] = xptr->weighted_inner_product(x_j_copy);
+
+    return Rcpp::NumericVector::create(
+        Rcpp::_["gradient"] = grad_j,
+        Rcpp::_["hessian"] = hess_jj
+    );
+}
+
+// [[Rcpp::export(.irls_update_residuals)]]
+void irls_update_residuals_r(
+    SEXP irls_state_xptr,
+    double delta,
+    const Eigen::Map<Eigen::VectorXd> x_j)
+{
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+
+    Eigen::VectorXd x_j_copy = x_j;
+    xptr->update_residuals(delta, x_j_copy);
+}
+
+// [[Rcpp::export(.irls_reset_residuals)]]
+void irls_reset_residuals_r(
+    SEXP irls_state_xptr,
+    const Eigen::Map<Eigen::VectorXd> eta_current)
+{
+    Rcpp::XPtr<CoxIRLSStateStratified<double, int>> xptr(irls_state_xptr);
+
+    Eigen::VectorXd eta_copy = eta_current;
+    xptr->reset_residuals(eta_copy);
 }
 
 #endif // R_INTERFACE
