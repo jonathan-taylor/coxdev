@@ -56,6 +56,18 @@ state.update_residuals(delta, x_j);  // O(n), incremental
 
 **Working response formula:** `z = eta + grad_buffer / diag_hessian_buffer` (accounting for -2 scaling factors in gradient/Hessian buffers).
 
+### Empty Strata Vector Optimization - COMPLETE
+
+The `preprocess_stratified_impl()` function now accepts an empty strata vector to signal single-stratum (unstratified) case, avoiding O(n) storage and O(2n) iteration.
+
+**Implementation:**
+- C++ (`coxdev.cpp`): Added check for `strata.size() == 0` at start of `preprocess_stratified_impl()`. When empty, creates single stratum with indices [0, 1, 2, ..., n-1] using `std::iota`.
+- Python (`base.py`): `CoxDeviance` now passes `np.array([], dtype=np.int32)` instead of `np.zeros(n)`.
+- Python (`stratified_cpp.py`): Uses the actual strata buffer size when creating Eigen::Map (critical fix for pybind11 binding).
+- R (`coxdev.R`): `make_cox_deviance()` now passes `integer(0)` instead of `rep(1L, n)`.
+
+**Note for glmnet:** After deploying this coxdev update, glmnet's `coxnew.R` can be updated to pass `integer(0)` for unstratified models.
+
 ## Upcoming Tasks
 
 ### glmnetpp Integration (Phases 3-5)

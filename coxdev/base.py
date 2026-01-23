@@ -130,8 +130,9 @@ class CoxDeviance:
             start_arr = np.asarray(start).astype(float)
             self._have_start_times = True
 
-        # Use stratified C++ implementation with a single stratum
-        strata = np.zeros(n, dtype=np.int32)
+        # Use stratified C++ implementation with empty strata vector
+        # Empty vector signals single-stratum case, avoiding O(n) storage waste
+        strata = np.array([], dtype=np.int32)
 
         self._cpp = _StratifiedCoxDevianceCpp(
             event,

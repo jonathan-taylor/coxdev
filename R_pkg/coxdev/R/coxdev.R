@@ -40,8 +40,9 @@ make_cox_deviance <- function(event,
   tie_breaking <- match.arg(tie_breaking)
   n <- length(event)
 
-  # Create single-stratum vector (all observations in stratum 1)
-  strata <- rep(1L, n)
+  # Use empty strata vector to signal single-stratum (unstratified) case
+  # This avoids O(n) storage and O(2n) iteration in C++ preprocessing
+  strata <- integer(0)
 
   # Call stratified implementation
   result <- make_stratified_cox_deviance(

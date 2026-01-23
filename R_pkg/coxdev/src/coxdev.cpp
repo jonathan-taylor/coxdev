@@ -1115,27 +1115,38 @@ static void preprocess_stratified_impl(
     int n_total = status.size();
     strat_data.n_total = n_total;
 
-    // Find unique strata
-    std::set<int> unique_strata_set;
-    for (int i = 0; i < n_total; ++i) {
-        unique_strata_set.insert(strata(i));
-    }
-
-    strat_data.n_strata = static_cast<int>(unique_strata_set.size());
-    strat_data.resize(strat_data.n_strata);
-
-    // Copy unique strata to vector
-    int s_idx = 0;
-    for (int s : unique_strata_set) {
-        strat_data.strata_labels[s_idx++] = s;
-    }
-
-    // Build stratum_indices: for each stratum, collect global indices
-    for (int s = 0; s < strat_data.n_strata; ++s) {
-        int label = strat_data.strata_labels[s];
+    // Optimization: Empty strata vector signals single-stratum (unstratified) case.
+    // This avoids O(n) storage for strata vector and O(2n) iteration to find/build indices.
+    if (strata.size() == 0) {
+        strat_data.n_strata = 1;
+        strat_data.resize(1);
+        strat_data.strata_labels[0] = 1;  // Arbitrary label for single stratum
+        strat_data.stratum_indices[0].resize(n_total);
+        std::iota(strat_data.stratum_indices[0].begin(),
+                  strat_data.stratum_indices[0].end(), 0);
+    } else {
+        // Find unique strata
+        std::set<int> unique_strata_set;
         for (int i = 0; i < n_total; ++i) {
-            if (strata(i) == label) {
-                strat_data.stratum_indices[s].push_back(i);
+            unique_strata_set.insert(strata(i));
+        }
+
+        strat_data.n_strata = static_cast<int>(unique_strata_set.size());
+        strat_data.resize(strat_data.n_strata);
+
+        // Copy unique strata to vector
+        int s_idx = 0;
+        for (int s : unique_strata_set) {
+            strat_data.strata_labels[s_idx++] = s;
+        }
+
+        // Build stratum_indices: for each stratum, collect global indices
+        for (int s = 0; s < strat_data.n_strata; ++s) {
+            int label = strat_data.strata_labels[s];
+            for (int i = 0; i < n_total; ++i) {
+                if (strata(i) == label) {
+                    strat_data.stratum_indices[s].push_back(i);
+                }
             }
         }
     }
@@ -1379,10 +1390,12 @@ public:
         auto start_buf = start.request();
 
         int n = static_cast<int>(event_buf.size);
+        int strata_size = static_cast<int>(strata_buf.size);
 
         Eigen::Map<Eigen::VectorXd> event_vec(static_cast<double*>(event_buf.ptr), n);
         Eigen::Map<Eigen::VectorXi> status_vec(static_cast<int*>(status_buf.ptr), n);
-        Eigen::Map<Eigen::VectorXi> strata_vec(static_cast<int*>(strata_buf.ptr), n);
+        // Use actual strata size (may be 0 for single-stratum optimization)
+        Eigen::Map<Eigen::VectorXi> strata_vec(static_cast<int*>(strata_buf.ptr), strata_size);
         Eigen::Map<Eigen::VectorXd> start_vec(static_cast<double*>(start_buf.ptr), n);
 
         // Check if we have actual start times (not all -inf)
