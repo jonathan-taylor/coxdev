@@ -1,6 +1,6 @@
 Package: coxdev
 Title: Package for testing Cox calculations
-Version: 0.4
+Version: 0.5
 Authors@R: c(person("Jonathan", "Taylor", role = c("aut")),
 	     person("Trevor", "Hastie", role = c("aut")),
 	     person("Balasubramanian", "Narasimhan", role = c("aut", "cre"), email = "naras@stanford.edu"))

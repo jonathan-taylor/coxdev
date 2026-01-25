@@ -79,13 +79,13 @@ def ensure_eigen_available():
 
 EXTS=[Extension(
     'coxdev.coxc',
-    sources=['R_pkg/coxdev/src/coxdev.cpp'],
+    sources=['src/coxdev_py.cpp'],
     include_dirs=[pybind11.get_include(),
                   eigendir,
-                  "R_pkg/coxdev/inst/include"],
-    depends=["R_pkg/coxdev/inst/include/coxdev.h"],
+                  "include"],
+    depends=["include/coxdev.hpp"],
     language='c++',
-    extra_compile_args=['-std=c++17', '-DPY_INTERFACE=1'])]
+    extra_compile_args=['-std=c++17'])]
 
 cmdclass = versioneer.get_cmdclass()
 
