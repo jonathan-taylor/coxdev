@@ -210,11 +210,12 @@ def test_zero_weights_match_subset(tie_breaking, have_start_times, request):
     eta = data['eta']
     nonzero_idx = data['nonzero_idx']
 
-    # Create CoxDeviance with full data
+    # Create CoxDeviance with full data (weights at initialization)
     coxdev_full = CoxDeviance(
         event=event,
         status=status,
         start=start,
+        sample_weight=weights,
         tie_breaking=tie_breaking
     )
 
@@ -223,12 +224,13 @@ def test_zero_weights_match_subset(tie_breaking, have_start_times, request):
         event=event[nonzero_idx],
         status=status[nonzero_idx],
         start=start[nonzero_idx] if start is not None else None,
+        sample_weight=weights[nonzero_idx],
         tie_breaking=tie_breaking
     )
 
     # Compute results
-    result_full = coxdev_full(eta, weights)
-    result_subset = coxdev_subset(eta[nonzero_idx], weights[nonzero_idx])
+    result_full = coxdev_full(eta)
+    result_subset = coxdev_subset(eta[nonzero_idx])
 
     # Compare deviance
     assert np.allclose(result_full.deviance, result_subset.deviance, rtol=1e-10), \
@@ -251,8 +253,8 @@ def test_zero_weights_match_subset(tie_breaking, have_start_times, request):
         "Diagonal Hessian mismatch for non-zero weight observations"
 
     # Compare information matrix action on a test vector
-    info_full = coxdev_full.information(eta, weights)
-    info_subset = coxdev_subset.information(eta[nonzero_idx], weights[nonzero_idx])
+    info_full = coxdev_full.information(eta)
+    info_subset = coxdev_subset.information(eta[nonzero_idx])
 
     # Test vector
     n = len(eta)
@@ -291,12 +293,13 @@ def test_zero_weights_stratified(tie_breaking, have_start_times, request):
     # Generate strata
     strata = rng.choice(n_strata, size=n)
 
-    # Full model
+    # Full model (weights at initialization)
     stratdev_full = StratifiedCoxDeviance(
         event=event,
         status=status,
         strata=strata,
         start=start,
+        sample_weight=weights,
         tie_breaking=tie_breaking
     )
 
@@ -306,11 +309,12 @@ def test_zero_weights_stratified(tie_breaking, have_start_times, request):
         status=status[nonzero_idx],
         strata=strata[nonzero_idx],
         start=start[nonzero_idx] if start is not None else None,
+        sample_weight=weights[nonzero_idx],
         tie_breaking=tie_breaking
     )
 
-    result_full = stratdev_full(eta, weights)
-    result_subset = stratdev_subset(eta[nonzero_idx], weights[nonzero_idx])
+    result_full = stratdev_full(eta)
+    result_subset = stratdev_subset(eta[nonzero_idx])
 
     # Compare deviance
     assert np.allclose(result_full.deviance, result_subset.deviance, rtol=1e-10), \
@@ -344,8 +348,8 @@ class TestZeroWeightsCompareR:
         status = np.array([1, 1, 1, 1, 1])
         weight = np.array([0.0, 2.0, 0.0, 3.0, 1.5])
 
-        cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
-        result = cox(np.zeros(5), weight)
+        cox = CoxDeviance(event=event, status=status, sample_weight=weight, tie_breaking=tie_breaking)
+        result = cox(np.zeros(5))
 
         loglik_sat_R = compute_sat_loglik_R(event, status, weight, tie_breaking=tie_breaking)
 
@@ -359,8 +363,8 @@ class TestZeroWeightsCompareR:
         status = np.array([1, 1, 1, 1, 1])
         weight = np.array([0.0, 2.0, 1.5, 0.0, 3.0])
 
-        cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
-        result = cox(np.zeros(5), weight)
+        cox = CoxDeviance(event=event, status=status, sample_weight=weight, tie_breaking=tie_breaking)
+        result = cox(np.zeros(5))
 
         loglik_sat_R = compute_sat_loglik_R(event, status, weight, tie_breaking=tie_breaking)
 
@@ -374,8 +378,8 @@ class TestZeroWeightsCompareR:
         status = np.array([1, 1, 1, 1])
         weight = np.array([0.0, 0.0, 2.0, 3.0])
 
-        cox = CoxDeviance(event=event, status=status, tie_breaking=tie_breaking)
-        result = cox(np.zeros(4), weight)
+        cox = CoxDeviance(event=event, status=status, sample_weight=weight, tie_breaking=tie_breaking)
+        result = cox(np.zeros(4))
 
         loglik_sat_R = compute_sat_loglik_R(event, status, weight, tie_breaking=tie_breaking)
 
@@ -393,9 +397,10 @@ class TestZeroWeightsCompareR:
             event=data['event'],
             status=data['status'],
             start=data['start'],
+            sample_weight=data['weights'],
             tie_breaking=tie_breaking
         )
-        result = cox(data['eta'], data['weights'])
+        result = cox(data['eta'])
 
         loglik_sat_R = compute_sat_loglik_R(data['event'], data['status'], data['weights'],
                                             tie_breaking=tie_breaking)
@@ -431,9 +436,10 @@ class TestZeroWeightsCompareR:
             event=event_sub,
             status=status_sub,
             start=start_sub,
+            sample_weight=weights_sub,
             tie_breaking=tie_breaking
         )
-        result = cox(eta_sub, weights_sub)
+        result = cox(eta_sub)
 
         _, _, loglik_R = get_coxph_result(
             event_sub, status_sub, X, beta, weights_sub,
@@ -489,13 +495,14 @@ def test_zero_weight_at_first_event_ordered_position():
     strata = np.ones(n, dtype=np.int32)
     cox_strat = StratifiedCoxDevianceCpp(
         event=event, start=start, status=status,
-        strata=strata, tie_breaking='efron'
+        strata=strata, sample_weight=weights, tie_breaking='efron'
     )
-    result_strat = cox_strat(eta, sample_weight=weights)
+    result_strat = cox_strat(eta)
 
     # Test with unstratified implementation
-    cox_unstrat = CoxDeviance(event=event, start=start, status=status, tie_breaking='efron')
-    result_unstrat = cox_unstrat(eta, sample_weight=weights)
+    cox_unstrat = CoxDeviance(event=event, start=start, status=status,
+                               sample_weight=weights, tie_breaking='efron')
+    result_unstrat = cox_unstrat(eta)
 
     # The key test: stratified should match unstratified
     assert np.isclose(result_strat.deviance, result_unstrat.deviance, rtol=1e-10), \
@@ -513,9 +520,10 @@ def test_zero_weight_at_first_event_ordered_position():
         event=event[nonzero_idx],
         start=start[nonzero_idx],
         status=status[nonzero_idx],
+        sample_weight=weights[nonzero_idx],
         tie_breaking='efron'
     )
-    result_subset = cox_subset(eta[nonzero_idx], sample_weight=weights[nonzero_idx])
+    result_subset = cox_subset(eta[nonzero_idx])
 
     assert np.isclose(result_strat.deviance, result_subset.deviance, rtol=1e-10), \
         f"Deviance mismatch with subset: stratified={result_strat.deviance}, subset={result_subset.deviance}"

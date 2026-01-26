@@ -1489,7 +1489,7 @@ inline ValueType cox_dev_single_stratum(
     const auto& status = preproc.status;
     const auto& first = preproc.first;
     const auto& last = preproc.last;
-    const auto& scaling = preproc.scaling;
+    // Note: scaling is accessed via preproc.scaling directly (may be modified for zero weights)
     const auto& event_map = preproc.event_map;
     const auto& start_map = preproc.start_map;
     bool have_start_times = preproc.have_start_times;
@@ -1502,10 +1502,30 @@ inline ValueType cox_dev_single_stratum(
     to_event_from_native(weight_local, event_order, ws.w_event);
     to_event_from_native(ws.exp_w_buffer, event_order, ws.exp_eta_w_event);
 
-    // Compute risk sums
+    // Check if there are any zero weights BEFORE computing risk sums
+    // This is critical for Efron correction: zero-weight observations must not
+    // affect the scaling factor used in the Efron correction
+    bool has_zero_weights = (ws.w_event.array() == 0).any();
+
+    // Reset scaling to original before potentially adjusting for zero weights
+    // This ensures correct behavior across multiple calls with different weights
+    preproc.scaling = preproc.original_scaling;
+
+    if (has_zero_weights) {
+        compute_effective_cluster_sizes(ws.w_event, first, last, ws.effective_cluster_sizes);
+        compute_zero_weight_mask(ws.w_event, ws.zero_weight_mask);
+
+        // For Efron correction, adjust the scaling to account for zero-weight observations
+        // This ensures zero-weight obs don't affect the Efron tie correction
+        if (efron_stratum) {
+            compute_weighted_scaling(ws.w_event, first, last, preproc.scaling);
+        }
+    }
+
+    // Compute risk sums (uses preproc.scaling which may have been adjusted for zero weights)
     sum_over_risk_set<ValueType>(ws.exp_w_buffer,
                                   event_order, start_order,
-                                  first, last, event_map, scaling,
+                                  first, last, event_map, preproc.scaling,
                                   efron_stratum, have_start_times,
                                   ws.risk_sums,
                                   ws.event_cumsum, ws.start_cumsum);
@@ -1516,13 +1536,7 @@ inline ValueType cox_dev_single_stratum(
     }
     forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer0);
 
-    // Check if there are any zero weights
-    bool has_zero_weights = (ws.w_event.array() == 0).any();
-
     if (has_zero_weights) {
-        compute_effective_cluster_sizes(ws.w_event, first, last, ws.effective_cluster_sizes);
-        compute_zero_weight_mask(ws.w_event, ws.zero_weight_mask);
-
         for (int i = 0; i < n; ++i) {
             if (ws.zero_weight_mask(i) == 0.0) {
                 ws.w_avg_buffer(i) = 0.0;
@@ -1556,12 +1570,12 @@ inline ValueType cox_dev_single_stratum(
     }
 
     // Forward cumsums for gradient and Hessian
-    forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 0, 1,
+    forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 0, 1,
                    ws.forward_scratch_buffer, true);
     forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer0);
     auto& C_01 = ws.forward_cumsum_buffer0;
 
-    forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 0, 2,
+    forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 0, 2,
                    ws.forward_scratch_buffer, true);
     forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer1);
     auto& C_02 = ws.forward_cumsum_buffer1;
@@ -1579,17 +1593,17 @@ inline ValueType cox_dev_single_stratum(
             }
         }
     } else {
-        forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 1, 1,
+        forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 1, 1,
                        ws.forward_scratch_buffer, true);
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer2);
         auto& C_11 = ws.forward_cumsum_buffer2;
 
-        forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 2, 1,
+        forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 2, 1,
                        ws.forward_scratch_buffer, true);
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer3);
         auto& C_21 = ws.forward_cumsum_buffer3;
 
-        forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 2, 2,
+        forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 2, 2,
                        ws.forward_scratch_buffer, true);
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer4);
         auto& C_22 = ws.forward_cumsum_buffer4;
@@ -1623,6 +1637,10 @@ inline ValueType cox_dev_single_stratum(
     to_native_from_event(ws.grad_buffer, event_order, ws.forward_scratch_buffer);
     to_native_from_event(ws.diag_hessian_buffer, event_order, ws.forward_scratch_buffer);
     to_native_from_event(ws.diag_part_buffer, event_order, ws.forward_scratch_buffer);
+
+    // Note: scaling is NOT restored here. hessian_matvec (if called) will use the
+    // zero-weight adjusted scaling, which is correct for the same weights.
+    // On the next cox_dev call, scaling will be reset to original and re-adjusted if needed.
 
     return 2.0 * (loglik_sat - loglik);
 }

@@ -30,8 +30,15 @@ class StratifiedCoxDeviance:
         Stratum labels for each observation.
     start : np.ndarray, optional
         Start times for left-truncated data.
+    sample_weight : np.ndarray, optional
+        Sample weights. If None, all weights are set to 1.
     tie_breaking : {'efron', 'breslow'}, default='efron'
         Tie-breaking method.
+
+    Attributes
+    ----------
+    sample_weight : np.ndarray
+        The sample weights used for computation.
 
     Examples
     --------
@@ -53,6 +60,7 @@ class StratifiedCoxDeviance:
         status: np.ndarray,
         strata: Optional[np.ndarray] = None,
         start: Optional[np.ndarray] = None,
+        sample_weight: Optional[np.ndarray] = None,
         tie_breaking: Literal['efron', 'breslow'] = 'efron'
     ):
         self.tie_breaking = tie_breaking
@@ -61,10 +69,16 @@ class StratifiedCoxDeviance:
             status=status,
             strata=strata,
             start=start,
+            sample_weight=sample_weight,
             tie_breaking=tie_breaking
         )
 
-    def __call__(self, linear_predictor, sample_weight=None):
+    @property
+    def sample_weight(self):
+        """Sample weights used for computation."""
+        return self._cpp.sample_weight
+
+    def __call__(self, linear_predictor):
         """
         Compute Cox deviance, gradient, and diagonal Hessian.
 
@@ -72,17 +86,15 @@ class StratifiedCoxDeviance:
         ----------
         linear_predictor : np.ndarray
             Linear predictor (X @ beta) for each observation.
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, all weights are set to 1.
 
         Returns
         -------
         CoxDevianceResult
             Named tuple with deviance, gradient, diagonal Hessian, etc.
         """
-        return self._cpp(linear_predictor, sample_weight)
+        return self._cpp(linear_predictor)
 
-    def information(self, linear_predictor, sample_weight=None):
+    def information(self, linear_predictor):
         """
         Return a LinearOperator representing the information matrix.
 
@@ -90,15 +102,13 @@ class StratifiedCoxDeviance:
         ----------
         linear_predictor : np.ndarray
             Linear predictor (X @ beta) for each observation.
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, all weights are set to 1.
 
         Returns
         -------
         LinearOperator
             A scipy LinearOperator for computing information matrix-vector products.
         """
-        return self._cpp.information(linear_predictor, sample_weight)
+        return self._cpp.information(linear_predictor)
 
     @property
     def n_strata(self):

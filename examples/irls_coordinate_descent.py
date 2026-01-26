@@ -34,6 +34,7 @@ print(f"True beta: {beta_true}\n")
 
 # -----------------------------------------------------------------------------
 # Create Cox deviance and IRLS state objects
+# Weights are stored at initialization (default: all ones)
 # -----------------------------------------------------------------------------
 cox = CoxDeviance(event=time, status=status, tie_breaking="efron")
 irls = CoxIRLSState(cox)
@@ -44,7 +45,6 @@ irls = CoxIRLSState(cox)
 # -----------------------------------------------------------------------------
 beta = np.zeros(p)
 eta = X @ beta
-weights = np.ones(n)
 
 max_outer = 10
 max_inner = 5
@@ -54,7 +54,7 @@ print("--- Unpenalized Cox via IRLS + CD ---")
 
 for outer in range(1, max_outer + 1):
     # Outer IRLS: recompute expensive quantities
-    dev = irls.recompute_outer(eta, weights)
+    dev = irls.recompute_outer(eta)
 
     if outer == 1:
         print(f"Outer {outer:2d}: deviance = {dev:.6f} (null)")
@@ -76,7 +76,7 @@ for outer in range(1, max_outer + 1):
     eta = X @ beta
 
     # Recompute deviance to check convergence
-    dev = irls.recompute_outer(eta, weights)
+    dev = irls.recompute_outer(eta)
 
     # Check convergence
     max_change = np.max(np.abs(beta - beta_old))
@@ -125,7 +125,7 @@ beta_lasso = np.zeros(p)
 eta = X @ beta_lasso
 
 for outer in range(1, 21):
-    dev = irls.recompute_outer(eta, weights)
+    dev = irls.recompute_outer(eta)
     beta_old = beta_lasso.copy()
 
     for inner in range(3):

@@ -52,11 +52,13 @@ class TestStratifiedCppVsPython:
         eta = np.random.randn(n) * 0.3
         weights = np.random.uniform(0.5, 2.0, n)
 
-        py_cox = StratifiedCoxDeviance(event=event, status=status, strata=strata)
-        py_result = py_cox(eta, weights)
+        py_cox = StratifiedCoxDeviance(event=event, status=status, strata=strata,
+                                        sample_weight=weights)
+        py_result = py_cox(eta)
 
-        cpp_cox = StratifiedCoxDevianceCpp(event=event, status=status, strata=strata)
-        cpp_result = cpp_cox(eta, weights)
+        cpp_cox = StratifiedCoxDevianceCpp(event=event, status=status, strata=strata,
+                                            sample_weight=weights)
+        cpp_result = cpp_cox(eta)
 
         assert np.isclose(py_result.deviance, cpp_result.deviance, rtol=1e-10)
         assert np.allclose(py_result.gradient, cpp_result.gradient, rtol=1e-10)
@@ -205,11 +207,13 @@ class TestZeroWeights:
         weights = np.ones(n)
         weights[::5] = 0.0  # Every 5th observation has zero weight
 
-        py_cox = StratifiedCoxDeviance(event=event, status=status, strata=strata)
-        py_result = py_cox(eta, weights)
+        py_cox = StratifiedCoxDeviance(event=event, status=status, strata=strata,
+                                        sample_weight=weights)
+        py_result = py_cox(eta)
 
-        cpp_cox = StratifiedCoxDevianceCpp(event=event, status=status, strata=strata)
-        cpp_result = cpp_cox(eta, weights)
+        cpp_cox = StratifiedCoxDevianceCpp(event=event, status=status, strata=strata,
+                                            sample_weight=weights)
+        cpp_result = cpp_cox(eta)
 
         assert np.isclose(py_result.deviance, cpp_result.deviance, rtol=1e-10)
         assert np.allclose(py_result.gradient, cpp_result.gradient, rtol=1e-10)

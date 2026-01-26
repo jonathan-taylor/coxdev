@@ -31,9 +31,16 @@ class StratifiedCoxDevianceCpp:
     start : np.ndarray, optional
         Start times for left-truncated data. If None, all start times
         are set to -infinity.
+    sample_weight : np.ndarray, optional
+        Sample weights. If None, all weights are set to 1.
     tie_breaking : {'efron', 'breslow'}, default='efron'
         Tie-breaking method. 'efron' is more accurate for tied event times,
         'breslow' is simpler and compatible with glmnet.
+
+    Attributes
+    ----------
+    sample_weight : np.ndarray
+        The sample weights used for computation.
 
     Examples
     --------
@@ -55,6 +62,7 @@ class StratifiedCoxDevianceCpp:
         status: np.ndarray,
         strata: Optional[np.ndarray] = None,
         start: Optional[np.ndarray] = None,
+        sample_weight: Optional[np.ndarray] = None,
         tie_breaking: Literal['efron', 'breslow'] = 'efron'
     ):
         event = np.asarray(event).astype(float)
@@ -78,6 +86,12 @@ class StratifiedCoxDevianceCpp:
             start = np.asarray(start).astype(float)
             self._have_start_times = True
 
+        if sample_weight is None:
+            sample_weight = np.ones(n, dtype=float)
+        else:
+            sample_weight = np.asarray(sample_weight).astype(float)
+        self.sample_weight = sample_weight
+
         self._efron = tie_breaking == 'efron'
         self._n = n
         self._event = event
@@ -91,13 +105,13 @@ class StratifiedCoxDevianceCpp:
             status,
             strata,
             start,
+            sample_weight,
             self._efron
         )
 
     def __call__(
         self,
-        linear_predictor: np.ndarray,
-        sample_weight: Optional[np.ndarray] = None
+        linear_predictor: np.ndarray
     ) -> CoxDevianceResult:
         """
         Compute Cox deviance, gradient, and diagonal Hessian.
@@ -106,8 +120,6 @@ class StratifiedCoxDevianceCpp:
         ----------
         linear_predictor : np.ndarray
             Linear predictor (X @ beta) for each observation.
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, all weights are set to 1.
 
         Returns
         -------
@@ -116,19 +128,12 @@ class StratifiedCoxDevianceCpp:
         """
         linear_predictor = np.asarray(linear_predictor).astype(float)
 
-        if sample_weight is None:
-            sample_weight = np.ones_like(linear_predictor)
-        else:
-            sample_weight = np.asarray(sample_weight).astype(float)
-
-        # Call C++ implementation
-        deviance, loglik_sat, gradient, diag_hessian = self._cpp(
-            linear_predictor, sample_weight
-        )
+        # Call C++ implementation (uses stored weights)
+        deviance, loglik_sat, gradient, diag_hessian = self._cpp(linear_predictor)
 
         return CoxDevianceResult(
             linear_predictor=linear_predictor,
-            sample_weight=sample_weight,
+            sample_weight=self.sample_weight,
             loglik_sat=loglik_sat,
             deviance=deviance,
             gradient=gradient,
@@ -138,8 +143,7 @@ class StratifiedCoxDevianceCpp:
 
     def information(
         self,
-        linear_predictor: np.ndarray,
-        sample_weight: Optional[np.ndarray] = None
+        linear_predictor: np.ndarray
     ) -> LinearOperator:
         """
         Return a LinearOperator representing the information matrix.
@@ -148,15 +152,13 @@ class StratifiedCoxDevianceCpp:
         ----------
         linear_predictor : np.ndarray
             Linear predictor (X @ beta) for each observation.
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, all weights are set to 1.
 
         Returns
         -------
         LinearOperator
             A scipy LinearOperator for computing information matrix-vector products.
         """
-        return StratifiedCoxInformationCpp(self, linear_predictor, sample_weight)
+        return StratifiedCoxInformationCpp(self, linear_predictor)
 
     @property
     def n_strata(self) -> int:
@@ -172,37 +174,35 @@ class StratifiedCoxDevianceCpp:
 class StratifiedCoxInformationCpp(LinearOperator):
     """
     LinearOperator for stratified Cox information matrix using C++ implementation.
+
+    Sample weights are stored in the parent strat_cox object.
     """
 
     def __init__(
         self,
         strat_cox: StratifiedCoxDevianceCpp,
-        linear_predictor: np.ndarray,
-        sample_weight: Optional[np.ndarray]
+        linear_predictor: np.ndarray
     ):
         self.strat_cox = strat_cox
         self.linear_predictor = np.asarray(linear_predictor).astype(float)
-
-        if sample_weight is None:
-            self.sample_weight = np.ones_like(self.linear_predictor)
-        else:
-            self.sample_weight = np.asarray(sample_weight).astype(float)
 
         self.n = self.linear_predictor.shape[0]
         self.shape = (self.n, self.n)
         self.dtype = float
 
         # Ensure buffers are computed by calling __call__
-        self.strat_cox(self.linear_predictor, self.sample_weight)
+        self.strat_cox(self.linear_predictor)
 
     def _matvec(self, v: np.ndarray) -> np.ndarray:
-        """Compute information matrix-vector product."""
+        """Compute information matrix-vector product.
+
+        Uses cached buffers in self.strat_cox._cpp populated by the
+        self.strat_cox() call in __init__.
+        """
         # Negate the input (same as base.py CoxInformation)
         # This is because information = -Hessian of log-likelihood
         v = -np.asarray(v).reshape(-1).astype(float)
-        result = self.strat_cox._cpp.hessian_matvec(
-            v, self.linear_predictor, self.sample_weight
-        )
+        result = self.strat_cox._cpp.hessian_matvec(v)
         return result
 
     def _adjoint(self, v: np.ndarray) -> np.ndarray:

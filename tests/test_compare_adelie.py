@@ -120,7 +120,7 @@ def compare_coxdev_adelie(data, tie_method='efron', rtol=1e-10, atol=1e-12):
     weighted_events = np.sum(weights * status)
 
     # =========================================================================
-    # coxdev computation
+    # coxdev computation (sample_weight at initialization)
     # =========================================================================
     if strata is not None:
         cox_coxdev = StratifiedCoxDeviance(
@@ -128,6 +128,7 @@ def compare_coxdev_adelie(data, tie_method='efron', rtol=1e-10, atol=1e-12):
             status=status,
             strata=strata,
             start=start,
+            sample_weight=weights,
             tie_breaking=tie_method
         )
     else:
@@ -135,10 +136,11 @@ def compare_coxdev_adelie(data, tie_method='efron', rtol=1e-10, atol=1e-12):
             event=stop,
             status=status,
             start=start,
+            sample_weight=weights,
             tie_breaking=tie_method
         )
 
-    result_coxdev = cox_coxdev(eta, sample_weight=weights)
+    result_coxdev = cox_coxdev(eta)
 
     deviance_coxdev = result_coxdev.deviance
     grad_coxdev = result_coxdev.gradient

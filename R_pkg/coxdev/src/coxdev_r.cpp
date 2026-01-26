@@ -21,8 +21,19 @@ using ivec_t = Eigen::VectorXi;
 // StratifiedCoxData Interface
 // =============================================================================
 
+/**
+ * Wrapper struct that holds StratifiedCoxData and sample weights.
+ * Weights are stored at initialization and used by all subsequent calls.
+ */
+struct StratifiedCoxWrapper {
+    coxdev::StratifiedCoxData<value_t, index_t> strat_data;
+    vec_t sample_weight;
+
+    StratifiedCoxWrapper() = default;
+};
+
 // Custom destructor for cleanup
-inline void stratified_cox_data_finalizer(coxdev::StratifiedCoxData<value_t, index_t>* ptr) {
+inline void stratified_cox_wrapper_finalizer(StratifiedCoxWrapper* ptr) {
     delete ptr;
 }
 
@@ -32,52 +43,46 @@ SEXP preprocess_stratified_r(
     const Eigen::Map<Eigen::VectorXd> event,
     const Eigen::Map<Eigen::VectorXi> status,
     const Eigen::Map<Eigen::VectorXi> strata,
+    const Eigen::Map<Eigen::VectorXd> sample_weight,
     bool efron)
 {
-    // Create the stratified data on the heap
-    auto* strat_data_ptr = new coxdev::StratifiedCoxData<value_t, index_t>();
+    // Create the wrapper on the heap
+    auto* wrapper_ptr = new StratifiedCoxWrapper();
 
-    // Check for start times
-    bool have_start_times = false;
-    int n = status.size();
-    for (int i = 0; i < n; ++i) {
-        if (start(i) > -1e30 && start(i) != 0.0) {
-            have_start_times = true;
-            break;
-        }
-    }
+    // Store sample weights
+    wrapper_ptr->sample_weight = sample_weight;
 
     // Create CoxSurvivalData and preprocess
     if (strata.size() > 0) {
         coxdev::CoxSurvivalData<value_t, index_t> surv(start, event, status, strata, efron);
-        coxdev::preprocess_stratified(surv, *strat_data_ptr);
+        coxdev::preprocess_stratified(surv, wrapper_ptr->strat_data);
     } else {
         coxdev::CoxSurvivalData<value_t, index_t> surv(start, event, status, efron);
-        coxdev::preprocess_stratified(surv, *strat_data_ptr);
+        coxdev::preprocess_stratified(surv, wrapper_ptr->strat_data);
     }
 
     // Wrap in XPtr and return
-    Rcpp::XPtr<coxdev::StratifiedCoxData<value_t, index_t>> xptr(strat_data_ptr, true);
+    Rcpp::XPtr<StratifiedCoxWrapper> xptr(wrapper_ptr, true);
     return xptr;
 }
 
 // [[Rcpp::export(.cox_dev_stratified)]]
 Rcpp::List cox_dev_stratified_r(
-    SEXP strat_data_xptr,
-    const Eigen::Map<Eigen::VectorXd> eta,
-    const Eigen::Map<Eigen::VectorXd> sample_weight)
+    SEXP wrapper_xptr,
+    const Eigen::Map<Eigen::VectorXd> eta)
 {
     // Extract the XPtr
-    Rcpp::XPtr<coxdev::StratifiedCoxData<value_t, index_t>> xptr(strat_data_xptr);
-    auto& strat_data = *xptr;
+    Rcpp::XPtr<StratifiedCoxWrapper> xptr(wrapper_xptr);
+    auto& wrapper = *xptr;
+    auto& strat_data = wrapper.strat_data;
 
     int n = eta.size();
     vec_t grad(n);
     vec_t diag_hess(n);
 
-    // Compute deviance using coxdev library
+    // Compute deviance using stored weights
     value_t total_deviance = coxdev::cox_dev_stratified<value_t, index_t>(
-        eta, sample_weight, strat_data, grad, diag_hess);
+        eta, wrapper.sample_weight, strat_data, grad, diag_hess);
 
     // Compute total loglik_sat
     value_t total_loglik_sat = 0.0;
@@ -95,14 +100,15 @@ Rcpp::List cox_dev_stratified_r(
 
 // [[Rcpp::export(.hessian_matvec_stratified)]]
 Eigen::VectorXd hessian_matvec_stratified_r(
-    SEXP strat_data_xptr,
-    const Eigen::Map<Eigen::VectorXd> arg,
-    const Eigen::Map<Eigen::VectorXd> eta,
-    const Eigen::Map<Eigen::VectorXd> sample_weight)
+    SEXP wrapper_xptr,
+    const Eigen::Map<Eigen::VectorXd> arg)
 {
     // Extract the XPtr
-    Rcpp::XPtr<coxdev::StratifiedCoxData<value_t, index_t>> xptr(strat_data_xptr);
-    auto& strat_data = *xptr;
+    // Note: Uses cached buffers from the last cox_dev_stratified_r call.
+    // Caller must ensure cox_dev_stratified_r was called with the desired
+    // linear_predictor before calling this function.
+    Rcpp::XPtr<StratifiedCoxWrapper> xptr(wrapper_xptr);
+    auto& strat_data = xptr->strat_data;
 
     int n = arg.size();
     vec_t result(n);
@@ -141,15 +147,21 @@ Eigen::VectorXd hessian_matvec_stratified_r(
 }
 
 // [[Rcpp::export(.get_n_strata)]]
-int get_n_strata_r(SEXP strat_data_xptr) {
-    Rcpp::XPtr<coxdev::StratifiedCoxData<value_t, index_t>> xptr(strat_data_xptr);
-    return xptr->n_strata;
+int get_n_strata_r(SEXP wrapper_xptr) {
+    Rcpp::XPtr<StratifiedCoxWrapper> xptr(wrapper_xptr);
+    return xptr->strat_data.n_strata;
 }
 
 // [[Rcpp::export(.get_n_total)]]
-int get_n_total_r(SEXP strat_data_xptr) {
-    Rcpp::XPtr<coxdev::StratifiedCoxData<value_t, index_t>> xptr(strat_data_xptr);
-    return xptr->n_total;
+int get_n_total_r(SEXP wrapper_xptr) {
+    Rcpp::XPtr<StratifiedCoxWrapper> xptr(wrapper_xptr);
+    return xptr->strat_data.n_total;
+}
+
+// [[Rcpp::export(.get_sample_weight)]]
+Eigen::VectorXd get_sample_weight_r(SEXP wrapper_xptr) {
+    Rcpp::XPtr<StratifiedCoxWrapper> xptr(wrapper_xptr);
+    return xptr->sample_weight;
 }
 
 // =============================================================================
@@ -159,9 +171,10 @@ int get_n_total_r(SEXP strat_data_xptr) {
 /**
  * R wrapper struct for IRLS state.
  * Holds working quantities for coordinate descent integration.
+ * References the wrapper (non-owning) for access to strat_data and sample_weight.
  */
 struct CoxIRLSStateR {
-    coxdev::StratifiedCoxData<value_t, index_t>* strat_data_ptr;  // Non-owning
+    StratifiedCoxWrapper* wrapper_ptr;  // Non-owning
     vec_t working_weights;
     vec_t working_response;
     vec_t residuals;
@@ -169,10 +182,10 @@ struct CoxIRLSStateR {
     vec_t diag_hess_buffer;
     value_t deviance;
 
-    CoxIRLSStateR(coxdev::StratifiedCoxData<value_t, index_t>* ptr)
-        : strat_data_ptr(ptr), deviance(0.0)
+    CoxIRLSStateR(StratifiedCoxWrapper* ptr)
+        : wrapper_ptr(ptr), deviance(0.0)
     {
-        int n = ptr->n_total;
+        int n = ptr->strat_data.n_total;
         working_weights.resize(n);
         working_response.resize(n);
         residuals.resize(n);
@@ -186,8 +199,8 @@ inline void irls_state_finalizer(CoxIRLSStateR* ptr) {
 }
 
 // [[Rcpp::export(.create_irls_state)]]
-SEXP create_irls_state_r(SEXP strat_data_xptr) {
-    Rcpp::XPtr<coxdev::StratifiedCoxData<value_t, index_t>> data_xptr(strat_data_xptr);
+SEXP create_irls_state_r(SEXP wrapper_xptr) {
+    Rcpp::XPtr<StratifiedCoxWrapper> data_xptr(wrapper_xptr);
 
     auto* state_ptr = new CoxIRLSStateR(data_xptr.get());
 
@@ -198,17 +211,17 @@ SEXP create_irls_state_r(SEXP strat_data_xptr) {
 // [[Rcpp::export(.irls_recompute_outer)]]
 double irls_recompute_outer_r(
     SEXP irls_state_xptr,
-    const Eigen::Map<Eigen::VectorXd> eta,
-    const Eigen::Map<Eigen::VectorXd> weights)
+    const Eigen::Map<Eigen::VectorXd> eta)
 {
     Rcpp::XPtr<CoxIRLSStateR> xptr(irls_state_xptr);
     auto& state = *xptr;
-    auto& strat_data = *state.strat_data_ptr;
+    auto& wrapper = *state.wrapper_ptr;
+    auto& strat_data = wrapper.strat_data;
     int n = eta.size();
 
-    // Compute deviance and gradients
+    // Compute deviance and gradients using stored weights
     state.deviance = coxdev::cox_dev_stratified<value_t, index_t>(
-        eta, weights, strat_data, state.grad_buffer, state.diag_hess_buffer);
+        eta, wrapper.sample_weight, strat_data, state.grad_buffer, state.diag_hess_buffer);
 
     // Extract working weights: w = -diag_hessian / 2 (make positive)
     state.working_weights = state.diag_hess_buffer / 2.0;

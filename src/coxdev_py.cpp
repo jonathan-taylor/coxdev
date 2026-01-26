@@ -23,11 +23,17 @@ using ivec_t = Eigen::VectorXi;
 /**
  * Python wrapper class for stratified Cox deviance.
  * Owns a StratifiedCoxData object with pre-allocated workspaces.
+ *
+ * All data (event, status, strata, start, sample_weight) are specified at
+ * construction time. The __call__ method only takes the linear predictor (eta).
  */
 class StratifiedCoxDevianceCpp {
 public:
     coxdev::StratifiedCoxData<value_t, index_t> strat_data;
     bool have_start_times;
+
+    // Stored sample weights (set at construction)
+    vec_t sample_weight_;
 
     // Pre-allocated output buffers
     vec_t grad_buffer_;
@@ -38,12 +44,14 @@ public:
         py::array_t<index_t, py::array::c_style | py::array::forcecast> status,
         py::array_t<index_t, py::array::c_style | py::array::forcecast> strata,
         py::array_t<value_t, py::array::c_style | py::array::forcecast> start,
+        py::array_t<value_t, py::array::c_style | py::array::forcecast> sample_weight,
         bool efron)
     {
         auto event_buf = event.request();
         auto status_buf = status.request();
         auto strata_buf = strata.request();
         auto start_buf = start.request();
+        auto weight_buf = sample_weight.request();
 
         int n = static_cast<int>(event_buf.size);
         int strata_size = static_cast<int>(strata_buf.size);
@@ -53,6 +61,10 @@ public:
         Eigen::Map<const ivec_t> status_vec(static_cast<const index_t*>(status_buf.ptr), n);
         Eigen::Map<const ivec_t> strata_vec(static_cast<const index_t*>(strata_buf.ptr), strata_size);
         Eigen::Map<const vec_t> start_vec(static_cast<const value_t*>(start_buf.ptr), n);
+        Eigen::Map<const vec_t> weight_vec(static_cast<const value_t*>(weight_buf.ptr), n);
+
+        // Store sample weights
+        sample_weight_ = weight_vec;
 
         // Check for start times
         have_start_times = false;
@@ -77,21 +89,24 @@ public:
         diag_hess_buffer_.resize(strat_data.n_total);
     }
 
+    /**
+     * Compute Cox deviance, gradient, and diagonal Hessian.
+     *
+     * @param linear_predictor The linear predictor (eta = X @ beta)
+     * @return Tuple of (deviance, loglik_sat, gradient, diag_hessian)
+     */
     py::tuple call(
-        py::array_t<value_t, py::array::c_style | py::array::forcecast> linear_predictor,
-        py::array_t<value_t, py::array::c_style | py::array::forcecast> sample_weight)
+        py::array_t<value_t, py::array::c_style | py::array::forcecast> linear_predictor)
     {
         auto eta_buf = linear_predictor.request();
-        auto weight_buf = sample_weight.request();
         int n = static_cast<int>(eta_buf.size);
 
-        // Map numpy arrays to Eigen (zero-copy)
+        // Map numpy array to Eigen (zero-copy)
         Eigen::Map<const vec_t> eta_vec(static_cast<const value_t*>(eta_buf.ptr), n);
-        Eigen::Map<const vec_t> weight_vec(static_cast<const value_t*>(weight_buf.ptr), n);
 
-        // Compute deviance using coxdev library
+        // Compute deviance using stored weights
         value_t deviance = coxdev::cox_dev_stratified<value_t, index_t>(
-            eta_vec, weight_vec, strat_data, grad_buffer_, diag_hess_buffer_);
+            eta_vec, sample_weight_, strat_data, grad_buffer_, diag_hess_buffer_);
 
         // Compute total loglik_sat
         value_t total_loglik_sat = 0.0;
@@ -114,10 +129,31 @@ public:
         return py::make_tuple(deviance, total_loglik_sat, grad_out, diag_hess_out);
     }
 
+    /**
+     * Get stored sample weights.
+     */
+    py::array_t<value_t> get_sample_weight() {
+        int n = sample_weight_.size();
+        py::array_t<value_t> result(n);
+        auto ptr = result.mutable_data();
+        for (int i = 0; i < n; ++i) {
+            ptr[i] = sample_weight_(i);
+        }
+        return result;
+    }
+
+    /**
+     * Compute Hessian matrix-vector product.
+     *
+     * IMPORTANT: Uses cached eta/weight/scaling buffers populated by the most
+     * recent call to this object's __call__ method. The __call__ must be invoked
+     * first to set up the buffers before calling hessian_matvec.
+     *
+     * @param arg Vector to multiply by the Hessian
+     * @return Hessian-vector product
+     */
     py::array_t<value_t> hessian_matvec(
-        py::array_t<value_t, py::array::c_style | py::array::forcecast> arg,
-        py::array_t<value_t, py::array::c_style | py::array::forcecast> linear_predictor,
-        py::array_t<value_t, py::array::c_style | py::array::forcecast> sample_weight)
+        py::array_t<value_t, py::array::c_style | py::array::forcecast> arg)
     {
         auto arg_buf = arg.request();
         int n = static_cast<int>(arg_buf.size);
@@ -189,20 +225,25 @@ public:
         deviance_ = 0.0;
     }
 
+    /**
+     * Recompute all cached quantities for a new outer IRLS iteration.
+     *
+     * Uses sample weights stored in the parent CoxDeviance object.
+     *
+     * @param eta The current linear predictor
+     * @return The deviance at this eta
+     */
     value_t recompute_outer(
-        py::array_t<value_t, py::array::c_style | py::array::forcecast> eta,
-        py::array_t<value_t, py::array::c_style | py::array::forcecast> weights)
+        py::array_t<value_t, py::array::c_style | py::array::forcecast> eta)
     {
         auto eta_buf = eta.request();
-        auto weights_buf = weights.request();
         int n = static_cast<int>(eta_buf.size);
 
         Eigen::Map<const vec_t> eta_vec(static_cast<const value_t*>(eta_buf.ptr), n);
-        Eigen::Map<const vec_t> weights_vec(static_cast<const value_t*>(weights_buf.ptr), n);
 
-        // Compute deviance and update working quantities
+        // Compute deviance using stored weights from parent cox_dev object
         deviance_ = coxdev::cox_dev_stratified<value_t, index_t>(
-            eta_vec, weights_vec, cox_dev_ptr->strat_data,
+            eta_vec, cox_dev_ptr->sample_weight_, cox_dev_ptr->strat_data,
             cox_dev_ptr->grad_buffer_, cox_dev_ptr->diag_hess_buffer_);
 
         // Extract working weights: w = -diag_hessian / 2 (make positive)
@@ -371,21 +412,27 @@ PYBIND11_MODULE(coxc, m) {
 
     // StratifiedCoxDevianceCpp class
     py::class_<StratifiedCoxDevianceCpp>(m, "StratifiedCoxDevianceCpp")
-        .def(py::init<py::array_t<value_t>, py::array_t<index_t>, py::array_t<index_t>, py::array_t<value_t>, bool>(),
-             py::arg("event"), py::arg("status"), py::arg("strata"), py::arg("start"), py::arg("efron") = true)
+        .def(py::init<py::array_t<value_t>, py::array_t<index_t>, py::array_t<index_t>,
+                      py::array_t<value_t>, py::array_t<value_t>, bool>(),
+             py::arg("event"), py::arg("status"), py::arg("strata"),
+             py::arg("start"), py::arg("sample_weight"), py::arg("efron") = true,
+             "Create Cox deviance calculator with all data specified at construction")
         .def("__call__", &StratifiedCoxDevianceCpp::call,
-             py::arg("linear_predictor"), py::arg("sample_weight"))
+             py::arg("linear_predictor"),
+             "Compute deviance, gradient, and diagonal Hessian for given linear predictor")
         .def("hessian_matvec", &StratifiedCoxDevianceCpp::hessian_matvec,
-             py::arg("arg"), py::arg("linear_predictor"), py::arg("sample_weight"))
+             py::arg("arg"),
+             "Compute Hessian-vector product using cached values from last __call__")
         .def_property_readonly("n_strata", &StratifiedCoxDevianceCpp::n_strata)
-        .def_property_readonly("n_total", &StratifiedCoxDevianceCpp::n_total);
+        .def_property_readonly("n_total", &StratifiedCoxDevianceCpp::n_total)
+        .def_property_readonly("sample_weight", &StratifiedCoxDevianceCpp::get_sample_weight);
 
     // CoxIRLSStateCpp class for efficient IRLS/coordinate descent
     py::class_<CoxIRLSStateCpp>(m, "CoxIRLSStateCpp")
         .def(py::init<StratifiedCoxDevianceCpp&>(), py::arg("cox_dev"))
         .def("recompute_outer", &CoxIRLSStateCpp::recompute_outer,
-             py::arg("eta"), py::arg("weights"),
-             "Recompute all cached quantities (call once per outer IRLS iteration)")
+             py::arg("eta"),
+             "Recompute all cached quantities using stored weights (call once per outer IRLS iteration)")
         .def("working_weights", &CoxIRLSStateCpp::working_weights,
              "Get cached working weights")
         .def("working_response", &CoxIRLSStateCpp::working_response,
@@ -406,4 +453,34 @@ PYBIND11_MODULE(coxc, m) {
 
     // Preprocessing function
     m.def("c_preprocess", &c_preprocess, "Preprocess survival data");
+
+    // Reverse cumsums helper (for testing)
+    m.def("reverse_cumsums",
+        [](py::array_t<value_t, py::array::c_style | py::array::forcecast> sequence,
+           py::array_t<value_t, py::array::c_style | py::array::forcecast> event_buffer,
+           py::array_t<value_t, py::array::c_style | py::array::forcecast> start_buffer,
+           py::array_t<index_t, py::array::c_style | py::array::forcecast> event_order,
+           py::array_t<index_t, py::array::c_style | py::array::forcecast> start_order,
+           bool do_event,
+           bool do_start) {
+            auto seq_buf = sequence.request();
+            auto event_buf = event_buffer.request();
+            auto start_buf = start_buffer.request();
+            auto eo_buf = event_order.request();
+            auto so_buf = start_order.request();
+
+            int n = static_cast<int>(seq_buf.size);
+
+            Eigen::Map<const vec_t> seq_vec(static_cast<const value_t*>(seq_buf.ptr), n);
+            Eigen::Map<vec_t> event_vec(static_cast<value_t*>(event_buf.ptr), n + 1);
+            Eigen::Map<vec_t> start_vec(static_cast<value_t*>(start_buf.ptr), n + 1);
+            Eigen::Map<const ivec_t> eo_vec(static_cast<const index_t*>(eo_buf.ptr), n);
+            Eigen::Map<const ivec_t> so_vec(static_cast<const index_t*>(so_buf.ptr), n);
+
+            coxdev::reverse_cumsums(seq_vec, event_vec, start_vec, eo_vec, so_vec, do_event, do_start);
+        },
+        py::arg("sequence"), py::arg("event_buffer"), py::arg("start_buffer"),
+        py::arg("event_order"), py::arg("start_order"),
+        py::arg("do_event"), py::arg("do_start"),
+        "Compute reverse cumsums in event and/or start order");
 }

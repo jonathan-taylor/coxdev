@@ -205,10 +205,6 @@ def test_coxph(tie_types,
         start = data['start']
     else:
         start = None
-    coxdev = CoxDeviance(event=data['event'],
-                         start=start,
-                         status=data['status'],
-                         tie_breaking=tie_breaking)
 
     n = data.shape[0]
     p = n // 2
@@ -221,12 +217,17 @@ def test_coxph(tie_types,
     nz_mask = weight > 0
     has_zero_weights = not np.all(nz_mask)
 
-    C = coxdev(X @ beta, weight)
+    coxdev = CoxDeviance(event=data['event'],
+                         start=start,
+                         status=data['status'],
+                         sample_weight=weight,
+                         tie_breaking=tie_breaking)
+
+    C = coxdev(X @ beta)
 
     eta = X @ beta
 
-    H = coxdev.information(eta,
-                           weight)
+    H = coxdev.information(eta)
     I = X.T @ (H @ X)
     assert np.allclose(I, I.T)
     cov_ = np.linalg.inv(I)
@@ -324,9 +325,9 @@ def test_glmnet(tie_types,
     coxdev = CoxDeviance(event=data['event'],
                          start=start,
                          status=data['status'],
+                         sample_weight=weight,
                          tie_breaking='breslow')
-    C = coxdev(eta,
-               weight)
+    C = coxdev(eta)
 
     # Check if our implementation produces valid results (no NaN)
     assert not np.any(np.isnan(C.gradient)), "Our implementation produced NaN in gradient"
@@ -369,21 +370,22 @@ def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
     else:
         start = None
     
-    # Create StratifiedCoxDeviance
+    # Create StratifiedCoxDeviance (weights at initialization)
     stratdev = StratifiedCoxDeviance(
         event=data['event'],
         start=start,
         status=data['status'],
         strata=data['strata'],
+        sample_weight=data['weight'],
         tie_breaking=tie_breaking
     )
-    
+
     # Compute results with Python
     eta = data['X'] @ data['beta']
-    C = stratdev(eta, data['weight'])
-    
+    C = stratdev(eta)
+
     # Get information matrix
-    H = stratdev.information(eta, data['weight'])
+    H = stratdev.information(eta)
     I = data['X'].T @ (H @ data['X'])
     assert np.allclose(I, I.T)
     cov_ = np.linalg.inv(I)
@@ -428,26 +430,28 @@ def test_stratified_single_stratum(tie_breaking, have_start_times, tol=1e-10):
     else:
         start = None
     
-    # Create both models
+    # Create both models (weights at initialization)
     coxdev = CoxDeviance(
         event=data['event'],
         start=start,
         status=data['status'],
+        sample_weight=data['weight'],
         tie_breaking=tie_breaking
     )
-    
+
     stratdev = StratifiedCoxDeviance(
         event=data['event'],
         start=start,
         status=data['status'],
         strata=data['strata'],
+        sample_weight=data['weight'],
         tie_breaking=tie_breaking
     )
-    
+
     # Compute results
     eta = data['X'] @ data['beta']
-    C1 = coxdev(eta, data['weight'])
-    C2 = stratdev(eta, data['weight'])
+    C1 = coxdev(eta)
+    C2 = stratdev(eta)
     
     # Results should be identical
     assert np.allclose(C1.deviance, C2.deviance, rtol=tol)
@@ -484,18 +488,19 @@ def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
     beta = data['beta']
     weight = data['weight']
     
-    # Create StratifiedCoxDeviance
+    # Create StratifiedCoxDeviance (weights at initialization)
     stratdev = StratifiedCoxDeviance(
         event=event,
         start=start,
         status=status,
         strata=strata,
+        sample_weight=weight,
         tie_breaking=tie_breaking
     )
-    
+
     # Compute results
     eta = X @ beta
-    C = stratdev(eta, weight)
+    C = stratdev(eta)
     
     # Get results from R
     (G_coxph, D_coxph, cov_coxph) = get_stratified_coxph(
@@ -547,8 +552,8 @@ def test_breslow_sat_loglik_unit_weights():
 
     expected = compute_breslow_sat_loglik(event, status, weight)
 
-    cox = CoxDeviance(event=event, status=status, tie_breaking='breslow')
-    result = cox(eta, weight)
+    cox = CoxDeviance(event=event, status=status, sample_weight=weight, tie_breaking='breslow')
+    result = cox(eta)
 
     assert np.isclose(result.loglik_sat, expected, rtol=1e-10), \
         f"Breslow sat loglik mismatch: got {result.loglik_sat}, expected {expected}"
@@ -570,8 +575,8 @@ def test_breslow_sat_loglik_non_unit_weights():
 
     expected = compute_breslow_sat_loglik(event, status, weight)
 
-    cox = CoxDeviance(event=event, status=status, tie_breaking='breslow')
-    result = cox(eta, weight)
+    cox = CoxDeviance(event=event, status=status, sample_weight=weight, tie_breaking='breslow')
+    result = cox(eta)
 
     assert np.isclose(result.loglik_sat, expected, rtol=1e-10), \
         f"Breslow sat loglik mismatch (weighted): got {result.loglik_sat}, expected {expected}"
@@ -596,8 +601,8 @@ def test_breslow_sat_loglik_with_start_times():
     # Saturated log-likelihood only depends on event times and weights, not start times
     expected = compute_breslow_sat_loglik(event, status, weight)
 
-    cox = CoxDeviance(event=event, start=start, status=status, tie_breaking='breslow')
-    result = cox(eta, weight)
+    cox = CoxDeviance(event=event, start=start, status=status, sample_weight=weight, tie_breaking='breslow')
+    result = cox(eta)
 
     assert np.isclose(result.loglik_sat, expected, rtol=1e-10), \
         f"Breslow sat loglik mismatch (start times): got {result.loglik_sat}, expected {expected}"

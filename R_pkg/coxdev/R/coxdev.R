@@ -4,11 +4,9 @@
 #'   right censored data
 #' @param status the status vector indicating event or censoring
 #' @param tie_breaking default 'efron'
-#' @param weight the sample weight the vector of sample weights,
-#'   default all ones
+#' @param sample_weight the vector of sample weights, default all ones
 #' @return a list of two functions named `coxdev` and `information`
-#'   each of which takes a linear predictor as argument, along with
-#'   weights
+#'   each of which takes a linear predictor as argument
 #' @examples
 #' set.seed(10101)
 #' nobs <- 100; nvars <- 10
@@ -21,7 +19,7 @@
 #' tcens <- rbinom(n = nobs, prob = 0.3, size = 1)
 #' cox_deviance <- make_cox_deviance(event = ty,
 #'                                   status = tcens,
-#'                                   weight = rep(1.0, length(ty)),
+#'                                   sample_weight = rep(1.0, length(ty)),
 #'                                   tie_breaking = 'efron')
 #' result  <- cox_deviance$coxdev(linear_predictor = fx)
 #' str(result)
@@ -34,7 +32,7 @@ make_cox_deviance <- function(event,
                               start = NA,
                               status,
                               tie_breaking = c('efron', 'breslow'),
-                              weight = rep(1.0, length(event))) {
+                              sample_weight = rep(1.0, length(event))) {
   # Unified implementation: use stratified code with single stratum
   # This reduces code duplication and ensures consistent behavior
   tie_breaking <- match.arg(tie_breaking)
@@ -50,14 +48,15 @@ make_cox_deviance <- function(event,
     start = start,
     status = status,
     strata = strata,
-    tie_breaking = tie_breaking
+    tie_breaking = tie_breaking,
+    sample_weight = sample_weight
   )
 
-  # Return coxdev, information, and internal pointer for IRLS state creation
-  # (stratified version also returns n_strata and n_total)
+  # Return coxdev, information, sample_weight accessor, and internal pointer
   list(coxdev = result$coxdev,
        information = result$information,
-       .strat_data_ptr = result$.strat_data_ptr)
+       sample_weight = result$sample_weight,
+       .wrapper_ptr = result$.wrapper_ptr)
 }
 
 #' Make stratified cox deviance object (C++ implementation)
@@ -72,9 +71,9 @@ make_cox_deviance <- function(event,
 #' @param status the status vector indicating event or censoring
 #' @param strata the strata vector (integer or factor)
 #' @param tie_breaking default 'efron'
+#' @param sample_weight the vector of sample weights, default all ones
 #' @return a list of two functions named `coxdev` and `information`
-#'   each of which takes a linear predictor as argument, along with
-#'   weights
+#'   each of which takes a linear predictor as argument
 #' @examples
 #' set.seed(10101)
 #' nobs <- 100
@@ -98,7 +97,8 @@ make_stratified_cox_deviance <- function(event,
                                           start = NA,
                                           status,
                                           strata,
-                                          tie_breaking = c('efron', 'breslow')) {
+                                          tie_breaking = c('efron', 'breslow'),
+                                          sample_weight = rep(1.0, length(event))) {
 
   tie_breaking <- match.arg(tie_breaking)
   efron <- tie_breaking == 'efron'
@@ -107,6 +107,7 @@ make_stratified_cox_deviance <- function(event,
   nevent <- length(event)
   status <- as.integer(status)
   strata <- as.integer(strata)
+  sample_weight <- as.numeric(sample_weight)
 
   if (length(start) != length(status)) {
     start <- rep(-Inf, nevent)
@@ -114,23 +115,15 @@ make_stratified_cox_deviance <- function(event,
     start <- as.numeric(start)
   }
 
-  # Preprocess and create the XPtr
-  strat_data_ptr <- .preprocess_stratified(start, event, status, strata, efron)
+  # Preprocess and create the XPtr (now includes sample_weight)
+  wrapper_ptr <- .preprocess_stratified(start, event, status, strata, sample_weight, efron)
 
-  coxdev <- function(linear_predictor, sample_weight = NULL) {
-    if (is.null(sample_weight)) {
-      sample_weight <- rep(1.0, length(linear_predictor))
-    } else {
-      sample_weight <- as.numeric(sample_weight)
-    }
-
-    result <- .cox_dev_stratified(strat_data_ptr,
-                                   as.numeric(linear_predictor),
-                                   sample_weight)
+  coxdev <- function(linear_predictor) {
+    result <- .cox_dev_stratified(wrapper_ptr, as.numeric(linear_predictor))
 
     list(
       linear_predictor = linear_predictor,
-      sample_weight = sample_weight,
+      sample_weight = .get_sample_weight(wrapper_ptr),
       loglik_sat = result$loglik_sat,
       deviance = result$deviance,
       gradient = result$gradient,
@@ -138,18 +131,17 @@ make_stratified_cox_deviance <- function(event,
     )
   }
 
-  information <- function(eta, sample_weight = NULL) {
+  information <- function(eta) {
     # Compute deviance to update buffers
-    coxdev_result <- coxdev(eta, sample_weight)
+    # Warning: Cached buffers are invalidated if coxdev() is called with a
+    # different linear_predictor before using this matvec function.
+    coxdev_result <- coxdev(eta)
 
     matvec <- function(arg) {
       # Handle both vector and matrix
       arg <- as.matrix(-arg)  # Negate for information matrix convention
       apply(arg, 2, function(v) {
-        .hessian_matvec_stratified(strat_data_ptr,
-                                    as.numeric(v),
-                                    as.numeric(eta),
-                                    coxdev_result$sample_weight)
+        .hessian_matvec_stratified(wrapper_ptr, as.numeric(v))
       })
     }
     matvec
@@ -158,9 +150,10 @@ make_stratified_cox_deviance <- function(event,
   list(
     coxdev = coxdev,
     information = information,
-    n_strata = .get_n_strata(strat_data_ptr),
-    n_total = .get_n_total(strat_data_ptr),
-    .strat_data_ptr = strat_data_ptr  # Expose for IRLS state creation
+    sample_weight = function() .get_sample_weight(wrapper_ptr),
+    n_strata = .get_n_strata(wrapper_ptr),
+    n_total = .get_n_total(wrapper_ptr),
+    .wrapper_ptr = wrapper_ptr  # Expose for IRLS state creation
   )
 }
 
@@ -168,13 +161,14 @@ make_stratified_cox_deviance <- function(event,
 #'
 #' Creates a stateful object that caches expensive quantities (exp(eta), risk sums,
 #' working weights/response) computed once per outer IRLS iteration, enabling
-#' efficient coordinate descent.
+#' efficient coordinate descent. Sample weights are stored in the parent cox_obj
+#' and used automatically.
 #'
 #' @param cox_obj A Cox deviance object created by \code{make_cox_deviance} or
 #'   \code{make_stratified_cox_deviance}
 #' @return A list with methods for IRLS/coordinate descent:
 #'   \itemize{
-#'     \item \code{recompute_outer(eta, weights)}: Recompute all cached quantities (call once per outer IRLS)
+#'     \item \code{recompute_outer(eta)}: Recompute all cached quantities (call once per outer IRLS)
 #'     \item \code{working_weights()}: Get cached working weights
 #'     \item \code{working_response()}: Get cached working response
 #'     \item \code{residuals()}: Get cached residuals r = w * (z - eta)
@@ -193,17 +187,16 @@ make_stratified_cox_deviance <- function(event,
 #' time <- rexp(n, exp(eta_true))
 #' status <- rbinom(n, 1, 0.7)
 #'
-#' # Create Cox deviance and IRLS state
+#' # Create Cox deviance and IRLS state (weights stored at initialization)
 #' cox <- make_cox_deviance(event = time, status = status)
 #' irls <- make_cox_irls_state(cox)
 #'
 #' # Initialize
 #' beta <- rep(0, p)
 #' eta <- X %*% beta
-#' weights <- rep(1, n)
 #'
-#' # Outer IRLS iteration
-#' irls$recompute_outer(eta, weights)
+#' # Outer IRLS iteration (uses stored weights automatically)
+#' irls$recompute_outer(eta)
 #' cat("Initial deviance:", irls$current_deviance(), "\n")
 #'
 #' # Inner coordinate descent pass
@@ -215,23 +208,20 @@ make_stratified_cox_deviance <- function(event,
 #'   irls$update_residuals(delta, x_j)
 #' }
 #' eta <- X %*% beta
-#' irls$recompute_outer(eta, weights)
+#' irls$recompute_outer(eta)
 #' cat("After 1 CD pass:", irls$current_deviance(), "\n")
 #' @export
 make_cox_irls_state <- function(cox_obj) {
-  if (is.null(cox_obj$.strat_data_ptr)) {
+  if (is.null(cox_obj$.wrapper_ptr)) {
     stop("cox_obj must be created by make_cox_deviance or make_stratified_cox_deviance")
   }
 
   # Create the IRLS state
-  irls_state_ptr <- .create_irls_state(cox_obj$.strat_data_ptr)
+  irls_state_ptr <- .create_irls_state(cox_obj$.wrapper_ptr)
 
   list(
-    recompute_outer = function(eta, weights = NULL) {
-      if (is.null(weights)) {
-        weights <- rep(1.0, length(eta))
-      }
-      .irls_recompute_outer(irls_state_ptr, as.numeric(eta), as.numeric(weights))
+    recompute_outer = function(eta) {
+      .irls_recompute_outer(irls_state_ptr, as.numeric(eta))
     },
 
     working_weights = function() {
