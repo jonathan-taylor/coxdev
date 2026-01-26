@@ -308,9 +308,10 @@ test_that("stratified cox with weights matches glmnet at nonzero lambda", {
       event = event,
       status = status,
       strata = strata,
+      sample_weight = weights,
       tie_breaking = "breslow"
     )
-    result <- strat$coxdev(eta, weights)
+    result <- strat$coxdev(eta)
 
     expect_equal(result$deviance, dev_glmnet, tolerance = 1e-10,
                  info = sprintf("Deviance mismatch at lambda = %g", lam))

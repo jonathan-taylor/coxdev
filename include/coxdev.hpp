@@ -413,6 +413,11 @@ inline void forward_prework(const StatusType& status,
 
 /**
  * Compute saturated log-likelihood for Cox model.
+ *
+ * For Breslow: LL_sat = -sum_C W_C * log(W_C)
+ * For Efron:   LL_sat = -sum_C W_C * [log(W_C) + (1/K_C) * (lgamma(K_C+1) - K_C*log(K_C))]
+ *
+ * where W_C is sum of weights in tie group C, and K_C is count of events with positive weight.
  */
 template <class ValueType, class IndexType, class WeightType>
 inline ValueType compute_sat_loglik(
@@ -421,7 +426,8 @@ inline ValueType compute_sat_loglik(
         const WeightType& weight,
         const Eigen::Matrix<IndexType, Eigen::Dynamic, 1>& event_order,
         const Eigen::Matrix<IndexType, Eigen::Dynamic, 1>& status,
-        Eigen::Matrix<ValueType, Eigen::Dynamic, 1>& W_status) {
+        Eigen::Matrix<ValueType, Eigen::Dynamic, 1>& W_status,
+        bool efron = false) {
 
     int n = event_order.size();
     Eigen::Matrix<ValueType, Eigen::Dynamic, 1> weight_event_order_times_status(n);
@@ -435,9 +441,29 @@ inline ValueType compute_sat_loglik(
 
     for (int i = 0; i < n; ++i) {
         int f = first(i);
-        ValueType s = W_status(last(i) + 1) - W_status(f);
-        if (s > 0 && f != prev_first) {
-            loglik_sat -= s * std::log(s);
+        int l = last(i);
+        if (f != prev_first) {
+            // W_C = sum of weights for events in this tie group
+            ValueType W_C = W_status(l + 1) - W_status(f);
+            if (W_C > 0) {
+                // Breslow term: -W_C * log(W_C)
+                loglik_sat -= W_C * std::log(W_C);
+
+                if (efron) {
+                    // Efron penalty: -(W_C / K_C) * (lgamma(K_C+1) - K_C*log(K_C))
+                    // K_C = effective cluster size (count of events with positive weight)
+                    int K_C = 0;
+                    for (int j = f; j <= l; ++j) {
+                        if (weight_event_order_times_status(j) > 0) {
+                            K_C++;
+                        }
+                    }
+                    if (K_C > 1) {
+                        ValueType penalty = (W_C / K_C) * (std::lgamma(K_C + 1) - K_C * std::log(K_C));
+                        loglik_sat -= penalty;
+                    }
+                }
+            }
         }
         prev_first = f;
     }
@@ -796,11 +822,11 @@ inline ValueType cox_dev(
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer2);
         auto& C_11 = ws.forward_cumsum_buffer2;
 
-        // C_21 = status * w_avg * scaling^2 / risk_sums^1
-        forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 2, 1,
+        // C_12 = status * w_avg * scaling^1 / risk_sums^2
+        forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 1, 2,
                        ws.forward_scratch_buffer, true);
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer3);
-        auto& C_21 = ws.forward_cumsum_buffer3;
+        auto& C_12 = ws.forward_cumsum_buffer3;
 
         // C_22 = status * w_avg * scaling^2 / risk_sums^2
         forward_prework(status, ws.w_avg_buffer, scaling, ws.risk_sums, 2, 2,
@@ -811,7 +837,7 @@ inline ValueType cox_dev(
         for (int i = 0; i < n; ++i) {
             ws.T_1_term(i) = C_01(last(i) + 1) - (C_11(last(i) + 1) - C_11(first(i)));
             ws.T_2_term(i) = (C_22(last(i) + 1) - C_22(first(i)))
-                            - 2.0 * (C_21(last(i) + 1) - C_21(first(i)))
+                            - 2.0 * (C_12(last(i) + 1) - C_12(first(i)))
                             + C_02(last(i) + 1);
         }
         if (have_start_times) {
@@ -1598,11 +1624,13 @@ inline ValueType cox_dev_single_stratum(
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer2);
         auto& C_11 = ws.forward_cumsum_buffer2;
 
-        forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 2, 1,
+        // C_12 = status * w_avg * scaling^1 / risk_sums^2
+        forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 1, 2,
                        ws.forward_scratch_buffer, true);
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer3);
-        auto& C_21 = ws.forward_cumsum_buffer3;
+        auto& C_12 = ws.forward_cumsum_buffer3;
 
+        // C_22 = status * w_avg * scaling^2 / risk_sums^2
         forward_prework(status, ws.w_avg_buffer, preproc.scaling, ws.risk_sums, 2, 2,
                        ws.forward_scratch_buffer, true);
         forward_cumsum(ws.forward_scratch_buffer, ws.forward_cumsum_buffer4);
@@ -1611,7 +1639,7 @@ inline ValueType cox_dev_single_stratum(
         for (int i = 0; i < n; ++i) {
             ws.T_1_term(i) = C_01(last(i) + 1) - (C_11(last(i) + 1) - C_11(first(i)));
             ws.T_2_term(i) = (C_22(last(i) + 1) - C_22(first(i)))
-                            - 2.0 * (C_21(last(i) + 1) - C_21(first(i)))
+                            - 2.0 * (C_12(last(i) + 1) - C_12(first(i)))
                             + C_02(last(i) + 1);
         }
         if (have_start_times) {
@@ -1693,7 +1721,8 @@ inline ValueType cox_dev_stratified(
         strat_data.loglik_sat[s] = compute_sat_loglik<ValueType, IndexType>(
             preproc.first, preproc.last, weight_local,
             preproc.event_order, preproc.status,
-            ws.W_status_buffer);
+            ws.W_status_buffer,
+            strat_data.efron_stratum[s]);
 
         // Compute deviance for this stratum
         ValueType dev = cox_dev_single_stratum<ValueType, IndexType>(

@@ -143,6 +143,13 @@ public:
     }
 
     /**
+     * Get efron_stratum flags for each stratum (for debugging).
+     */
+    std::vector<bool> get_efron_stratum() {
+        return strat_data.efron_stratum;
+    }
+
+    /**
      * Compute Hessian matrix-vector product.
      *
      * IMPORTANT: Uses cached eta/weight/scaling buffers populated by the most
@@ -425,7 +432,8 @@ PYBIND11_MODULE(coxc, m) {
              "Compute Hessian-vector product using cached values from last __call__")
         .def_property_readonly("n_strata", &StratifiedCoxDevianceCpp::n_strata)
         .def_property_readonly("n_total", &StratifiedCoxDevianceCpp::n_total)
-        .def_property_readonly("sample_weight", &StratifiedCoxDevianceCpp::get_sample_weight);
+        .def_property_readonly("sample_weight", &StratifiedCoxDevianceCpp::get_sample_weight)
+        .def_property_readonly("efron_stratum", &StratifiedCoxDevianceCpp::get_efron_stratum);
 
     // CoxIRLSStateCpp class for efficient IRLS/coordinate descent
     py::class_<CoxIRLSStateCpp>(m, "CoxIRLSStateCpp")

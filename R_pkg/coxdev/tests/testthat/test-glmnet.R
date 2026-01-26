@@ -54,8 +54,8 @@ check_glmnet <- function(tie_types,
   H_glmnet <- glmnet_result$H
 
   cox_deviance <- make_cox_deviance(event = data$event, start = start, status = data$status,
-                                    weight = weight, tie_breaking = 'breslow')
-  C <- cox_deviance$coxdev(eta, weight)
+                                    sample_weight = weight, tie_breaking = 'breslow')
+  C <- cox_deviance$coxdev(eta)
 
   expect_true(all_close(D_glmnet, C$deviance),
               info = "Deviance mismatch")
@@ -113,8 +113,8 @@ test_that("Breslow saturated log-likelihood matches glmnet formula (unit weights
 
   expected <- compute_breslow_sat_loglik(event, status, weight)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "breslow")
+  result <- cox$coxdev(eta)
 
   expect_true(
     all_close(result$loglik_sat, expected, rtol = 1e-10),
@@ -140,8 +140,8 @@ test_that("Breslow saturated log-likelihood matches glmnet formula (non-unit wei
 
   expected <- compute_breslow_sat_loglik(event, status, weight)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "breslow")
+  result <- cox$coxdev(eta)
 
   expect_true(
     all_close(result$loglik_sat, expected, rtol = 1e-10),
@@ -170,8 +170,8 @@ test_that("Breslow saturated log-likelihood matches glmnet formula (with start t
   # Saturated log-likelihood only depends on event times and weights, not start times
   expected <- compute_breslow_sat_loglik(event, status, weight)
 
-  cox <- make_cox_deviance(event = event, start = start, status = status, tie_breaking = "breslow")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, start = start, status = status, sample_weight = weight, tie_breaking = "breslow")
+  result <- cox$coxdev(eta)
 
   expect_true(
     all_close(result$loglik_sat, expected, rtol = 1e-10),

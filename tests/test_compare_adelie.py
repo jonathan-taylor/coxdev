@@ -342,6 +342,96 @@ class TestSaturatedLoglikelihood:
             f"adelie_converted={results['loglik_sat_from_adelie']:.10f}, " \
             f"diff={results['loglik_sat_diff']:.2e}"
 
+    @pytest.mark.parametrize("tie_method", ["efron", "breslow"])
+    def test_saturated_loglik_with_many_ties(self, tie_method):
+        """Test saturated log-likelihood with many tied event times.
+
+        This test explicitly creates data with many ties to verify that
+        the Efron saturated log-likelihood penalty term is computed correctly.
+        """
+        np.random.seed(42)
+        n = 30
+        # Create many ties: 5 unique times with 6 observations each
+        stop = np.repeat([1.0, 2.0, 3.0, 4.0, 5.0], 6)
+        start = np.zeros(n)
+        status = np.random.binomial(1, 0.8, n).astype(float)
+        eta = np.random.randn(n) * 0.3
+        weights = np.random.uniform(0.5, 2.0, n)
+
+        data = {
+            'start': start,
+            'stop': stop,
+            'status': status,
+            'eta': eta,
+            'weights': weights,
+        }
+
+        results = compare_coxdev_adelie(data, tie_method=tie_method)
+
+        assert results['loglik_sat_close'], \
+            f"Saturated loglik mismatch with ties ({tie_method}): " \
+            f"coxdev={results['loglik_sat_coxdev']:.10f}, " \
+            f"adelie_converted={results['loglik_sat_from_adelie']:.10f}, " \
+            f"diff={results['loglik_sat_diff']:.2e}"
+
+    @pytest.mark.parametrize("tie_method", ["efron", "breslow"])
+    def test_saturated_loglik_all_tied(self, tie_method):
+        """Test saturated log-likelihood when all events are at the same time."""
+        np.random.seed(123)
+        n = 20
+        # All events at the same time
+        stop = np.ones(n) * 5.0
+        start = np.zeros(n)
+        status = np.ones(n)  # All events
+        eta = np.random.randn(n) * 0.2
+        weights = np.ones(n)
+
+        data = {
+            'start': start,
+            'stop': stop,
+            'status': status,
+            'eta': eta,
+            'weights': weights,
+        }
+
+        results = compare_coxdev_adelie(data, tie_method=tie_method)
+
+        assert results['loglik_sat_close'], \
+            f"Saturated loglik mismatch all tied ({tie_method}): " \
+            f"coxdev={results['loglik_sat_coxdev']:.10f}, " \
+            f"adelie_converted={results['loglik_sat_from_adelie']:.10f}, " \
+            f"diff={results['loglik_sat_diff']:.2e}"
+
+    def test_efron_differs_from_breslow_with_ties(self):
+        """Verify that Efron and Breslow saturated log-likelihoods differ with ties."""
+        np.random.seed(42)
+        n = 10
+        # Every pair tied
+        stop = np.array([1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0])
+        start = np.zeros(n)
+        status = np.ones(n)  # All events
+        eta = np.zeros(n)
+        weights = np.ones(n)
+
+        data = {
+            'start': start,
+            'stop': stop,
+            'status': status,
+            'eta': eta,
+            'weights': weights,
+        }
+
+        results_efron = compare_coxdev_adelie(data, tie_method='efron')
+        results_breslow = compare_coxdev_adelie(data, tie_method='breslow')
+
+        # Both should match adelie
+        assert results_efron['loglik_sat_close']
+        assert results_breslow['loglik_sat_close']
+
+        # Efron and Breslow should differ when there are ties
+        assert results_efron['loglik_sat_coxdev'] != results_breslow['loglik_sat_coxdev'], \
+            "Efron and Breslow saturated log-likelihoods should differ with ties"
+
 
 class TestEdgeCases:
     """Test edge cases for gradient and Hessian."""

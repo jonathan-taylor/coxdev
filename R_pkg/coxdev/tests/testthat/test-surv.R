@@ -44,20 +44,21 @@ check_coxph <- function(tie_types,
   else
     start <- NA
 
-  cox_deviance  <- make_cox_deviance(event = data$event, start = start, status = data$status, weight = weight, tie_breaking = tie_breaking)
   n <- nrow(data)
   p <- n %/% 2
   X <- matrix(rnorm(n * p), nrow = n)
   beta <- rnorm(p) / sqrt(n)
   weight <- sample_weight(n)
 
+  cox_deviance  <- make_cox_deviance(event = data$event, start = start, status = data$status, sample_weight = weight, tie_breaking = tie_breaking)
+
   # Check for zero weights - R's coxph doesn't support them directly
   nz_mask <- weight > 0
   has_zero_weights <- !all(nz_mask)
 
   tX  <- t(X)
-  C <- cox_deviance$coxdev(X %*% beta, weight)
-  h <- cox_deviance$information(X %*% beta, weight)
+  C <- cox_deviance$coxdev(X %*% beta)
+  h <- cox_deviance$information(X %*% beta)
   I <- tX %*% h(X)
   expect_true(all_close(I, t(I)),
               info = "Information matrix not symmetric")

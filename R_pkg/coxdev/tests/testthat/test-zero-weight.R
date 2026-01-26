@@ -48,10 +48,10 @@ check_zero_weights <- function(tie_types,
     event = data$event,
     start = start,
     status = data$status,
-    weight = weights,
+    sample_weight = weights,
     tie_breaking = tie_breaking
   )
-  result_full <- cox_full$coxdev(eta, weights)
+  result_full <- cox_full$coxdev(eta)
 
   # Subset model (non-zero weights only)
   if (have_start_times) {
@@ -63,10 +63,10 @@ check_zero_weights <- function(tie_types,
     event = data$event[nonzero_idx],
     start = start_subset,
     status = data$status[nonzero_idx],
-    weight = weights[nonzero_idx],
+    sample_weight = weights[nonzero_idx],
     tie_breaking = tie_breaking
   )
-  result_subset <- cox_subset$coxdev(eta[nonzero_idx], weights[nonzero_idx])
+  result_subset <- cox_subset$coxdev(eta[nonzero_idx])
 
   # Compare deviance
   expect_true(
@@ -101,8 +101,8 @@ check_zero_weights <- function(tie_types,
   )
 
   # Compare information matrix action on a test vector
-  info_full <- cox_full$information(eta, weights)
-  info_subset <- cox_subset$information(eta[nonzero_idx], weights[nonzero_idx])
+  info_full <- cox_full$information(eta)
+  info_subset <- cox_subset$information(eta[nonzero_idx])
 
   # Test vector
   v_full <- rnorm(n)
@@ -175,8 +175,8 @@ test_that("zero weight at first event-ordered position works correctly", {
 
   # Create cox deviance with Efron (which exercises the problematic code path)
   cox <- make_cox_deviance(event = event, start = start, status = status,
-                            tie_breaking = "efron")
-  result_full <- cox$coxdev(eta, weights)
+                            sample_weight = weights, tie_breaking = "efron")
+  result_full <- cox$coxdev(eta)
 
   # Compare with subset (non-zero weights only)
   nonzero_idx <- weights > 0
@@ -184,9 +184,10 @@ test_that("zero weight at first event-ordered position works correctly", {
     event = event[nonzero_idx],
     start = start[nonzero_idx],
     status = status[nonzero_idx],
+    sample_weight = weights[nonzero_idx],
     tie_breaking = "efron"
   )
-  result_subset <- cox_subset$coxdev(eta[nonzero_idx], weights[nonzero_idx])
+  result_subset <- cox_subset$coxdev(eta[nonzero_idx])
 
   # The key test: deviance should match
   expect_true(
@@ -253,8 +254,8 @@ test_that("saturated log-likelihood matches formula for Breslow (no ties)", {
   weight <- c(1.0, 2.0, 1.5, 3.0, 0.5)
   eta <- rep(0, 5)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "breslow")
+  result <- cox$coxdev(eta)
 
   expected <- compute_expected_sat_loglik(event, status, weight, "breslow")
 
@@ -271,8 +272,8 @@ test_that("saturated log-likelihood matches formula for Efron (no ties)", {
   weight <- c(1.0, 2.0, 1.5, 3.0, 0.5)
   eta <- rep(0, 5)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "efron")
+  result <- cox$coxdev(eta)
 
   expected <- compute_expected_sat_loglik(event, status, weight, "efron")
 
@@ -289,8 +290,8 @@ test_that("saturated log-likelihood matches formula for Breslow (with ties)", {
   weight <- c(1.0, 2.0, 1.5, 0.5, 3.0)
   eta <- rep(0, 5)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "breslow")
+  result <- cox$coxdev(eta)
 
   expected <- compute_expected_sat_loglik(event, status, weight, "breslow")
 
@@ -307,8 +308,8 @@ test_that("saturated log-likelihood matches formula for Efron (with ties)", {
   weight <- c(1.0, 2.0, 1.5, 0.5, 3.0)
   eta <- rep(0, 5)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "efron")
+  result <- cox$coxdev(eta)
 
   expected <- compute_expected_sat_loglik(event, status, weight, "efron")
 
@@ -324,8 +325,8 @@ test_that("saturated log-likelihood matches formula with zero weights (Breslow)"
   weight <- c(0.0, 2.0, 1.5, 0.0, 3.0)  # Zero weights at positions 1 and 4
   eta <- rep(0, 5)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "breslow")
+  result <- cox$coxdev(eta)
 
   expected <- compute_expected_sat_loglik(event, status, weight, "breslow")
 
@@ -341,8 +342,8 @@ test_that("saturated log-likelihood matches formula with zero weights (Efron)", 
   weight <- c(0.0, 2.0, 1.5, 0.0, 3.0)  # Zero weights at positions 1 and 4
   eta <- rep(0, 5)
 
-  cox <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
-  result <- cox$coxdev(eta, weight)
+  cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "efron")
+  result <- cox$coxdev(eta)
 
   expected <- compute_expected_sat_loglik(event, status, weight, "efron")
 
@@ -360,8 +361,8 @@ test_that("saturated log-likelihood: all zero weights at one time point", {
   eta <- rep(0, 4)
 
   for (tie_breaking in c("breslow", "efron")) {
-    cox <- make_cox_deviance(event = event, status = status, tie_breaking = tie_breaking)
-    result <- cox$coxdev(eta, weight)
+    cox <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = tie_breaking)
+    result <- cox$coxdev(eta)
 
     expected <- compute_expected_sat_loglik(event, status, weight, tie_breaking)
 
@@ -380,11 +381,11 @@ test_that("Efron differs from Breslow when there are ties", {
   weight <- c(1.0, 2.0, 1.5, 1.0, 2.0, 3.0)
   eta <- rep(0, 6)
 
-  cox_breslow <- make_cox_deviance(event = event, status = status, tie_breaking = "breslow")
-  cox_efron <- make_cox_deviance(event = event, status = status, tie_breaking = "efron")
+  cox_breslow <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "breslow")
+  cox_efron <- make_cox_deviance(event = event, status = status, sample_weight = weight, tie_breaking = "efron")
 
-  result_breslow <- cox_breslow$coxdev(eta, weight)
-  result_efron <- cox_efron$coxdev(eta, weight)
+  result_breslow <- cox_breslow$coxdev(eta)
+  result_efron <- cox_efron$coxdev(eta)
 
   # They should differ when there are ties
 
