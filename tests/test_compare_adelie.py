@@ -2,6 +2,7 @@
 Comprehensive comparison of coxdev vs adelie for Cox proportional hazards.
 
 Tests both Breslow and Efron tie-breaking methods across various data scenarios.
+Uses R adelie package via rpy2 to avoid Python wheel compatibility issues.
 
 Key relationships between coxdev and adelie:
 - adelie normalizes weights to sum to 1 and uses w̄_i (average weight within ties)
@@ -10,9 +11,7 @@ Key relationships between coxdev and adelie:
 The exact mathematical relationships are:
 1. Gradient: grad_coxdev = -2 * sum(weights) * grad_adelie
 2. Hessian: hess_coxdev = 2 * sum(weights) * hess_adelie
-3. Deviance: Different conventions due to w̄_i term in adelie
-   - With uniform weights: deviance_coxdev = -2 * (weight_sum * (-loss_adelie) - log(weight_sum) * weighted_events)
-   - With non-uniform weights: more complex relationship due to w̄_i adjustment
+3. Saturated loglik: loglik_sat_coxdev = -weight_sum * loss_full_adelie - log(weight_sum) * weighted_events
 
 For optimization purposes, the gradient and Hessian relationships are what matter.
 """
@@ -23,18 +22,73 @@ import pytest
 # Import coxdev
 from coxdev import CoxDeviance, StratifiedCoxDeviance
 
-# Import adelie (requires pip install adelie)
+# Import rpy2 for R adelie
 try:
-    import adelie.glm as adelie_glm
+    import rpy2.robjects as ro
+    from rpy2.robjects import numpy2ri
+    from rpy2.robjects.packages import importr
+
+    # Import R adelie package
+    adelie_r = importr('adelie')
     HAS_ADELIE = True
-except ImportError:
+except (ImportError, Exception):
     HAS_ADELIE = False
 
-# Import simulation utilities
-from simulate import simulate_df, rng, sample_weights
-
 # Skip all tests if adelie not available
-pytestmark = pytest.mark.skipif(not HAS_ADELIE, reason="adelie not available")
+pytestmark = pytest.mark.skipif(not HAS_ADELIE, reason="R adelie (via rpy2) not available")
+
+
+def r_adelie_cox(start, stop, status, weights, tie_method, strata=None):
+    """
+    Create R adelie Cox GLM object and return a wrapper with Python-friendly methods.
+    """
+    # Assign data to R's global environment (avoid underscore prefix)
+    ro.globalenv['rstart'] = ro.FloatVector(start)
+    ro.globalenv['rstop'] = ro.FloatVector(stop)
+    ro.globalenv['rstatus'] = ro.FloatVector(status)
+    ro.globalenv['rweights'] = ro.FloatVector(weights)
+    ro.globalenv['rtie'] = tie_method
+
+    # Create the GLM object in R
+    if strata is not None:
+        # R adelie expects 1-based strata labels (1, 2, ...), coxdev uses 0-based
+        ro.globalenv['rstrata'] = ro.IntVector(strata + 1)
+        ro.r('rglm <- glm.cox(stop=rstop, status=rstatus, start=rstart, weights=rweights, tie_method=rtie, strata=rstrata)')
+    else:
+        ro.r('rglm <- glm.cox(stop=rstop, status=rstatus, start=rstart, weights=rweights, tie_method=rtie)')
+
+    return RadelieCox()
+
+
+class RadelieCox:
+    """Wrapper around R adelie GLM object with Python-friendly interface.
+
+    The GLM object is stored in R's global environment as rglm.
+    """
+
+    def loss(self, eta):
+        """Compute loss at given eta."""
+        ro.globalenv['reta'] = ro.FloatVector(eta)
+        result = ro.r('rglm$loss(reta)')
+        return float(result[0])
+
+    def loss_full(self):
+        """Compute saturated log-likelihood component."""
+        result = ro.r('rglm$loss_full()')
+        return float(result[0])
+
+    def gradient(self, eta):
+        """Compute gradient at given eta."""
+        ro.globalenv['reta'] = ro.FloatVector(eta)
+        result = ro.r('rglm$gradient(reta)')
+        return np.array(result)
+
+    def hessian(self, eta, grad):
+        """Compute diagonal Hessian at given eta."""
+        ro.globalenv['reta'] = ro.FloatVector(eta)
+        ro.globalenv['rgrad'] = ro.FloatVector(grad)
+        result = ro.r('rglm$hessian(reta, rgrad)')
+        return np.array(result)
 
 
 def generate_test_data(n, seed=42, with_ties=True, tie_fraction=0.3):
@@ -148,36 +202,22 @@ def compare_coxdev_adelie(data, tie_method='efron', rtol=1e-10, atol=1e-12):
     loglik_sat_coxdev = result_coxdev.loglik_sat
 
     # =========================================================================
-    # adelie computation
+    # adelie computation (via R)
     # =========================================================================
-    if strata is not None:
-        cox_adelie = adelie_glm.cox(
-            start=start,
-            stop=stop,
-            status=status,
-            strata=strata,
-            weights=weights,
-            tie_method=tie_method,
-            dtype=np.float64
-        )
-    else:
-        cox_adelie = adelie_glm.cox(
-            start=start,
-            stop=stop,
-            status=status,
-            weights=weights,
-            tie_method=tie_method,
-            dtype=np.float64
-        )
+    cox_adelie = r_adelie_cox(
+        start=start,
+        stop=stop,
+        status=status,
+        weights=weights,
+        tie_method=tie_method,
+        strata=strata
+    )
 
     loss_adelie = cox_adelie.loss(eta)
     loss_full_adelie = cox_adelie.loss_full()
 
-    grad_adelie = np.empty(n, dtype=np.float64)
-    cox_adelie.gradient(eta, grad_adelie)
-
-    hess_adelie = np.empty(n, dtype=np.float64)
-    cox_adelie.hessian(eta, grad_adelie, hess_adelie)
+    grad_adelie = cox_adelie.gradient(eta)
+    hess_adelie = cox_adelie.hessian(eta, grad_adelie)
 
     # =========================================================================
     # Convert between conventions
@@ -185,9 +225,8 @@ def compare_coxdev_adelie(data, tie_method='efron', rtol=1e-10, atol=1e-12):
     # Key relationships:
     # 1. grad_coxdev = -2 * weight_sum * grad_adelie
     # 2. hess_coxdev = 2 * weight_sum * hess_adelie
-    # 3. For deviance with uniform weights only:
-    #    loglik_coxdev = -weight_sum * loss_adelie - log(weight_sum) * weighted_events
-    #    deviance_coxdev = -2 * loglik_coxdev
+    # 3. For saturated log-likelihood:
+    #    loglik_sat_coxdev = -weight_sum * loss_full_adelie - log(weight_sum) * weighted_events
 
     grad_from_adelie = -2 * weight_sum * grad_adelie
     diag_hess_from_adelie = 2 * weight_sum * hess_adelie
@@ -582,13 +621,13 @@ def print_detailed_comparison(data, tie_method='efron'):
 
 if __name__ == '__main__':
     # Run a quick comparison for debugging
-    print("Running coxdev vs adelie comparison...")
+    print("Running coxdev vs adelie comparison (using R adelie via rpy2)...")
     print("\n" + "="*60)
     print("KEY FINDINGS:")
     print("="*60)
     print("1. Gradient: grad_coxdev = -2 * sum(weights) * grad_adelie")
     print("2. Hessian:  hess_coxdev = 2 * sum(weights) * hess_adelie")
-    print("3. Deviance: Different conventions (see docstring)")
+    print("3. Sat loglik: loglik_sat_coxdev = -weight_sum * loss_full_adelie - log(weight_sum) * weighted_events")
     print("="*60)
 
     for tie_method in ['efron', 'breslow']:
