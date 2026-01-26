@@ -1,5 +1,30 @@
 # coxdev Architecture
 
+## File Structure (Adapter Pattern)
+
+```
+coxdev/
+├── include/
+│   └── coxdev.hpp              # Canonical header-only library (single source of truth)
+├── src/
+│   └── coxdev_py.cpp           # Python pybind11 bindings
+├── R_pkg/coxdev/
+│   ├── src/
+│   │   └── coxdev_r.cpp        # R Rcpp bindings
+│   └── inst/include/
+│       └── coxdev.hpp → symlink to ../../../../include/coxdev.hpp
+└── setup.py                    # Python build (uses src/coxdev_py.cpp + include/)
+```
+
+**Key Design Principles:**
+
+1. **Single Source of Truth**: `include/coxdev.hpp` is the only C++ implementation
+2. **Zero-Copy Bindings**: R uses `Eigen::Map`, Python uses pybind11 array mapping
+3. **Conditional Namespace**: `#ifdef GLMNET_INTERFACE` switches to `glmnetpp::coxdev::`
+4. **Independence**: coxdev has no dependencies on glmnet; dependency is one-way
+
+**To use in glmnet**: Copy `include/coxdev.hpp` unchanged, define `GLMNET_INTERFACE` before including.
+
 ## Layered Architecture
 
 ```
