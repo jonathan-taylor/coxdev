@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(EIGEN_LIBRARY_PATH=/opt/homebrew/include/eigen3 uv pip install:*)",
+      "Bash(git add:*)",
+      "Bash(R CMD INSTALL:*)",
+      "Bash(Rscript:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(PYTHONPATH=/Users/naras/GitHub/adelie:$PYTHONPATH uv run python:*)",
+      "Bash(uv run python:*)",
+      "Bash(python:*)",
+      "Bash(pip show:*)",
+      "Bash(source .venv312/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(.venv312/bin/python:*)",
+      "Bash(uv pip install:*)",
+      "Bash(ls:*)",
+      "Bash(R CMD build:*)",
+      "Bash(R -e:*)",
+      "Bash(R -q --vanilla -e:*)",
+      "Bash(CPATH=/opt/homebrew/include/eigen3 uv pip install:*)",
+      "Bash(CPATH=/opt/homebrew/include/eigen3 CXXFLAGS=\"-Wno-error=unknown-pragmas\" uv pip install:*)",
+      "Bash(CPATH=/opt/homebrew/include/eigen3 CXXFLAGS=\"-Wno-error\" pip install:*)",
+      "Bash(source:*)",
+      "Bash(/Users/naras/GitHub/coxdev/.venv312/bin/python -m pip install:*)",
+      "Bash(/Users/naras/GitHub/coxdev/.venv312/bin/python:*)",
+      "Bash(EIGEN_LIBRARY_PATH=/opt/homebrew/include/eigen3 /Users/naras/GitHub/coxdev/.venv312/bin/pip install:*)",
+      "Bash(EIGEN_LIBRARY_PATH=/opt/homebrew/include/eigen3 /Users/naras/GitHub/coxdev/.venv312/bin/python:*)",
+      "Bash(.venv312/bin/pytest:*)",
+      "Bash(.venv312/bin/pip install:*)",
+      "Bash(VIRTUAL_ENV=/Users/naras/GitHub/coxdev/.venv312 uv pip install:*)",
+      "Bash(EIGEN_LIBRARY_PATH=/opt/homebrew/include/eigen3 VIRTUAL_ENV=/Users/naras/GitHub/coxdev/.venv312 uv pip install:*)",
+      "Bash(git stash push:*)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(uv pip uninstall:*)"
+    ]
+  }
+}

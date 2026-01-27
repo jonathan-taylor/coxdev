@@ -96,7 +96,7 @@ $$
 
 +++
 
-Let's define the reversed cumsum (in start orderXXXXXXXXXXXXXX)
+Let's define the reversed cumsum (in start order)
 $$
 {\cal S}(\zeta)[i] = \sum_{j:j\geq i} \zeta_j, 1 \leq i \leq n.
 $$

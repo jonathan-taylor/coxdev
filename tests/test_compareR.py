@@ -269,13 +269,6 @@ def test_coxph(tie_types,
     if r_rank_deficient or our_unstable:
         return  # No-op: random state consumed, skip assertions
 
-    # TODO: Investigate this edge case - deviance mismatch with zero weights
-    if (has_zero_weights and
-        have_start_times and
-        tie_breaking == 'breslow' and
-        tie_types == all_combos[165]):
-        return  # No-op: random state consumed, skip assertions
-
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
 
     if has_zero_weights:
