@@ -1,7 +1,8 @@
-context("Check against survival package")
+## context("Check against survival package")
+
+set.seed(12345)  # Ensure reproducible tests regardless of test order
 
 tol  <- 1e-10
-i  <- j <- 0
 get_coxph <- function(event,
                       status,
                       X,
@@ -20,7 +21,7 @@ get_coxph <- function(event,
   } else {
     y <- Surv(event, status)
   }
-  F <- coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE)
+  F <- coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0, timefix=FALSE), ties=ties, robust=FALSE)
   G <- colSums(coxph.detail(F)$scor)
   D <- F$loglik
   cov <- vcov(F)
@@ -43,15 +44,21 @@ check_coxph <- function(tie_types,
   else
     start <- NA
 
-  cox_deviance  <- make_cox_deviance(event = data$event, start = start, status = data$status, weight = weight, tie_breaking = tie_breaking)
   n <- nrow(data)
   p <- n %/% 2
   X <- matrix(rnorm(n * p), nrow = n)
   beta <- rnorm(p) / sqrt(n)
   weight <- sample_weight(n)
+
+  cox_deviance  <- make_cox_deviance(event = data$event, start = start, status = data$status, sample_weight = weight, tie_breaking = tie_breaking)
+
+  # Check for zero weights - R's coxph doesn't support them directly
+  nz_mask <- weight > 0
+  has_zero_weights <- !all(nz_mask)
+
   tX  <- t(X)
-  C <- cox_deviance$coxdev(X %*% beta, weight)
-  h <- cox_deviance$information(X %*% beta, weight)
+  C <- cox_deviance$coxdev(X %*% beta)
+  h <- cox_deviance$information(X %*% beta)
   I <- tX %*% h(X)
   expect_true(all_close(I, t(I)),
               info = "Information matrix not symmetric")
@@ -59,52 +66,56 @@ check_coxph <- function(tie_types,
   ## stopifnot(all_close(I, t(I)))
   new_cov  <- solve(I)
 
-  coxph_result  <- get_coxph(event = data$event,
-                             status = data$status,
-                             beta  = beta,
-                             sample_weight = weight,
-                             start = start,
-                             ties = tie_breaking,
-                             X = X)
+  if (has_zero_weights) {
+    # Subset to non-zero weights for R comparison
+    event_nz <- data$event[nz_mask]
+    status_nz <- data$status[nz_mask]
+    start_nz <- if (have_start_times) start[nz_mask] else NA
+    X_nz <- X[nz_mask, , drop = FALSE]
+    weight_nz <- weight[nz_mask]
+
+    coxph_result <- get_coxph(event = event_nz,
+                              status = status_nz,
+                              beta = beta,
+                              sample_weight = weight_nz,
+                              start = start_nz,
+                              ties = tie_breaking,
+                              X = X_nz)
+  } else {
+    coxph_result <- get_coxph(event = data$event,
+                              status = data$status,
+                              beta = beta,
+                              sample_weight = weight,
+                              start = start,
+                              ties = tie_breaking,
+                              X = X)
+  }
+
   G_coxph <- coxph_result$G
   D_coxph <- coxph_result$D[1]
   cov_coxph  <- coxph_result$cov
-  ## stopifnot(all_close(D_coxph, C$deviance - 2 * C$loglik_sat))
-  ## stopifnot(rel_diff_norm(G_coxph, tX %*% C$gradient) < tol)
-  ## stopifnot(rel_diff_norm(new_cov, cov_coxph) < tol)
 
   expect_true(all_close(D_coxph, C$deviance - 2 * C$loglik_sat),
               info = "Deviance mismatch")
-  if (rel_diff_norm(G_coxph, tX %*% C$gradient) >= tol) {
-    saveRDS(list(event = data$event,
-                 status = data$status,
-                 beta  = beta,
-                 sample_weight = weight,
-                 start = start,
-                 ties = tie_breaking,
-                 X = X), sprintf("~/tmp/g%d.RDS", i))
-      i <<- i + 1
-    }
-  expect_true(rel_diff_norm(G_coxph, tX %*% C$gradient) < tol,
-              info = "Gradient mismatch")
 
-  if (rel_diff_norm(new_cov, cov_coxph) >= tol) {
-    saveRDS(list(event = data$event,
-                 status = data$status,
-                 beta  = beta,
-                 sample_weight = weight,
-                 start = start,
-                 ties = tie_breaking,
-                 X = X), sprintf("~/tmp/h%d.RDS", j))
-    j <<- j + 1
+  if (has_zero_weights) {
+    # For gradient comparison: use subsetted X and gradient
+    tX_nz <- t(X_nz)
+    gradient_nz <- C$gradient[nz_mask]
+    expect_true(rel_diff_norm(G_coxph, tX_nz %*% gradient_nz) < tol,
+                info = "Gradient mismatch")
+  } else {
+    expect_true(rel_diff_norm(G_coxph, tX %*% C$gradient) < tol,
+                info = "Gradient mismatch")
   }
+
   expect_true(rel_diff_norm(new_cov, cov_coxph) < tol,
               info = "Covariance mismatch")
 }
 
 for (tie_type in all_combos) {
   for (tie_breaking in c('efron', 'breslow')) {
-    for (sample_weight in list(just_ones, sample_weights)) {
+    for (sample_weight in list(just_ones, sample_weights, sample_weights_with_zeros)) {
       for (have_start_time in c(TRUE, FALSE)) {
         check_coxph(tie_type,
                     tie_breaking,

@@ -134,14 +134,14 @@ def check_results(data_dict, ties):
     coxdev = CoxDeviance(event=event,
                          start=start,
                          status=status,
+                         sample_weight=weight,
                          tie_breaking=tie_breaking)
 
-    C = coxdev(X @ beta, weight)
+    C = coxdev(X @ beta)
 
     eta = X @ beta
-    
-    H = coxdev.information(eta,
-                           weight)
+
+    H = coxdev.information(eta)
     I = X.T @ (H @ X)
     assert np.allclose(I, I.T)
     cov_ = np.linalg.inv(I)
@@ -217,13 +217,14 @@ def test_coxph_agreement(tie_breaking):
     coxdev = CoxDeviance(event=event,
                          start=start,
                          status=status,
+                         sample_weight=weight,
                          tie_breaking=tie_breaking)
 
-    C = coxdev(X @ beta, weight)
+    C = coxdev(X @ beta)
 
     eta = X @ beta
-    
-    H = coxdev.information(eta, weight)
+
+    H = coxdev.information(eta)
     I = X.T @ (H @ X)
     
     # Test that information matrix is symmetric
@@ -269,9 +270,10 @@ def test_glmnet_agreement():
     coxdev = CoxDeviance(event=event,
                          start=start,
                          status=status,
+                         sample_weight=weight,
                          tie_breaking='breslow')
 
-    C = coxdev(X @ beta, weight)
+    C = coxdev(X @ beta)
     
     D_R, grad_R, hess_diag_R = get_glmnet_result(event,
                                                  status,
@@ -308,10 +310,11 @@ def test_information_matrix_properties():
     coxdev = CoxDeviance(event=event,
                          start=start,
                          status=status,
+                         sample_weight=weight,
                          tie_breaking='efron')
 
     eta = X @ beta
-    H = coxdev.information(eta, weight)
+    H = coxdev.information(eta)
     I = X.T @ (H @ X)
     
     # Test symmetry
@@ -329,20 +332,21 @@ def test_coxdev_basic_functionality():
     Test basic functionality of CoxDeviance without R dependencies.
     """
     test_data = generate_problematic_test_data()
-    
+
     event = np.asarray(test_data['event'])
     start = test_data['start']
     status = np.asarray(test_data['status'])
     weight = np.asarray(test_data['sample_weight'])
     beta = np.asarray(test_data['beta'])
     X = np.array(test_data['X'])
-    
+
     coxdev = CoxDeviance(event=event,
                          start=start,
                          status=status,
+                         sample_weight=weight,
                          tie_breaking='efron')
 
-    C = coxdev(X @ beta, weight)
+    C = coxdev(X @ beta)
     
     # Test that result has expected attributes
     assert hasattr(C, 'linear_predictor')

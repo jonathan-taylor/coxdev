@@ -5,10 +5,27 @@ import pandas as pd
 
 # basic model for times
 rng = np.random.default_rng(0)
-def sample_weights(size=1):
+def sample_weights(size=1, zero_weight_fraction=0.0):
+    """
+    Sample weights for testing.
+
+    Parameters
+    ----------
+    size : int
+        Number of weights to generate.
+    zero_weight_fraction : float
+        Fraction of weights to set to zero (0.0 to 1.0). Default 0.0.
+    """
     W = rng.poisson(2, size=size) + rng.uniform(size=size)
     W[size//3] += 2.
     W[size//3:size//2] += 1
+
+    if zero_weight_fraction > 0:
+        n_zero = max(1, int(size * zero_weight_fraction))
+        n_zero = min(n_zero, size - 1)  # Keep at least one non-zero
+        zero_idx = rng.choice(size, size=n_zero, replace=False)
+        W[zero_idx] = 0.0
+
     return W
 
 def sample_times(size=1):
