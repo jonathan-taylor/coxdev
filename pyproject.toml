@@ -1,47 +1,61 @@
 [project]
 name = "coxdev"
+dynamic = ["version"]
+authors = [
+    {name = "Jonathan Taylor", email="jonathan.taylor@stanford.edu" },
+    {name = "Trevor Hastie", email="hastie@stanford.edu" },
+    {name = "Balasubramanian Narasimhan", email="naras@stanford.edu" }
+]  
+description  = "Library for computing Cox deviance"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["Cox model"]
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Topic :: Scientific/Engineering"
+]
 dependencies = [
     "numpy>=1.7.1",
     "joblib",
     "scipy",
 ]
-description  = "Library for computing Cox deviance"
-readme = "README.md"
-requires-python = ">=3.9"
-keywords = []
-authors = [
-    {name = "Jonathan Taylor", email="jonathan.taylor@stanford.edu" },
-    {name = "Trevor Hastie", email="hastie@stanford.edu" },
-    {name = "Balasubramanian Narasimhan", email="naras@stanford.edu" }
-    ]  
 maintainers = [
     {name = "Jonathan Taylor", email="jonathan.taylor@stanford.edu" },
-    ]
-classifiers = ["Development Status :: 3 - Alpha",
-               "Environment :: Console",
-               "Intended Audience :: Science/Research",
-               "Operating System :: OS Independent",
-               "Programming Language :: Python",
-               "Topic :: Scientific/Engineering"
-	       ]
-license = { text = "BSD-3-Clause" }
-dynamic = ['version']
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "scipy",
+    "ninja",
+    "meson",
+    "meson-python",
+    "pybind11",
+    "rpy2",
+    "pandas"
+]
+doc = [
+    "myst-parser",
+    "jupyter-book",
+    "pandas",
+    "matplotlib",
+    "rpy2"
+]
 
 [build-system]
-requires = ["setuptools>=42",
-            "wheel",
-	    "pybind11",
-            "numpy>=1.7.1",
-            "versioneer"]
-build-backend = "setuptools.build_meta"
+requires = ["meson-python", "pybind11", "numpy>=1.7.1", "setuptools_scm", "ninja"]
+build-backend = "mesonpy"
 
-[tool.versioneer]
-VCS = "git"
-style = "pep440"
-versionfile_source = "coxdev/_version.py"
-versionfile_build = "coxdev/_version.py"
-tag_prefix = "v"
-parentdir_prefix = "coxdev-"
+[tool.setuptools_scm]
+# This will use the latest git tag for the version
 
-[tool.setuptools]
-license-files = []
+[tool.uv.extra-build-dependencies]
+coxdev = ["meson-python",
+          "pybind11",
+	  "setuptools_scm",
+	  "ninja"]
