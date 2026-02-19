@@ -37,7 +37,7 @@ jobs:
 
     - name: Install Python dependencies
       run: |
-        pip install -r requirements-dev.txt
+        pip install .[dev]
         pip install .
 
     - name: Install rpy2
