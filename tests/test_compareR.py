@@ -16,6 +16,10 @@ if has_rpy2:
 
     np_cv_rules = default_converter + numpy2ri.converter
 
+    rpy.r('''if (!require("glmnet", character.only = TRUE)) {
+  install.packages("glmnet")
+    }''')
+
     glmnetR = importr('glmnet')
     baseR = importr('base')
     survivalR = importr('survival')

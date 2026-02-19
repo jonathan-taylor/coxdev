@@ -33,13 +33,9 @@ jobs:
         r-version: '4.2'
         use-public-rspm: true
 
-    - name: Install R packages
-      uses: r-lib/actions/setup-r-dependencies@v2
-      with:
-        extra-packages: glmnet
-
     - name: Install Python dependencies
       run: |
+        Rscript -e "install.packages('glmnet', repos='http://cloud.r-project.org')"
         pip install .[test]
         pip install .
 
