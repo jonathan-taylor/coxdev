@@ -43,7 +43,8 @@ env EIGEN_LIBRARY_PATH=/path/to/eigen pip install .
 ### Development Installation
 
 ```bash
-pip install -e .
+pip install pybind11 meson-python ninja setuptools_scm
+pip install -e . --no-build-isolation
 ```
 
 ## Quick Start

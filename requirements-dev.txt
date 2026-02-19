@@ -1,3 +1,0 @@
-pytest
-rpy2
-pandas 
