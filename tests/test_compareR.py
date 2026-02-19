@@ -19,6 +19,8 @@ if has_rpy2:
     glmnetR = importr('glmnet')
     baseR = importr('base')
     survivalR = importr('survival')
+else:
+    raise ImportError('cannot find rpy2, tests cannot be run')
 
 import pytest
 from simulate import (simulate_df,

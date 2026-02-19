@@ -20,8 +20,7 @@ classifiers = [
     "Topic :: Scientific/Engineering"
 ]
 dependencies = [
-    "numpy>=1.7.1",
-    "joblib",
+    "numpy",
     "scipy",
 ]
 maintainers = [
@@ -29,6 +28,10 @@ maintainers = [
 ]
 
 [project.optional-dependencies]
+test = ['pytest',
+        'pandas',
+        "joblib",
+        'rpy2']
 dev = [
     "pytest",
     "scipy",
@@ -36,8 +39,7 @@ dev = [
     "meson",
     "meson-python",
     "pybind11",
-    "rpy2",
-    "pandas"
+    "setuptools_scm"
 ]
 doc = [
     "myst-parser",
@@ -54,8 +56,3 @@ build-backend = "mesonpy"
 [tool.setuptools_scm]
 # This will use the latest git tag for the version
 
-[tool.uv.extra-build-dependencies]
-coxdev = ["meson-python",
-          "pybind11",
-	  "setuptools_scm",
-	  "ninja"]

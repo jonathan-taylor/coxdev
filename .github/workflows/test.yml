@@ -1,6 +1,6 @@
 # Run all tests
 
-name: Full test suite (Linux)
+name: Run tests (Linux)
 
 # Controls when the workflow will run
 on:
@@ -10,7 +10,7 @@ on:
 jobs:
 
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       max-parallel: 5
 
@@ -37,13 +37,9 @@ jobs:
 
     - name: Install Python dependencies
       run: |
-        pip install .[dev]
+        pip install .[test]
         pip install .
-
-    - name: Install rpy2
-      run: |
-        pip install rpy2
 
     - name: Test pyglmnet
       run: |
-        pytest tests
+        pytest tests --test-size=100
