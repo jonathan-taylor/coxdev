@@ -36,7 +36,7 @@ jobs:
     - name: Install R packages
       uses: r-lib/actions/setup-r-dependencies@v2
       with:
-        packages: glmnet
+        extra-packages: glmnet
 
     - name: Install Python dependencies
       run: |
