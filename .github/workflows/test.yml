@@ -4,8 +4,10 @@ name: Run tests (Linux)
 
 # Controls when the workflow will run
 on:
-  workflow_dispatch:
-    inputs: null
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
 
