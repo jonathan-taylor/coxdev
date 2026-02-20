@@ -137,9 +137,9 @@ class CoxDeviance(object):
 
         (self._preproc,
          self._event_order,
-         self._start_order) = c_preprocess(start,
-                                           event,
-                                           status)
+         self._start_order) = c_preprocess(np.asarray(start, float),
+                                           np.asarray(event, float),
+                                           np.asarray(status, np.int32))
         self._event_order = self._event_order.astype(np.int32)
         self._start_order = self._start_order.astype(np.int32)
         
