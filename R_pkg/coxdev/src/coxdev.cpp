@@ -747,9 +747,9 @@ std::vector<int> lexsort(const Eigen::VectorXi & a,
  * elsewhere.
  */
 // [[Rcpp::export(.preprocess)]]
-PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
-			   const EIGEN_REF<Eigen::VectorXd> event,
-			   const EIGEN_REF<Eigen::VectorXi> status)
+PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
+			   const EIGEN_REF<const Eigen::VectorXd> event,
+			   const EIGEN_REF<const Eigen::VectorXi> status)
 {
   int nevent = status.size();
   Eigen::VectorXi ones = Eigen::VectorXi::Ones(nevent);
