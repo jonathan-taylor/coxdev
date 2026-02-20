@@ -5,6 +5,15 @@
 #include "../inst/include/coxdev.h"
 #endif
 
+#include <iostream>
+#ifdef PY_INTERFACE
+   #define DEBUG_PRINT(x) std::cout << x << std::endl
+#endif
+
+#ifdef R_INTERFACE
+   #define DEBUG_PRINT(x) Rcpp::Rcout << x << std::endl
+#endif
+
 //
 // Since we want this to be usable both in R and python, I will use int for indexing rather than
 // Eigen::Index. Later I will use a #define to emit appropriate code
@@ -313,7 +322,7 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
 	       const EIGEN_REF<Eigen::VectorXi> first,
 	       const EIGEN_REF<Eigen::VectorXi> last,
 	       const EIGEN_REF<Eigen::VectorXd> scaling,
-	       const EIGEN_REF<Eigen::VectorXd> nevent_cluster,
+	       const EIGEN_REF<Eigen::VectorXd> neffective_cluster,
 	       const EIGEN_REF<Eigen::VectorXi> event_map,
 	       const EIGEN_REF<Eigen::VectorXi> start_map,
 	       double loglik_sat,
@@ -474,7 +483,18 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
 
   // For us w_cumsum is forward_cumsum_buffers[0] which in C++ is forward_cumsum_buffers0
   for (int i = 0; i < w_avg_buffer.size(); ++i) {
-    w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (nevent_cluster(i) + 1 - first(i)));
+    if (neffective_cluster(i) > 0) {
+	w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (neffective_cluster(i)));
+      } else {
+      //      DEBUG_PRINT("here");
+      w_avg_buffer(i) = 0;
+    }  
+    // DEBUG_PRINT("diff cumsum is " << forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i)));
+    // DEBUG_PRINT("w_avg(" << i << ") is " << w_avg_buffer(i));
+    // DEBUG_PRINT("first(" << i << ") is " << first(i));
+    // DEBUG_PRINT("last(" << i << ") is " << last(i));
+    // DEBUG_PRINT("size is " << last(i) + 1 - first(i));
+    // DEBUG_PRINT("neffective_cluster is " << neffective_cluster(i));
   }
   // w_avg = w_avg_buffer # shorthand
   double loglik = ( w_event.array() * eta_event.array() * status.cast<double>().array() ).sum() -
@@ -748,10 +768,10 @@ std::vector<int> lexsort(const Eigen::VectorXi & a,
  * elsewhere.
  */
 // [[Rcpp::export(.preprocess)]]
-PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
-			   const EIGEN_REF<Eigen::VectorXd> event,
-			   const EIGEN_REF<Eigen::VectorXi> status,
-			   const EIGEN_REF<Eigen::VectorXd> weight)
+PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
+			   const EIGEN_REF<const Eigen::VectorXd> event,
+			   const EIGEN_REF<const Eigen::VectorXi> status,
+			   const EIGEN_REF<const Eigen::VectorXd> weight)
 {
   int nevent = status.size();
   Eigen::VectorXi ones = Eigen::VectorXi::Ones(nevent);
@@ -875,11 +895,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
     _status(i) = status(event_order(i));
   }
   
-  Eigen::VectorXd _weight(weight.size());
-  for (int i = 0; i < weight.size(); ++i) {
-    _weight(i) = weight(event_order(i));
-  }
-  
   // Eigen::VectorXi _first = first;
   
   Eigen::VectorXi _start_map(start_map.size());
@@ -919,7 +934,7 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
   }
 
   Eigen::VectorXd _scaling(nevent);
-  Eigen::VectorXd _nevent_cluster(nevent);
+  Eigen::VectorXd _neffective_cluster(nevent);
   // this counts number of events in the cluster (excludes weight ==0 cases)
   for (int i = 0; i < nevent; ) {
     int f = _first(i);
@@ -933,8 +948,9 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
     }
     double count = 0;
     for (int j = f; j <= l; ++j) {
-      _nevent_cluster(j) = K;
-      if (K > 0 && _weight(j) > 0) {
+      _neffective_cluster(j) = K;
+      double cur_weight = weight(event_order(j)); // this is j-th weight in event order
+      if (K > 0 && cur_weight > 0) {
         _scaling(j) = count / K;
         count += 1.0;
       } else {
@@ -960,7 +976,7 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
   preproc["first"] = _first;
   preproc["last"] = _last;
   preproc["scaling"] = _scaling;
-  preproc["nevent_cluster"] = _nevent_cluster; // These are the K's in main.tex
+  preproc["neffective_cluster"] = _neffective_cluster; // These are the K's in main.tex
   preproc["start_map"] = _start_map;
   preproc["event_map"] = _event_map;
   preproc["status"] = _status;
@@ -974,7 +990,7 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<Eigen::VectorXd> start,
 					  Rcpp::_["first"] = Rcpp::wrap(_first),
 					  Rcpp::_["last"] = Rcpp::wrap(_last),
 					  Rcpp::_["scaling"] = Rcpp::wrap(_scaling),
-					  Rcpp::_["nevent_cluster"] = Rcpp::wrap(_nevent_cluster),
+					  Rcpp::_["neffective_cluster"] = Rcpp::wrap(_neffective_cluster),
 					  Rcpp::_["start_map"] = Rcpp::wrap(_start_map),
 					  Rcpp::_["event_map"] = Rcpp::wrap(_event_map),
 					  Rcpp::_["status"] = Rcpp::wrap(_status)

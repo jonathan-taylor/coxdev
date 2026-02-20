@@ -123,7 +123,7 @@ def get_stratified_coxph(event,
         start = np.asarray(start)
     status = np.asarray(status)
     event = np.asarray(event)
-    strata = np.asarray(strata)
+    strata = np.asarray(strata).astype(np.int32)
 
     with np_cv_rules.context():
         rpy.r.assign('status', status)
@@ -415,7 +415,8 @@ def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
         np.zeros(50),   # 50 samples in stratum 0
         np.ones(80),    # 80 samples in stratum 1  
         np.full(70, 2)  # 70 samples in stratum 2
-    ])
+    ]).astype(int)
+    
     data['strata'] = strata
     
     # Use the rest of the generated data
