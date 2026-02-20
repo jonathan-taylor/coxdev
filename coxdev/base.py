@@ -151,6 +151,9 @@ class CoxDeviance(object):
         self._first = np.asarray(self._preproc['first']).astype(np.int32)
         self._last = np.asarray(self._preproc['last']).astype(np.int32)
         self._scaling = np.asarray(self._preproc['scaling'])
+        # this is used only to compute the w_avg buffer, probably
+        # can be done directly in C
+        self._nevent_cluster = np.asarray(self._preproc['nevent_cluster'])
         self._event_map = np.asarray(self._preproc['event_map']).astype(np.int32)
         self._start_map = np.asarray(self._preproc['start_map']).astype(np.int32)
         self._first_start = self._first[self._start_map]
@@ -228,6 +231,7 @@ class CoxDeviance(object):
                                 self._first,
                                 self._last,
                                 self._scaling,
+                                self._nevent_cluster,
                                 self._event_map,
                                 self._start_map,
                                 loglik_sat,
