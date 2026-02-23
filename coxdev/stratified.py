@@ -5,8 +5,7 @@ from scipy.sparse.linalg import LinearOperator
 from joblib import hash as _hash
 
 from .base import (CoxDevianceResult,
-                   CoxInformation,
-                   CoxDevianceResult)
+                   CoxInformation)
 from .coxc import c_preprocess, cox_dev as _cox_dev, compute_sat_loglik as _compute_sat_loglik
 
 @dataclass

@@ -48,6 +48,18 @@ public:
     const Eigen::VectorXd& get_sample_weight() const { return sample_weight; }
     double get_loglik_sat() const { return loglik_sat; }
 
+    // Getters for preprocessed data
+    const Eigen::VectorXi& get_event_order() const { return event_order; }
+    const Eigen::VectorXi& get_start_order() const { return start_order; }
+    const Eigen::VectorXi& get_first() const { return _first; }
+    const Eigen::VectorXi& get_last() const { return _last; }
+    const Eigen::VectorXi& get_start_map() const { return _start_map; }
+    const Eigen::VectorXi& get_event_map() const { return _event_map; }
+    const Eigen::VectorXd& get_scaling() const { return _scaling; }
+    const Eigen::VectorXi& get_status() const { return _status; }
+    const Eigen::VectorXd& get_event() const { return _event; }
+    const Eigen::VectorXd& get_start() const { return _start; }
+
 private:
     // Preprocessing results
     Eigen::VectorXd _start, _event, _scaling;

@@ -1163,6 +1163,16 @@ PYBIND11_MODULE(coxc, m) {
       .def_property_readonly("diag_hessian", &CoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)
       .def_property_readonly("linear_predictor", &CoxDeviance::get_linear_predictor, py::return_value_policy::reference_internal)
       .def_property_readonly("sample_weight", &CoxDeviance::get_sample_weight, py::return_value_policy::reference_internal)
-      .def_property_readonly("loglik_sat", &CoxDeviance::get_loglik_sat);
+      .def_property_readonly("loglik_sat", &CoxDeviance::get_loglik_sat)
+      .def_property_readonly("event_order", &CoxDeviance::get_event_order, py::return_value_policy::reference_internal)
+      .def_property_readonly("start_order", &CoxDeviance::get_start_order, py::return_value_policy::reference_internal)
+      .def_property_readonly("first", &CoxDeviance::get_first, py::return_value_policy::reference_internal)
+      .def_property_readonly("last", &CoxDeviance::get_last, py::return_value_policy::reference_internal)
+      .def_property_readonly("start_map", &CoxDeviance::get_start_map, py::return_value_policy::reference_internal)
+      .def_property_readonly("event_map", &CoxDeviance::get_event_map, py::return_value_policy::reference_internal)
+      .def_property_readonly("scaling", &CoxDeviance::get_scaling, py::return_value_policy::reference_internal)
+      .def_property_readonly("status", &CoxDeviance::get_status, py::return_value_policy::reference_internal)
+      .def_property_readonly("event", &CoxDeviance::get_event, py::return_value_policy::reference_internal)
+      .def_property_readonly("start", &CoxDeviance::get_start, py::return_value_policy::reference_internal);
 }
 #endif

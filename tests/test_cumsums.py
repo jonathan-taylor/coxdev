@@ -50,14 +50,14 @@ def test_rev_cumsum(tie_types,
         _reverse_cumsums(X, 
                          X_event,
                          X_start,
-                         cox._event_order.astype(np.int32),
-                         cox._start_order.astype(np.int32),
+                         cox.event_order.astype(np.int32),
+                         cox.start_order.astype(np.int32),
                          True,  ## do_event = True
                          True)  ## do_start = True
 
         tmp = X_event[cox._first] - X_start[cox._event_map]
         cumsum_diff = np.zeros_like(tmp)
-        cumsum_diff[cox._event_order] = tmp
+        cumsum_diff[cox.event_order] = tmp
 
         by_hand = []
         by_hand2 = []
@@ -97,9 +97,9 @@ def test_event_start_maps(tie_types,
         n = data.shape[0]
         cox(rng.standard_normal(n), np.ones(n))
 
-        _status = np.asarray(data['status'])[cox._event_order]
-        _event = np.asarray(data['event'])[cox._event_order]
-        _start = np.asarray(data['start'])[cox._event_order]        
+        _status = np.asarray(data['status'])[cox.event_order]
+        _event = np.asarray(data['event'])[cox.event_order]
+        _start = np.asarray(data['start'])[cox.event_order]        
 
         _start_check = []
         _event_check = []
@@ -113,8 +113,8 @@ def test_event_start_maps(tie_types,
             by_hand.append(X[data['event'] <= data['event'].iloc[k]].sum() -
                            X[data['event'] <= data['start'].iloc[k]].sum())
 
-        assert np.allclose(np.asarray(_event_check), cox._preproc['event_map'])
-        assert np.allclose(np.asarray(_start_check), cox._preproc['start_map'])
+        assert np.allclose(np.asarray(_event_check), cox._event_map)
+        assert np.allclose(np.asarray(_start_check), cox._start_map)
 
         _X = X[cox._event_order]
         _cumsumX = np.cumsum(np.hstack([0, _X]))

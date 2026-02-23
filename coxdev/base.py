@@ -18,10 +18,7 @@ __version__ = _version.get_versions()['version']
 import numpy as np
 from joblib import hash as _hash
 
-from .coxc import (cox_dev as _cox_dev,
-                   hessian_matvec as _hessian_matvec,
-                   compute_sat_loglik as _compute_sat_loglik,
-                   c_preprocess)
+from .coxc import CoxDeviance as _CoxDeviance
 
     
 @dataclass
@@ -127,17 +124,77 @@ class CoxDeviance(object):
         else:
             sample_weight = np.asarray(sample_weight).astype(float)
 
-        self._event = event
-        self._status = status
-        self._start = start
+        self._raw_event = event
+        self._raw_status = status
+        self._raw_start = start
         
-        from .coxc import CoxDeviance as _CoxDeviance
-        self._coxc = _CoxDeviance(self._start, 
-                                  self._event, 
-                                  self._status, 
+        self._coxc = _CoxDeviance(self._raw_start, 
+                                  self._raw_event, 
+                                  self._raw_status, 
                                   sample_weight, 
                                   self.tie_breaking == 'efron')
         self._weights_hash = _hash(sample_weight)
+
+    @property
+    def event_order(self):
+        return self._coxc.event_order
+        
+    @property
+    def start_order(self):
+        return self._coxc.start_order
+        
+    @property
+    def _first(self):
+        return self._coxc.first
+        
+    @property
+    def _last(self):
+        return self._coxc.last
+        
+    @property
+    def _start_map(self):
+        return self._coxc.start_map
+        
+    @property
+    def _event_map(self):
+        return self._coxc.event_map
+        
+    @property
+    def _scaling(self):
+        return self._coxc.scaling
+        
+    @property
+    def _status(self):
+        return self._coxc.status
+        
+    @property
+    def _event(self):
+        return self._coxc.event
+        
+    @property
+    def _start(self):
+        return self._coxc.start
+
+    @property
+    def _first_start(self):
+        return self._first[self._start_map]
+
+    @property
+    def _event_order(self):
+        return self.event_order
+
+    @property
+    def _preproc(self):
+        return {
+            'last': self._last,
+            'start_map': self._start_map,
+            'first': self._first,
+            'event_map': self._event_map,
+            'status': self._status,
+            'event': self._event,
+            'start': self._start,
+            'scaling': self._scaling
+        }
 
     def __call__(self,
                  linear_predictor,
@@ -154,10 +211,9 @@ class CoxDeviance(object):
             
         cur_weight_hash = _hash(sample_weight)
         if getattr(self, "_weights_hash", None) != cur_weight_hash:
-            from .coxc import CoxDeviance as _CoxDeviance
-            self._coxc = _CoxDeviance(self._start, 
-                                      self._event, 
-                                      self._status, 
+            self._coxc = _CoxDeviance(self._raw_start, 
+                                      self._raw_event, 
+                                      self._raw_status, 
                                       sample_weight, 
                                       self.tie_breaking == 'efron')
             self._weights_hash = cur_weight_hash
