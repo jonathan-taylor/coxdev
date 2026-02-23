@@ -30,6 +30,7 @@ jobs:
 
     - name: Install coxdev
       run: |
+        pip install --upgrade pip
         pip install meson-python ninja meson pybind11 setuptools_scm
         pip install ".[test]" 
 

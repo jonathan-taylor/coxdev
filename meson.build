@@ -23,6 +23,17 @@ endif
 eigen_inc = include_directories('eigen')
 coxdev_inc = include_directories('R_pkg/coxdev/inst/include')
 
+python_sources = [
+  'coxdev/__init__.py',
+  'coxdev/base.py',
+  'coxdev/stratified.py'
+]
+
+py.install_sources(
+  python_sources,
+  subdir: 'coxdev'
+)
+
 # Extension module
 py.extension_module('coxc',
   'R_pkg/coxdev/src/coxdev.cpp',
