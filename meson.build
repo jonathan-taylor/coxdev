@@ -18,12 +18,9 @@ if not pybind11_dep.found()
     pybind11_dep = declare_dependency(include_directories: include_directories(pybind11_incdir))
 endif
 
-
-
 python_sources = [
   'python/coxdev/__init__.py',
   'python/coxdev/base.py',
-  'python/coxdev/stratified.py'
 ]
 
 py.install_sources(

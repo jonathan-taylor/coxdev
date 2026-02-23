@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from coxdev import CoxDeviance, StratifiedCoxDeviance
+from coxdev import CoxDeviance, CoxDeviance
 
 try:
     import rpy2.robjects as rpy
@@ -307,7 +307,7 @@ def test_glmnet(tie_types,
 @pytest.mark.parametrize('have_start_times', [True, False])
 @pytest.mark.parametrize('n_strata', [2, 3, 5])
 def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
-    """Test StratifiedCoxDeviance against R's stratified coxph."""
+    """Test CoxDeviance against R's stratified coxph."""
     
     if not has_rpy2:
         pytest.skip("rpy2 not available")
@@ -320,8 +320,8 @@ def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
     else:
         start = None
     
-    # Create StratifiedCoxDeviance
-    stratdev = StratifiedCoxDeviance(
+    # Create CoxDeviance
+    stratdev = CoxDeviance(
         event=data['event'],
         start=start,
         status=data['status'],
@@ -366,7 +366,7 @@ def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
 @pytest.mark.parametrize('have_start_times', [True, False])
 def test_stratified_single_stratum(tie_breaking, have_start_times, tol=1e-10):
-    """Test that StratifiedCoxDeviance with single stratum matches CoxDeviance."""
+    """Test that CoxDeviance with single stratum matches CoxDeviance."""
     
     if not has_rpy2:
         pytest.skip("rpy2 not available")
@@ -387,7 +387,7 @@ def test_stratified_single_stratum(tie_breaking, have_start_times, tol=1e-10):
         tie_breaking=tie_breaking
     )
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'],
         start=start,
         status=data['status'],
@@ -409,7 +409,7 @@ def test_stratified_single_stratum(tie_breaking, have_start_times, tol=1e-10):
 
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
 def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
-    """Test StratifiedCoxDeviance with varying stratum sizes."""
+    """Test CoxDeviance with varying stratum sizes."""
     
     if not has_rpy2:
         pytest.skip("rpy2 not available")
@@ -436,8 +436,8 @@ def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
     beta = data['beta']
     weight = data['weight']
     
-    # Create StratifiedCoxDeviance
-    stratdev = StratifiedCoxDeviance(
+    # Create CoxDeviance
+    stratdev = CoxDeviance(
         event=event,
         start=start,
         status=status,
