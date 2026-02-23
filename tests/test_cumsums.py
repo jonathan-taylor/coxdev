@@ -7,7 +7,7 @@ from coxdev import CoxDeviance
 #from coxdev.base import _reverse_cumsums
 from coxdev.coxc import reverse_cumsums as _reverse_cumsums
 
-from simulate import (simulate_df, 
+from .simulate import (simulate_df, 
                       all_combos,
                       rng)
 
@@ -39,7 +39,9 @@ def test_rev_cumsum(tie_types,
                               start=None,
                               status=data['status'],
                               tie_breaking='efron')
-            
+        n = data.shape[0]
+        cox(rng.standard_normal(n), np.ones(n))
+                                
         X = rng.standard_normal(data.shape[0])
 
         X_event = np.zeros(X.shape[0]+1)
@@ -92,6 +94,8 @@ def test_event_start_maps(tie_types,
                           start=data['start'],
                           status=data['status'],
                           tie_breaking='efron')
+        n = data.shape[0]
+        cox(rng.standard_normal(n), np.ones(n))
 
         _status = np.asarray(data['status'])[cox._event_order]
         _event = np.asarray(data['event'])[cox._event_order]

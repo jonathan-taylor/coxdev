@@ -11,6 +11,13 @@ def sample_weights(size=1):
     W[size//3:size//2] += 1
     return W
 
+def sample_weights_zeros(size=1):
+    W = rng.poisson(2, size=size) + rng.uniform(size=size)
+    W[size//3] += 2.
+    W[size//3:size//2] += 1
+    W[rng.choice(size, size//5, replace=False)] = 0
+    return W
+
 def sample_times(size=1):
     W = rng.uniform(size=size) + 0.5
     W[size//3] += 2.

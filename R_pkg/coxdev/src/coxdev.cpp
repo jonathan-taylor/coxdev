@@ -4,6 +4,15 @@
 #ifdef R_INTERFACE
 #include "../inst/include/coxdev.h"
 #endif
+#include <cmath>
+#include <iostream>
+#ifdef PY_INTERFACE
+   #define DEBUG_PRINT(x) std::cout << x << std::endl
+#endif
+
+#ifdef R_INTERFACE
+   #define DEBUG_PRINT(x) Rcpp::Rcout << x << std::endl
+#endif
 
 //
 // Since we want this to be usable both in R and python, I will use int for indexing rather than
@@ -122,9 +131,9 @@ void forward_prework(const EIGEN_REF<Eigen::VectorXi> status,
 {
   // No checks on size compatibility yet.
   if (use_w_avg) {
-    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / risk_sums.array().pow(j);
+    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / risk_sums.array().pow(j).cwiseMax(1e-15);
   } else {
-    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / risk_sums.array().pow(j);    
+    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / risk_sums.array().pow(j).cwiseMax(1e-15);    
   }
   if (arg.size() > 0) {
     moment_buffer = moment_buffer.array() * arg.array();
@@ -155,7 +164,7 @@ double compute_sat_loglik(const EIGEN_REF<Eigen::VectorXi> first,
 
   for (int i = 0; i < first.size(); ++i) {
     int f = first(i); double s = sums(i);
-    if (s > 0 && f != prev_first) {
+    if ((s > 0 && f != prev_first) && (weight(event_order(i)) > 0)) {
       loglik_sat -= s * log(s);
     }
     prev_first = f;
@@ -473,11 +482,15 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
 
   // For us w_cumsum is forward_cumsum_buffers[0] which in C++ is forward_cumsum_buffers0
   for (int i = 0; i < w_avg_buffer.size(); ++i) {
-    w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (last(i) + 1 - first(i)));
+    if (status(i) == 1) {
+      w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (last(i) + 1 - first(i))); 
+      } else {
+      w_avg_buffer(i) = 0;
+    }  
   }
-  // w_avg = w_avg_buffer # shorthand
+
   double loglik = ( w_event.array() * eta_event.array() * status.cast<double>().array() ).sum() -
-		   ( risk_sums.array().log() * w_avg_buffer.array() * status.cast<double>().array() ).sum();
+    ( risk_sums.array().cwiseMax(1e-15).log() * w_avg_buffer.array() * status.cast<double>().array() ).sum();
     
   // forward cumsums for gradient and Hessian
   
@@ -677,7 +690,7 @@ HESSIAN_MATVEC_TYPE hessian_matvec(const EIGEN_REF<Eigen::VectorXd> arg, // # ar
   // # forward_scratch_buffer[:] = status * w_avg * E_arg / risk_sums
 
   // # one less step to compute from above representation
-  forward_scratch_buffer = ( status.cast<double>().array() * w_avg.array() * risk_sums_arg.array() ) / risk_sums.array().pow(2);
+  forward_scratch_buffer = ( status.cast<double>().array() * w_avg.array() * risk_sums_arg.array() ) / risk_sums.array().pow(2).cwiseMax(1e-15);
 
   if (have_start_times) {
     sum_over_events(event_order,
@@ -724,13 +737,16 @@ HESSIAN_MATVEC_TYPE hessian_matvec(const EIGEN_REF<Eigen::VectorXd> arg, // # ar
  * Equivalent of numpy.lexsort for our case where a is stacked_is_start, b is stacked_status_c,
  * and c is stacked event time.
  */
-std::vector<int> lexsort(const Eigen::VectorXi & a, 
-                         const Eigen::VectorXi & b, 
-                         const Eigen::VectorXd & c) {
+std::vector<int> lexsort(const Eigen::VectorXi & a,  // is_start
+                         const Eigen::VectorXd & b,  // weight
+			 const Eigen::VectorXi & c,  // status
+			 const Eigen::VectorXd & d)  // event
+{
   std::vector<int> idx(a.size());
   std::iota(idx.begin(), idx.end(), 0); // Fill idx with 0, 1, ..., a.size() - 1
   
   auto comparator = [&](int i, int j) {
+    if (d[i] != d[j]) return d[i] < d[j];
     if (c[i] != c[j]) return c[i] < c[j];
     if (b[i] != b[j]) return b[i] < b[j];
     return a[i] < a[j];
@@ -749,7 +765,8 @@ std::vector<int> lexsort(const Eigen::VectorXi & a,
 // [[Rcpp::export(.preprocess)]]
 PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
 			   const EIGEN_REF<const Eigen::VectorXd> event,
-			   const EIGEN_REF<const Eigen::VectorXi> status)
+			   const EIGEN_REF<const Eigen::VectorXi> status,
+			   const EIGEN_REF<const Eigen::VectorXd> weight)
 {
   int nevent = status.size();
   Eigen::VectorXi ones = Eigen::VectorXi::Ones(nevent);
@@ -768,29 +785,34 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   stacked_is_start.segment(0, nevent) = ones;
   stacked_is_start.segment(nevent, nevent) = zeros;
 
+  Eigen::VectorXd stacked_weight(nevent + nevent);
+  // Use negative weights to have 0s at the end of each cluster of identical event times
+  stacked_weight.segment(0, nevent) = -weight;      // Top half: Weights for Start times
+  stacked_weight.segment(nevent, nevent) = -weight;
+
   Eigen::VectorXi stacked_index(nevent + nevent);
   stacked_index.segment(0, nevent) = Eigen::VectorXi::LinSpaced(nevent, 0, nevent - 1);
   stacked_index.segment(nevent, nevent) =  Eigen::VectorXi::LinSpaced(nevent, 0, nevent - 1);
 
-  std::vector<int> sort_order = lexsort(stacked_is_start, stacked_status_c, stacked_time);
+  std::vector<int> sort_order = lexsort(stacked_is_start, stacked_weight, stacked_status_c, stacked_time);
   Eigen::VectorXi argsort = Eigen::Map<const Eigen::VectorXi>(sort_order.data(), sort_order.size());
 
   // Since they are all the same size, we can put them in one loop for efficiency!
   Eigen::VectorXd sorted_time(stacked_time.size()), sorted_status(stacked_status_c.size()),
-    sorted_is_start(stacked_is_start.size()), sorted_index(stacked_index.size());
+    sorted_is_start(stacked_is_start.size()), sorted_index(stacked_index.size()), sorted_weight(stacked_weight.size());
   for (int i = 0; i < sorted_time.size(); ++i) {
     int j = argsort(i);
     sorted_time(i) = stacked_time(j);
     sorted_status(i) = 1 - stacked_status_c(j);
     sorted_is_start(i) = stacked_is_start(j);
     sorted_index(i) = stacked_index(j);    
+    sorted_weight(i) = -stacked_weight(j);     // weights were negative
   }
 
   // do the joint sort
 
   int event_count = 0, start_count = 0;
   std::vector<int> event_order_vec, start_order_vec, start_map_vec, event_map_vec, first_vec;
-  // int which_event = -1
   int first_event = -1, num_successive_event = 1;
   double last_row_time;
   bool last_row_time_set = false;
@@ -800,26 +822,28 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
     int _status = sorted_status(i);
     int _is_start = sorted_is_start(i);
     int _index = sorted_index(i);
+    double _weight = sorted_weight(i);
     if (_is_start == 1) { //a start time
       start_order_vec.push_back(_index);
       start_map_vec.push_back(event_count);
       start_count++;
     } else { // an event / stop time
-      if (_status == 1) {
+      if (_status == 1)
+	{
 	// if it's an event and the time is same as last row 
 	// it is the same event
 	// else it's the next "which_event"
 	// CHANGED THE ORIGINAL COMPARISON time != last_row_time below to
 	// _time > last_row_time since time is sorted! 
-	if (last_row_time_set  && _time > last_row_time) {// # index of next `status==1` 
+	  if ((last_row_time_set  && _time > last_row_time) || (_weight == 0)) {// # index of next `status==1` 
 	  first_event += num_successive_event;
 	  num_successive_event = 1;
-	  // which_event++;
 	} else {
 	  num_successive_event++;
 	}
-	first_vec.push_back(first_event);
-      } else {
+	first_vec.push_back(first_event); // we're not at a new event yet
+      } 
+      else {
 	first_event += num_successive_event;
 	num_successive_event = 1;
 	first_vec.push_back(first_event); // # this event time was not an failure time
@@ -912,9 +936,13 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   }
 
   Eigen::VectorXd _scaling(nevent);
-  for (int i = 0; i < nevent; ++i) {
-    double fi = (double) _first(i);
-    _scaling(i) = ((double) i - fi) / ((double) _last(i) + 1.0 - fi);
+  for (int i = 0; i < nevent; ) {
+    int f = _first(i);
+    int l = _last(i);
+    for (int j = f; j <= l; ++j) {
+      _scaling(j) = (j - f) / (l + 1. - f);
+    }
+    i = l + 1;
   }
 
   // This is just a check
@@ -936,7 +964,7 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   preproc["start_map"] = _start_map;
   preproc["event_map"] = _event_map;
   preproc["status"] = _status;
-  
+
   return std::make_tuple(preproc, event_order, start_order);
 #endif
 #ifdef R_INTERFACE
