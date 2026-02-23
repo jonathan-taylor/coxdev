@@ -23,7 +23,7 @@ endif
 python_sources = [
   'python/coxdev/__init__.py',
   'python/coxdev/base.py',
-  'python/coxdev/stratified.py'
+#  'python/coxdev/stratified.py'
 ]
 
 py.install_sources(

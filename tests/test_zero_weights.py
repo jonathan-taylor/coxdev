@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from coxdev import CoxDeviance, StratifiedCoxDeviance
+from coxdev import CoxDeviance, CoxDeviance
 
 import pytest
 from .simulate import (simulate_df,

@@ -1,11 +1,10 @@
 """
-Tests for StratifiedCoxDeviance class.
+Tests for CoxDeviance class.
 """
 
 import numpy as np
 import pytest
-from .stratified import StratifiedCoxDevianceTest as StratCoxPy
-from coxdev.stratified import StratifiedCoxDeviance
+from .stratified import CoxDevianceTest as StratCoxPy
 from coxdev import CoxDeviance
 
 @pytest.fixture
@@ -47,12 +46,12 @@ def multi_stratum_data(survival_data):
 
 
 def test_stratified_single_stratum_agrees_with_coxdeviance(single_stratum_data):
-    """Test that StratifiedCoxDeviance agrees with CoxDeviance when there's only one stratum."""
+    """Test that CoxDeviance agrees with CoxDeviance when there's only one stratum."""
     data = single_stratum_data
     
     # No left truncation
     coxdev = CoxDeviance(event=data['event'], status=data['status'])
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -73,12 +72,12 @@ def test_stratified_single_stratum_agrees_with_coxdeviance(single_stratum_data):
 
 
 def test_stratified_single_stratum_with_truncation_agrees_with_coxdeviance(single_stratum_data):
-    """Test that StratifiedCoxDeviance agrees with CoxDeviance when there's only one stratum and left truncation."""
+    """Test that CoxDeviance agrees with CoxDeviance when there's only one stratum and left truncation."""
     data = single_stratum_data
     
     # With left truncation
     coxdev = CoxDeviance(event=data['event'], status=data['status'], start=data['start'])
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         start=data['start'],
@@ -103,7 +102,7 @@ def test_stratified_multi_stratum_deviance_is_sum_of_strata(multi_stratum_data):
     """Test that stratified deviance is the sum of individual stratum deviances."""
     data = multi_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -134,7 +133,7 @@ def test_stratified_multi_stratum_gradient_is_concatenated(multi_stratum_data):
     """Test that stratified gradient is correctly concatenated from individual strata."""
     data = multi_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -162,7 +161,7 @@ def test_stratified_multi_stratum_diag_hessian_is_concatenated(multi_stratum_dat
     """Test that stratified diagonal Hessian is correctly concatenated from individual strata."""
     data = multi_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -190,7 +189,7 @@ def test_stratified_information_matrix_is_block_diagonal(multi_stratum_data):
     """Test that the information matrix is block diagonal by stratum."""
     data = multi_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -219,11 +218,11 @@ def test_stratified_information_matrix_is_block_diagonal(multi_stratum_data):
 
 
 def test_stratified_different_tie_breaking_methods(single_stratum_data):
-    """Test that StratifiedCoxDeviance works with different tie-breaking methods."""
+    """Test that CoxDeviance works with different tie-breaking methods."""
     data = single_stratum_data
     
     for tie_breaking in ['efron', 'breslow']:
-        stratdev = StratifiedCoxDeviance(
+        stratdev = CoxDeviance(
             event=data['event'], 
             status=data['status'], 
             strata=data['strata'],
@@ -237,12 +236,12 @@ def test_stratified_different_tie_breaking_methods(single_stratum_data):
 
 
 def test_stratified_input_validation(survival_data):
-    """Test input validation for StratifiedCoxDeviance."""
+    """Test input validation for CoxDeviance."""
     data = survival_data
     
     # Test that strata must have the same length as other inputs
     with pytest.raises(ValueError):
-        StratifiedCoxDeviance(
+        CoxDeviance(
             event=data['event'], 
             status=data['status'], 
             strata=np.array([0, 1], dtype=np.int32)  # Wrong length
@@ -252,7 +251,7 @@ def test_stratified_input_validation(survival_data):
     strata_float = np.zeros(data['n'], dtype=np.float64)
     strata_float[0] = 1.3
     with pytest.raises(ValueError):
-        StratifiedCoxDeviance(
+        CoxDeviance(
             event=data['event'], 
             status=data['status'], 
             strata=strata_float
@@ -262,7 +261,7 @@ def test_stratified_input_validation(survival_data):
     status_float = np.zeros(data['n'], dtype=np.float64)
     status_float[0] = 1.2
     with pytest.raises(ValueError):
-        StratifiedCoxDeviance(
+        CoxDeviance(
             event=data['event'], 
             status=status_float,
             strata=np.zeros(data['n'], dtype=np.int32)
@@ -270,10 +269,10 @@ def test_stratified_input_validation(survival_data):
 
 
 def test_stratified_caching_behavior(single_stratum_data):
-    """Test that StratifiedCoxDeviance properly caches results."""
+    """Test that CoxDeviance properly caches results."""
     data = single_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -298,7 +297,7 @@ def test_stratified_smoke_3_strata(multi_stratum_data):
     data = multi_stratum_data
     
     # Test without left truncation
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -319,7 +318,7 @@ def test_stratified_smoke_3_strata(multi_stratum_data):
     assert len(info_v) == data['n']
     
     # Test with left truncation
-    stratdev_trunc = StratifiedCoxDeviance(
+    stratdev_trunc = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         start=data['start'],
@@ -339,7 +338,7 @@ def test_stratified_smoke_3_strata_unequal_sizes(multi_stratum_data):
     """Smoke test with 3 strata of unequal sizes."""
     data = multi_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -375,7 +374,7 @@ def test_stratified_smoke_3_strata_with_ties(multi_stratum_data):
     
     # Test both tie-breaking methods
     for tie_breaking in ['efron', 'breslow']:
-        stratdev = StratifiedCoxDeviance(
+        stratdev = CoxDeviance(
             event=event, 
             status=data['status'], 
             strata=data['strata'],
@@ -400,7 +399,7 @@ def test_stratified_smoke_3_strata_consistency(multi_stratum_data):
     """Smoke test to verify consistency across multiple calls."""
     data = multi_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -423,7 +422,7 @@ def test_stratified_smoke_3_strata_edge_cases(multi_stratum_data):
     """Smoke test with edge cases for 3 strata."""
     data = multi_stratum_data
     
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=data['event'], 
         status=data['status'], 
         strata=data['strata']
@@ -474,7 +473,7 @@ def test_coxdeviance_input_validation(survival_data):
 
 
 def test_stratified_manual_block_diagonal():
-    """Test that StratifiedCoxDeviance matches three CoxDeviance objects for 3 strata of sizes 15, 13, 23."""
+    """Test that CoxDeviance matches three CoxDeviance objects for 3 strata of sizes 15, 13, 23."""
     rng = np.random.default_rng(2024)
     sizes = [15, 13, 23]
     n = sum(sizes)
@@ -509,7 +508,7 @@ def test_stratified_manual_block_diagonal():
     res2 = cox2(eta[idx2], weight[idx2])
 
     # Stratified CoxDeviance
-    stratdev = StratifiedCoxDeviance(
+    stratdev = CoxDeviance(
         event=event, status=status, start=start, strata=strata
     )
     strat_res = stratdev(eta, weight)
@@ -566,7 +565,7 @@ def test_stratified_manual_block_diagonal():
 @pytest.mark.parametrize("use_weight", [True, False])
 @pytest.mark.parametrize("use_strata", [True, False])
 def test_coxdeviance2_matches_stratified_and_coxdeviance(tie_breaking, use_weight, use_strata):
-    """Test that CoxDeviance2 matches StratifiedCoxDeviance (and CoxDeviance if no strata) for random data, including information method and both with and without weights."""
+    """Test that CoxDeviance2 matches CoxDeviance (and CoxDeviance if no strata) for random data, including information method and both with and without weights."""
 
     rng = np.random.default_rng(2025)
     n = 40
@@ -590,10 +589,10 @@ def test_coxdeviance2_matches_stratified_and_coxdeviance(tie_breaking, use_weigh
     w = weight if use_weight else None
 
     if use_strata:
-        stratdev = StratifiedCoxDeviance(
+        stratdev = CoxDeviance(
             event=event, status=status, start=start, strata=strata, tie_breaking=tie_breaking,
         )
-        cox2 = StratifiedCoxDeviance(
+        cox2 = CoxDeviance(
             event=event, status=status, start=start, strata=strata, tie_breaking=tie_breaking,
         )
         res_strat = stratdev(eta, w)
@@ -609,10 +608,10 @@ def test_coxdeviance2_matches_stratified_and_coxdeviance(tie_breaking, use_weigh
         coxdev = CoxDeviance(
             event=event, status=status, start=start, tie_breaking=tie_breaking,
         )
-        stratdev = StratifiedCoxDeviance(
+        stratdev = CoxDeviance(
             event=event, status=status, start=start, strata=None, tie_breaking=tie_breaking,
         )
-        cox2 = StratifiedCoxDeviance(
+        cox2 = CoxDeviance(
             event=event, status=status, start=start, strata=None, tie_breaking=tie_breaking,
         )
         res_cox = coxdev(eta, w)

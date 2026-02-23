@@ -17,7 +17,7 @@ from coxdev.base import CoxDeviance, CoxDevianceResult, CoxInformation
 from joblib import hash as _hash
 
 @dataclass
-class StratifiedCoxDevianceTest(object):
+class CoxDevianceTest(object):
     """
     Stratified Cox Proportional Hazards Model Deviance Calculator.
     
@@ -71,7 +71,7 @@ class StratifiedCoxDevianceTest(object):
                       strata=None,
                       start=None):
         """
-        Initialize the StratifiedCoxDeviance object with survival data.
+        Initialize the CoxDeviance object with survival data.
         
         Parameters
         ----------
@@ -246,8 +246,8 @@ class StratifiedCoxInformationTest(LinearOperator):
     
     Parameters
     ----------
-    stratified_coxdev : StratifiedCoxDeviance
-        The StratifiedCoxDeviance object used for computations.
+    stratified_coxdev : CoxDeviance
+        The CoxDeviance object used for computations.
     result : CoxDevianceResult
         Result from the most recent deviance computation.
         
@@ -259,7 +259,7 @@ class StratifiedCoxInformationTest(LinearOperator):
         Data type of the matrix elements.
     """
 
-    stratified_coxdev: StratifiedCoxDevianceTest
+    stratified_coxdev: CoxDevianceTest
     result: CoxDevianceResult
 
     def __post_init__(self):

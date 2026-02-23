@@ -3,12 +3,11 @@ Cox Proportional Hazards Model Deviance Computation.
 
 This module provides efficient computation of Cox model deviance, gradients,
 and Hessian information matrices for survival analysis with support for
-different tie-breaking methods (Efron and Breslow).
+different tie-breaking methods (Efron and Breslow) and stratified models.
 """
 
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
-# for Hessian
 
 from scipy.sparse.linalg import LinearOperator
 
@@ -16,6 +15,7 @@ import numpy as np
 from joblib import hash as _hash
 
 from .coxc import CoxDeviance as _CoxDeviance
+from .coxc import StratifiedCoxDeviance as _StratifiedCoxDeviance
 
     
 @dataclass
@@ -57,7 +57,8 @@ class CoxDeviance(object):
     
     This class provides efficient computation of Cox model deviance, gradients,
     and Hessian information matrices. It supports both Efron and Breslow
-    tie-breaking methods and handles left-truncated survival data.
+    tie-breaking methods, handles left-truncated survival data, and supports
+    stratified models.
     
     Parameters
     ----------
@@ -65,6 +66,8 @@ class CoxDeviance(object):
         Event times (failure times) for each observation.
     status : np.ndarray
         Event indicators (1 for event occurred, 0 for censored).
+    strata : np.ndarray, optional
+        Stratum labels for each observation. If None, computes an unstratified model.
     start : np.ndarray, optional
         Start times for left-truncated data. If None, assumes no truncation.
     sample_weight : np.ndarray, optional
@@ -94,13 +97,15 @@ class CoxDeviance(object):
     
     event: InitVar[np.ndarray]
     status: InitVar[np.ndarray]
-    start: InitVar[np.ndarray]=None
-    sample_weight: InitVar[np.ndarray]=None
+    strata: InitVar[Optional[np.ndarray]] = None
+    start: InitVar[Optional[np.ndarray]] = None
+    sample_weight: InitVar[Optional[np.ndarray]] = None
     tie_breaking: Literal['efron', 'breslow'] = 'efron'
     
     def __post_init__(self,
                       event,
                       status,
+                      strata=None,
                       start=None,
                       sample_weight=None):
         """
@@ -122,16 +127,37 @@ class CoxDeviance(object):
         else:
             sample_weight = np.asarray(sample_weight).astype(float)
 
+        if strata is not None:
+            strata = np.asarray(strata)
+            if not np.issubdtype(strata.dtype, np.integer):
+                raise ValueError(f"strata must be integer type, got {strata.dtype}")
+            strata = np.asarray(strata, np.int32)
+
+        if strata is not None and ((status.shape != event.shape) or (strata.shape != event.shape) or (start.shape != event.shape)):
+            raise ValueError("status, event, start and strata must have same shape")
+
         self._raw_event = event
         self._raw_status = status
         self._raw_start = start
+        self._strata = strata
         
-        self._coxc = _CoxDeviance(self._raw_start, 
-                                  self._raw_event, 
-                                  self._raw_status, 
-                                  sample_weight, 
-                                  self.tie_breaking == 'efron')
+        self._reconstruct_coxc(sample_weight)
         self._weights_hash = _hash(sample_weight)
+
+    def _reconstruct_coxc(self, sample_weight):
+        if self._strata is None:
+            self._coxc = _CoxDeviance(self._raw_start, 
+                                      self._raw_event, 
+                                      self._raw_status, 
+                                      sample_weight, 
+                                      self.tie_breaking == 'efron')
+        else:
+            self._coxc = _StratifiedCoxDeviance(self._raw_start, 
+                                                self._raw_event, 
+                                                self._raw_status,
+                                                self._strata,
+                                                sample_weight, 
+                                                self.tie_breaking == 'efron')
 
     @property
     def event_order(self):
@@ -209,16 +235,12 @@ class CoxDeviance(object):
             
         cur_weight_hash = _hash(sample_weight)
         if getattr(self, "_weights_hash", None) != cur_weight_hash:
-            self._coxc = _CoxDeviance(self._raw_start, 
-                                      self._raw_event, 
-                                      self._raw_status, 
-                                      sample_weight, 
-                                      self.tie_breaking == 'efron')
+            self._reconstruct_coxc(sample_weight)
             self._weights_hash = cur_weight_hash
 
         cur_hash = _hash([linear_predictor, sample_weight])
 
-        if not hasattr(self, "_result") or self._result.__hash_args__ != cur_hash:
+        if not hasattr(self, "_result") or getattr(self._result, "__hash_args__", None) != cur_hash:
             deviance = self._coxc.compute_deviance(linear_predictor, sample_weight)
             
             # These are now references to internal Eigen buffers
@@ -264,15 +286,9 @@ class CoxInformation(LinearOperator):
         Compute matrix-vector product with the information matrix.
         """
         # arg is in native order
-        return self.coxdev._coxc.compute_hessian_matvec(np.asarray(arg).astype(float))
+        arg_arr = np.asarray(arg).reshape(-1).astype(float)
+        return self.coxdev._coxc.compute_hessian_matvec(arg_arr)
 
-    def _adjoint(self, arg):
-        """
-        Compute the adjoint (transpose) matrix-vector product.
-        """
-        return self._matvec(arg)
-
-    
     def _adjoint(self, arg):
         """
         Compute the adjoint (transpose) matrix-vector product.
@@ -291,5 +307,3 @@ class CoxInformation(LinearOperator):
         """
         # it is symmetric
         return self._matvec(arg)
-
-

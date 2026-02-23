@@ -8,13 +8,10 @@ Main Classes
 ------------
 CoxDeviance
     Standard Cox model deviance and information computation.
-StratifiedCoxDeviance
-    Stratified Cox model deviance and information computation.
 
 See Also
 --------
 coxdev.base : Core Cox model implementation.
-coxdev.stratified : Stratified Cox model implementation.
 """
 
 from importlib.metadata import version, PackageNotFoundError
@@ -30,5 +27,4 @@ except PackageNotFoundError:
         __version__ = "unknown"
 
 from .base import CoxDeviance
-from .stratified import StratifiedCoxDeviance
 
