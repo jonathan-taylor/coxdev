@@ -35,4 +35,6 @@ jobs:
 
     - name: Test coxdev
       run: |
+        mkdir empty_dir
+        cd empty_dir
         python -m pytest tests --test-size=100
