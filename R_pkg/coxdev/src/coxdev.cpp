@@ -812,8 +812,7 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   // do the joint sort
 
   int event_count = 0, start_count = 0;
-  std::vector<int> event_order_vec, start_order_vec, start_map_vec, event_map_vec, first_vec, cluster_vec;
-  int which_cluster = -1;
+  std::vector<int> event_order_vec, start_order_vec, start_map_vec, event_map_vec, first_vec;
   int first_event = -1, num_successive_event = 1;
   double last_row_time;
   bool last_row_time_set = false;
@@ -839,7 +838,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
 	  if ((last_row_time_set  && _time > last_row_time) || (_weight == 0)) {// # index of next `status==1` 
 	  first_event += num_successive_event;
 	  num_successive_event = 1;
-	  which_cluster++;
 	} else {
 	  num_successive_event++;
 	}
@@ -852,7 +850,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
       }
       event_map_vec.push_back(start_count);
       event_order_vec.push_back(_index);
-      cluster_vec.push_back(which_cluster);
       event_count++;
     }
     last_row_time = _time;
@@ -862,7 +859,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   // Except for start_order and event_order which are returned, we can probably not make copies
   // for others here.
   Eigen::VectorXi _first = Eigen::Map<Eigen::VectorXi>(first_vec.data(), first_vec.size());
-  Eigen::VectorXi _cluster = Eigen::Map<Eigen::VectorXi>(cluster_vec.data(), cluster_vec.size());
   Eigen::VectorXi start_order = Eigen::Map<Eigen::VectorXi>(start_order_vec.data(), start_order_vec.size());
   Eigen::VectorXi event_order = Eigen::Map<Eigen::VectorXi>(event_order_vec.data(), event_order_vec.size());
   Eigen::VectorXi start_map = Eigen::Map<Eigen::VectorXi>(start_map_vec.data(), start_map_vec.size());
@@ -940,7 +936,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   }
 
   Eigen::VectorXd _scaling(nevent);
-  // this counts number of events in the cluster (excludes weight ==0 cases)
   for (int i = 0; i < nevent; ) {
     int f = _first(i);
     int l = _last(i);
@@ -965,7 +960,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   preproc["event"] = _event;
   preproc["first"] = _first;
   preproc["last"] = _last;
-  preproc["cluster"] = _cluster;
   preproc["scaling"] = _scaling;
   preproc["start_map"] = _start_map;
   preproc["event_map"] = _event_map;
