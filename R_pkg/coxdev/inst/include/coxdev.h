@@ -1,31 +1,45 @@
-#ifdef DEBUG
-#include <iostream>
+#include <cstddef>
+#include <limits>
+#include <vector>
+#include <memory>
+#include <algorithm>
+#include <stdexcept>
+#include <Eigen/Dense>
+
+#ifdef PY_INTERFACE
+#include <pybind11/pybind11.h>
+#include <pybind11/eigen.h>
+namespace py = pybind11;
 #endif
 
+#ifdef R_INTERFACE
+#include <RcppEigen.h>
+#endif
+
+#define EIGEN_REF Eigen::Ref
 #define MAKE_MAP_Xd(y) Eigen::Map<Eigen::VectorXd>((y).data(), (y).size())
 #define MAKE_MAP_Xi(y) Eigen::Map<Eigen::VectorXi>((y).data(), (y).size())
 
-#ifdef PY_INTERFACE
-
-#include <cstddef>
-#include <limits>
-#include <pybind11/pybind11.h>
-#include <pybind11/eigen.h>
-#include <Eigen/Dense>
-
-// Map python buffers list element into an Eigen double vector
-// SRC_LIST = python list, OFFSET = index offset (e.g. 0 or 1),
-// DEST will be the ref downstream, TMP should be **unique** throwaway name with each invocation
-#define MAP_BUFFER_LIST(SRC_LIST, OFFSET, DEST, TMP)				\
-  py::array_t<double> TMP = SRC_LIST[OFFSET].cast<py::array_t<double>>();       \
-  Eigen::Map<Eigen::VectorXd> DEST(TMP.mutable_data(), TMP.size());
-
-namespace py = pybind11;
-#define EIGEN_REF Eigen::Ref
+#if defined(PY_INTERFACE)
 #define ERROR_MSG(x) throw std::runtime_error(x)
-#define BUFFER_LIST py::list & // List of vectors for scratch space
-#define HESSIAN_MATVEC_TYPE void
-#define PREPROCESS_TYPE std::tuple<py::dict, Eigen::VectorXi, Eigen::VectorXi> 
+#elif defined(R_INTERFACE)
+#define ERROR_MSG(x) Rcpp::stop(x)
+#else
+#define ERROR_MSG(x) throw std::runtime_error(x)
+#endif
+
+struct CoxContext {
+    Eigen::Ref<const Eigen::VectorXi> event_order;
+    Eigen::Ref<const Eigen::VectorXi> start_order;
+    Eigen::Ref<const Eigen::VectorXi> status;
+    Eigen::Ref<const Eigen::VectorXi> first;
+    Eigen::Ref<const Eigen::VectorXi> last;
+    Eigen::Ref<const Eigen::VectorXd> scaling;
+    Eigen::Ref<const Eigen::VectorXi> event_map;
+    Eigen::Ref<const Eigen::VectorXi> start_map;
+    bool have_start_times;
+    bool efron;
+};
 
 class CoxDeviance {
 public:
@@ -81,6 +95,10 @@ private:
     bool _efron;
 
     void setup_buffers(int n);
+
+    CoxContext get_context() const {
+        return {event_order, start_order, _status, _first, _last, _scaling, _event_map, _start_map, have_start_times, _efron};
+    }
 };
 
 class StratifiedCoxDeviance {
@@ -119,25 +137,3 @@ private:
     Eigen::VectorXd sample_weight;
     double loglik_sat;
 };
-
-#endif
-
-#ifdef R_INTERFACE
-
-#include <RcppEigen.h>
-
-// Map buffer list element into an Eigen double vector
-// SRC_LIST = R list, OFFSET = index offset (e.g. 0 or 1),
-// DEST will be the ref downstream, TMP should be **unique** throwaway name with each invocation
-#define MAP_BUFFER_LIST(SRC_LIST, OFFSET, DEST, TMP)				\
-  Rcpp::NumericVector TMP = Rcpp::as<Rcpp::NumericVector>(SRC_LIST[OFFSET]); \
-  Eigen::Map<Eigen::VectorXd> Rcpp::as<Eigen::Map<Eigen::VectorXd>>(TMP);
-
-using namespace Rcpp;
-#define EIGEN_REF Eigen::Map
-#define ERROR_MSG(x) Rcpp::stop(x)
-#define BUFFER_LIST Rcpp::List // List of vectors for scratch space.
-#define HESSIAN_MATVEC_TYPE SEXP
-#define PREPROCESS_TYPE Rcpp::List
-#endif
-
