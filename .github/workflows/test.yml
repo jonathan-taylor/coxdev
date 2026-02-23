@@ -38,7 +38,7 @@ jobs:
         Rscript -e "install.packages('glmnet', repos='http://cloud.r-project.org')"
         pip install .[test]
         pip install .[dev]
-	pip install .
+        pip install .
 
     - name: Test coxdev
       run: |
