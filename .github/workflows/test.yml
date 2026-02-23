@@ -30,6 +30,13 @@ jobs:
 
     - name: Install coxdev
       run: |
+        pip uninstall -y coxdev || true
+        pip uninstall -y coxdev || true
+    
+        # 2. Delete the directory in site-packages directly
+        # This is the only way to kill 'orphaned' files like _version.py
+        PYTHON_SITE=$(python -c "import site; print(site.getsitepackages()[0])")
+        rm -rf "$PYTHON_SITE/coxdev*"
         pip uninstall -y coxdev || true      
         pip install --upgrade pip
         pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas joblib
