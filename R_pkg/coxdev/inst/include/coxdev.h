@@ -8,6 +8,7 @@
 #ifdef PY_INTERFACE
 
 #include <cstddef>
+#include <limits>
 #include <pybind11/pybind11.h>
 #include <pybind11/eigen.h>
 #include <Eigen/Dense>
@@ -25,6 +26,51 @@ namespace py = pybind11;
 #define BUFFER_LIST py::list & // List of vectors for scratch space
 #define HESSIAN_MATVEC_TYPE void
 #define PREPROCESS_TYPE std::tuple<py::dict, Eigen::VectorXi, Eigen::VectorXi> 
+
+class CoxDeviance {
+public:
+    CoxDeviance(const Eigen::VectorXd& start,
+                const Eigen::VectorXd& event,
+                const Eigen::VectorXi& status,
+                const Eigen::VectorXd& weight,
+                bool efron);
+
+    double compute_deviance(const Eigen::VectorXd& eta,
+                            const Eigen::VectorXd& sample_weight);
+
+    void compute_hessian_matvec(const Eigen::VectorXd& arg,
+                                Eigen::VectorXd& out);
+
+    // Getters for buffers (for result construction or debugging)
+    const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
+    const Eigen::VectorXd& get_diag_hessian() const { return diag_hessian_buffer; }
+    const Eigen::VectorXd& get_linear_predictor() const { return linear_predictor; }
+    const Eigen::VectorXd& get_sample_weight() const { return sample_weight; }
+    double get_loglik_sat() const { return loglik_sat; }
+
+private:
+    // Preprocessing results
+    Eigen::VectorXd _start, _event, _scaling;
+    Eigen::VectorXi _status, _first, _last, _start_map, _event_map;
+    Eigen::VectorXi event_order, start_order;
+    
+    // Buffers
+    Eigen::VectorXd T_1_term, T_2_term, forward_scratch_buffer, w_avg_buffer, exp_w_buffer;
+    Eigen::VectorXd grad_buffer, diag_hessian_buffer, diag_part_buffer, hess_matvec_buffer;
+    Eigen::VectorXd linear_predictor, sample_weight;
+    
+    std::vector<Eigen::VectorXd> event_reorder_buffers;
+    std::vector<Eigen::VectorXd> forward_cumsum_buffers;
+    std::vector<Eigen::VectorXd> reverse_cumsum_buffers;
+    std::vector<Eigen::VectorXd> risk_sum_buffers;
+
+    double loglik_sat;
+    bool have_start_times;
+    bool _efron;
+
+    void setup_buffers(int n);
+};
+
 #endif
 
 #ifdef R_INTERFACE

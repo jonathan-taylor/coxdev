@@ -84,10 +84,6 @@ class CoxDeviance(object):
     ----------
     tie_breaking : str
         The tie-breaking method being used.
-    _have_start_times : bool
-        Whether start times are provided.
-    _efron : bool
-        Whether Efron's method is being used for tie-breaking.
 
     Examples
     --------
@@ -105,129 +101,79 @@ class CoxDeviance(object):
     event: InitVar[np.ndarray]
     status: InitVar[np.ndarray]
     start: InitVar[np.ndarray]=None
+    sample_weight: InitVar[np.ndarray]=None
     tie_breaking: Literal['efron', 'breslow'] = 'efron'
     
     def __post_init__(self,
                       event,
                       status,
-                      start=None):
+                      start=None,
+                      sample_weight=None):
         """
         Initialize the CoxDeviance object with survival data.
-        
-        Parameters
-        ----------
-        event : np.ndarray
-            Event times for each observation.
-        status : np.ndarray
-            Event indicators (1 for event, 0 for censored).
-        start : np.ndarray, optional
-            Start times for left-truncated data.
         """
         event = np.asarray(event).astype(float)
-
-        status = np.asarray(status)
-        if not set(np.unique(status)).issubset(set([0,1])):
+        status = np.asarray(status).astype(np.int32)
+        if not set(np.unique(status)).issubset({0, 1}):
             raise ValueError('status must be binary')
-        self._status = status.astype(np.int32)
-        self._event = event
-        nevent = event.shape[0]
-
+            
         if start is None:
-            start = -np.ones(nevent) * np.inf
-            self._have_start_times = False
+            start = -np.ones_like(event) * np.inf
         else:
-            start = np.asarray(start, float)
-            self._have_start_times = True
+            start = np.asarray(start).astype(float)
+            
+        if sample_weight is None:
+            sample_weight = np.ones_like(event).astype(float)
+        else:
+            sample_weight = np.asarray(sample_weight).astype(float)
 
+        self._event = event
+        self._status = status
         self._start = start
-       
+        
+        from .coxc import CoxDeviance as _CoxDeviance
+        self._coxc = _CoxDeviance(self._start, 
+                                  self._event, 
+                                  self._status, 
+                                  sample_weight, 
+                                  self.tie_breaking == 'efron')
+        self._weights_hash = _hash(sample_weight)
 
     def __call__(self,
                  linear_predictor,
                  sample_weight=None):
         """
         Compute Cox model deviance and related quantities.
-        
-        Parameters
-        ----------
-        linear_predictor : np.ndarray
-            Linear predictor values (X @ beta).
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, uses equal weights.
-            
-        Returns
-        -------
-        CoxDevianceResult
-            Object containing deviance, gradient, and Hessian diagonal.
         """
         if sample_weight is None:
-            sample_weight = np.ones(linear_predictor.shape, float)
+            sample_weight = np.ones_like(linear_predictor, float)
         else:
-            sample_weight = np.asarray(sample_weight)
+            sample_weight = np.asarray(sample_weight).astype(float)
 
-        linear_predictor = np.asarray(linear_predictor)
+        linear_predictor = np.asarray(linear_predictor).astype(float)
             
-        cur_hash = _hash(sample_weight)
-        if hasattr(self, "_weights_hash"):
-            if self._weights_hash != cur_hash:
-                self._setup_post_weights(sample_weight)
-                self._weights_hash = cur_hash
-        else:
-            self._setup_post_weights(sample_weight)
-            self._weights_hash = cur_hash
+        cur_weight_hash = _hash(sample_weight)
+        if getattr(self, "_weights_hash", None) != cur_weight_hash:
+            from .coxc import CoxDeviance as _CoxDeviance
+            self._coxc = _CoxDeviance(self._start, 
+                                      self._event, 
+                                      self._status, 
+                                      sample_weight, 
+                                      self.tie_breaking == 'efron')
+            self._weights_hash = cur_weight_hash
 
         cur_hash = _hash([linear_predictor, sample_weight])
 
         if not hasattr(self, "_result") or self._result.__hash_args__ != cur_hash:
-
-            loglik_sat = _compute_sat_loglik(self._first,
-                                             self._last,
-                                             sample_weight, # in natural order
-                                             self._event_order,
-                                             self._status,
-                                             self._forward_cumsum_buffers[0])
+            deviance = self._coxc.compute_deviance(linear_predictor, sample_weight)
             
-            eta = np.asarray(linear_predictor)
-            sample_weight = np.asarray(sample_weight)
-            eta = eta - eta.mean()
-            self._exp_w_buffer[:] = sample_weight * np.exp(np.clip(eta, -np.inf, 30))
-
-            deviance = _cox_dev(eta,
-                                sample_weight,
-                                self._exp_w_buffer,
-                                self._event_order,
-                                self._start_order,
-                                self._status,
-                                self._first,
-                                self._last,
-                                self._scaling,
-                                self._event_map,
-                                self._start_map,
-                                loglik_sat,
-                                self._T_1_term,
-                                self._T_2_term,
-                                self._grad_buffer,
-                                self._diag_hessian_buffer,
-                                self._diag_part_buffer,
-                                self._w_avg_buffer,
-                                self._event_reorder_buffers,
-                                self._risk_sum_buffers, #[0] is for coxdev, [1] is for hessian...
-                                self._forward_cumsum_buffers,
-                                self._forward_scratch_buffer,
-                                self._reverse_cumsum_buffers, #[0:2] are for risk sums, [2:4] used for hessian risk*arg sums
-                                self._have_start_times,
-                                self._efron)
-                                
-            # shorthand, for reference in hessian_matvec
-            self._event_cumsum = self._reverse_cumsum_buffers[0]
-            self._start_cumsum = self._reverse_cumsum_buffers[1]
-
-            self._result = CoxDevianceResult(linear_predictor=linear_predictor,
-                                             sample_weight=sample_weight,
-                                             loglik_sat=loglik_sat,
+            # These are now references to internal Eigen buffers
+            self._result = CoxDevianceResult(linear_predictor=self._coxc.linear_predictor,
+                                             sample_weight=self._coxc.sample_weight,
+                                             loglik_sat=self._coxc.loglik_sat,
                                              deviance=deviance,
-                                             gradient=self._grad_buffer.copy(),
-                                             diag_hessian=self._diag_hessian_buffer.copy(),
+                                             gradient=self._coxc.gradient.copy(),
+                                             diag_hessian=self._coxc.diag_hessian.copy(),
                                              __hash_args__=cur_hash)
             
         return self._result
@@ -237,100 +183,17 @@ class CoxDeviance(object):
                     sample_weight=None):
         """
         Compute the information matrix (negative Hessian) as a linear operator.
-        
-        Parameters
-        ----------
-        linear_predictor : np.ndarray
-            Linear predictor values (X @ beta).
-        sample_weight : np.ndarray, optional
-            Sample weights. If None, uses equal weights.
-            
-        Returns
-        -------
-        CoxInformation
-            Linear operator representing the information matrix.
         """
         result = self(linear_predictor,
                       sample_weight)
         return CoxInformation(result=result,
                               coxdev=self)
 
-    def _setup_post_weights(self, sample_weight):
-        """
-        Once weights are set, we can compute all of the necessary structures
-        to compute partial likelihood and its derivatives.
-        """
-
-        (self._preproc,
-         self._event_order,
-         self._start_order) = c_preprocess(self._start,
-                                           self._event,
-                                           self._status,
-                                           np.asarray(sample_weight, float))
-        
-        self._event_order = self._event_order.astype(np.int32)
-        self._start_order = self._start_order.astype(np.int32)
-        
-        self._efron = self.tie_breaking == 'efron' and np.linalg.norm(self._preproc['scaling']) > 0
-
-        self._status = np.asarray(self._preproc['status'])
-        self._event = np.asarray(self._preproc['event'])
-        self._start = np.asarray(self._preproc['start'])
-        self._first = np.asarray(self._preproc['first']).astype(np.int32)
-        self._last = np.asarray(self._preproc['last']).astype(np.int32)
-        self._scaling = np.asarray(self._preproc['scaling'])
-
-        # this is used only to compute the w_avg buffer, probably
-        # can be done directly in C
-
-        self._event_map = np.asarray(self._preproc['event_map']).astype(np.int32)
-        self._start_map = np.asarray(self._preproc['start_map']).astype(np.int32)
-        self._first_start = self._first[self._start_map]
-        
-        if not np.all(self._first_start == self._start_map):
-            raise ValueError('first_start disagrees with start_map')
-
-        n = self._status.shape[0]
-
-        # allocate necessary memory
-        
-        self._T_1_term = np.zeros(n)
-        self._T_2_term = np.zeros(n)
-        self._event_reorder_buffers = [np.zeros(n) for i in range(3)]
-        self._forward_cumsum_buffers = [np.zeros(n+1) for i in range(5)]
-        self._forward_scratch_buffer = np.zeros(n)
-        self._reverse_cumsum_buffers = [np.zeros(n+1) for i in range(4)]
-        self._risk_sum_buffers = [np.zeros(n) for i in range(2)]
-        self._hess_matvec_buffer = np.zeros(n)
-        self._grad_buffer = np.zeros(n)
-        self._diag_hessian_buffer = np.zeros(n)
-        self._diag_part_buffer = np.zeros(n)
-        self._w_avg_buffer = np.zeros(n)
-        self._exp_w_buffer = np.zeros(n)
-
 
 @dataclass
 class CoxInformation(LinearOperator):
     """
     Linear operator representing the Cox model information matrix.
-    
-    This class provides matrix-vector multiplication with the information
-    matrix (negative Hessian) of the Cox model, allowing efficient computation
-    without explicitly forming the full matrix.
-    
-    Parameters
-    ----------
-    coxdev : CoxDeviance
-        The CoxDeviance object used for computations.
-    result : CoxDevianceResult
-        Result from the most recent deviance computation.
-        
-    Attributes
-    ----------
-    shape : tuple
-        Shape of the information matrix (n, n).
-    dtype : type
-        Data type of the matrix elements.
     """
 
     coxdev: CoxDeviance
@@ -338,59 +201,22 @@ class CoxInformation(LinearOperator):
 
     def __post_init__(self):
         """Initialize the linear operator dimensions."""
-        n = self.coxdev._status.shape[0]
+        n = self.result.linear_predictor.shape[0]
         self.shape = (n, n)
         self.dtype = float
         
     def _matvec(self, arg):
         """
         Compute matrix-vector product with the information matrix.
-        
-        Parameters
-        ----------
-        arg : np.ndarray
-            Vector to multiply with the information matrix.
-            
-        Returns
-        -------
-        np.ndarray
-            Result of the matrix-vector multiplication.
         """
-        # this will compute risk sums if not already computed
-        # at this linear_predictor and sample_weight
-        
-        result = self.result
-        coxdev = self.coxdev
+        # arg is in native order
+        return self.coxdev._coxc.compute_hessian_matvec(np.asarray(arg).astype(float))
 
-        # negative will give 2nd derivative of negative
-        # loglikelihood
-
-        _hessian_matvec(-np.asarray(arg).reshape(-1),
-                        np.asarray(result.linear_predictor),
-                        np.asarray(result.sample_weight),
-                        coxdev._risk_sum_buffers[0],
-                        coxdev._diag_part_buffer,
-                        coxdev._w_avg_buffer,
-                        coxdev._exp_w_buffer,
-                        coxdev._event_cumsum,
-                        coxdev._start_cumsum,
-                        coxdev._event_order,
-                        coxdev._start_order,
-                        coxdev._status,
-                        coxdev._first,
-                        coxdev._last,
-                        coxdev._scaling,
-                        coxdev._event_map,
-                        coxdev._start_map,
-                        coxdev._risk_sum_buffers,
-                        coxdev._forward_cumsum_buffers,
-                        coxdev._forward_scratch_buffer,
-                        coxdev._reverse_cumsum_buffers,
-                        coxdev._hess_matvec_buffer,
-                        coxdev._have_start_times,                        
-                        coxdev._efron)
-
-        return coxdev._hess_matvec_buffer.copy()
+    def _adjoint(self, arg):
+        """
+        Compute the adjoint (transpose) matrix-vector product.
+        """
+        return self._matvec(arg)
 
     
     def _adjoint(self, arg):
