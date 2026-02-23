@@ -20,11 +20,13 @@ if has_rpy2:
   install.packages("glmnet")
     }''')
 
-    glmnetR = importr('glmnet')
+    try:
+        glmnetR = importr('glmnet')
+        has_glmnet = True
+    except: 
+        has_glmnet = False
     baseR = importr('base')
     survivalR = importr('survival')
-else:
-    raise ImportError('cannot find rpy2, tests cannot be run')
 
 import pytest
 from .simulate import (simulate_df,
@@ -184,6 +186,7 @@ def create_stratified_data(n_samples=100, n_strata=3):
     }
 
 
+@pytest.mark.skipif(not has_rpy2, reason='rpy2 not available')
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
 @pytest.mark.parametrize('sample_weight', [np.ones, sample_weights, sample_weights_zeros])
@@ -257,6 +260,7 @@ def test_simple(nrep=5,
                tol=1e-10)
     
 
+@pytest.mark.skipif(not has_glmnet, reason='glmnet not available')
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('sample_weight', [np.ones, sample_weights])
 @pytest.mark.parametrize('have_start_times', [True, False])

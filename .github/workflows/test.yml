@@ -27,18 +27,11 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Set up R
-      uses: r-lib/actions/setup-r@v2
-      with:
-        r-version: '4.2'
-        use-public-rspm: true
-
-    - name: Install R test dependencies
+    - name: Install coxdev
       run: |
-        Rscript -e "install.packages('glmnet', repos='http://cloud.r-project.org')"
-        pip install .[test]
         pip install .[dev]
-        pip install .
+        pip install .[test]
+        pip install -e . --no-build-isolation
 
     - name: Test coxdev
       run: |
