@@ -201,7 +201,6 @@ class CoxDeviance(object):
                                 self._first,
                                 self._last,
                                 self._scaling,
-                                self._neffective_cluster,
                                 self._event_map,
                                 self._start_map,
                                 loglik_sat,
@@ -269,12 +268,6 @@ class CoxDeviance(object):
                                            self._status,
                                            np.asarray(sample_weight, float))
         
-        W = sample_weight[self._event_order]
-        A = self._preproc['neffective_cluster'] * (W > 0)
-        B = (self._preproc['last'] + 1 - self._preproc['first']) * (W > 0)
-        if not np.all(self._preproc['status'] * A == self._preproc['status'] * B):
-            raise ValueError('cluster size wrong!')
-
         self._event_order = self._event_order.astype(np.int32)
         self._start_order = self._start_order.astype(np.int32)
         
@@ -289,7 +282,7 @@ class CoxDeviance(object):
 
         # this is used only to compute the w_avg buffer, probably
         # can be done directly in C
-        self._neffective_cluster = np.asarray(self._preproc['neffective_cluster'])
+
         self._event_map = np.asarray(self._preproc['event_map']).astype(np.int32)
         self._start_map = np.asarray(self._preproc['start_map']).astype(np.int32)
         self._first_start = self._first[self._start_map]

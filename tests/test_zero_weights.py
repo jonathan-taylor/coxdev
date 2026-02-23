@@ -43,7 +43,7 @@ def test_zero_weights(tie_types,
                       tie_breaking,
                       sample_weight,
                       have_start_times,
-                      nrep=2,
+                      nrep=5,
                       size=10,
                       tol=1e-10):
 
@@ -89,8 +89,8 @@ def test_zero_weights(tie_types,
     H0 = H0 @ np.eye(H0.shape[0])
     
     keep = np.nonzero(keep)[0]
-    G0 = C0.gradient # [~mask]
-    G1 = C.gradient[keep] # [~mask]
+    G0 = C0.gradient
+    G1 = C.gradient[keep]
     G0 = G0[np.fabs(G0) > 1e-12]
     G1 = G1[np.fabs(G1) > 1e-12]
     assert np.allclose(G0, G1)

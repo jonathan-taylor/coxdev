@@ -108,7 +108,6 @@ class StratifiedCoxDeviance:
         self._first = []
         self._last = []
         self._scaling = []
-        self._neffective_cluster = []
         self._event_map = []
         self._start_map = []
         self._first_start = []
@@ -145,7 +144,6 @@ class StratifiedCoxDeviance:
             self._first.append(np.asarray(preproc['first']).astype(np.int32))
             self._last.append(np.asarray(preproc['last']).astype(np.int32))
             self._scaling.append(np.asarray(preproc['scaling']))
-            self._neffective_cluster.append(np.asarray(preproc['neffective_cluster']))
             self._event_map.append(np.asarray(preproc['event_map']).astype(np.int32))
             self._start_map.append(np.asarray(preproc['start_map']).astype(np.int32))
             self._first_start.append(self._first[-1][self._start_map[-1]])
@@ -245,7 +243,6 @@ class StratifiedCoxDeviance:
                     self._first[i],
                     self._last[i],
                     self._scaling[i],
-                    self._neffective_cluster[i],
                     self._event_map[i],
                     self._start_map[i],
                     loglik_sat_i,

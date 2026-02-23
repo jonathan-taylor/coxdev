@@ -322,7 +322,6 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
 	       const EIGEN_REF<Eigen::VectorXi> first,
 	       const EIGEN_REF<Eigen::VectorXi> last,
 	       const EIGEN_REF<Eigen::VectorXd> scaling,
-	       const EIGEN_REF<Eigen::VectorXd> neffective_cluster,
 	       const EIGEN_REF<Eigen::VectorXi> event_map,
 	       const EIGEN_REF<Eigen::VectorXi> start_map,
 	       double loglik_sat,
@@ -483,8 +482,8 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
 
   // For us w_cumsum is forward_cumsum_buffers[0] which in C++ is forward_cumsum_buffers0
   for (int i = 0; i < w_avg_buffer.size(); ++i) {
-    if (neffective_cluster(i) > 0) {
-	w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (neffective_cluster(i)));
+    if (status(i) == 1) {
+      w_avg_buffer(i) = (forward_cumsum_buffers0(last(i) + 1) - forward_cumsum_buffers0(first(i))) / ((double) (last(i) + 1 - first(i))); 
       } else {
       w_avg_buffer(i) = 0;
     }  
@@ -941,28 +940,12 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   }
 
   Eigen::VectorXd _scaling(nevent);
-  Eigen::VectorXd _neffective_cluster(nevent);
   // this counts number of events in the cluster (excludes weight ==0 cases)
   for (int i = 0; i < nevent; ) {
     int f = _first(i);
     int l = _last(i);
-    double K = 0;
     for (int j = f; j <= l; ++j) {
-      double cur_weight = weight(event_order(j)); // this is j-th weight in event order
-      if (cur_weight > 0) {
-        K += 1.0;
-      }
-    }
-    double count = 0;
-    for (int j = f; j <= l; ++j) {
-      _neffective_cluster(j) = K;
-      double cur_weight = weight(event_order(j)); // this is j-th weight in event order
-      if (K > 0 && cur_weight > 0) {
-        _scaling(j) = count / K;
-        count += 1.0;
-      } else {
-        _scaling(j) = 0.0;
-      }
+      _scaling(j) = (j - f) / (l + 1. - f);
     }
     i = l + 1;
   }
@@ -984,7 +967,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
   preproc["last"] = _last;
   preproc["cluster"] = _cluster;
   preproc["scaling"] = _scaling;
-  preproc["neffective_cluster"] = _neffective_cluster; // These are the K's in main.tex
   preproc["start_map"] = _start_map;
   preproc["event_map"] = _event_map;
   preproc["status"] = _status;
@@ -998,7 +980,6 @@ PREPROCESS_TYPE preprocess(const EIGEN_REF<const Eigen::VectorXd> start,
 					  Rcpp::_["first"] = Rcpp::wrap(_first),
 					  Rcpp::_["last"] = Rcpp::wrap(_last),
 					  Rcpp::_["scaling"] = Rcpp::wrap(_scaling),
-					  Rcpp::_["neffective_cluster"] = Rcpp::wrap(_neffective_cluster),
 					  Rcpp::_["start_map"] = Rcpp::wrap(_start_map),
 					  Rcpp::_["event_map"] = Rcpp::wrap(_event_map),
 					  Rcpp::_["status"] = Rcpp::wrap(_status)
