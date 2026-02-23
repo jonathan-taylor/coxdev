@@ -1,6 +1,6 @@
 # coxdev
 
-A high-performance Python library for computing Cox proportional hazards model deviance, gradients, and Hessian information matrices. Built with C++ and Eigen for optimal performance, this library provides efficient survival analysis computations with support for different tie-breaking methods.
+A high-performance C++ for computing Cox proportional hazards model deviance, gradients, and Hessian information matrices. Built with Eigen for ease of use in R and Python, this library provides efficient survival analysis computations with support for different tie-breaking methods.
 
 ## Features
 
@@ -22,10 +22,6 @@ This package requires the Eigen C++ library headers. The Eigen library is includ
    git submodule update --init --recursive
    ```
 
-2. **Check Eigen availability**: Run the check script to verify Eigen headers are available:
-   ```bash
-   python check_eigen.py
-   ```
 
 ### Standard Installation
 
@@ -43,7 +39,7 @@ env EIGEN_LIBRARY_PATH=/path/to/eigen pip install .
 ### Development Installation
 
 ```bash
-pip install pybind11 meson-python ninja setuptools_scm
+pip install .[dev]
 pip install -e . --no-build-isolation
 ```
 
@@ -159,44 +155,16 @@ The library is optimized for performance:
 
 ### Prerequisites
 
-- Python 3.9+
 - C++ compiler with C++17 support
 - Eigen library headers
-- pybind11
+- For Python library: Python >= 3.9 + pybind11
 
-### Build Steps
-
-1. Clone the repository with submodules:
-   ```bash
-   git clone --recursive https://github.com/jonathan-taylor/coxdev.git
-   cd coxdev
-   ```
-
-2. Install build dependencies:
-   ```bash
-   pip install build wheel setuptools pybind11 numpy
-   ```
-
-3. Build the package:
-   ```bash
-   python -m build
-   ```
-
-### Building Wheels
-
-For wheel building:
-```bash
-# Standard wheel build
-python -m build
-
-# With custom Eigen path
-env EIGEN_LIBRARY_PATH=/path/to/eigen python -m build
-```
 
 ## Testing
 
 Run the test suite:
 ```bash
+pip install .[test]
 python -m pytest tests/
 ```
 
