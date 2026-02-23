@@ -30,8 +30,7 @@ maintainers = [
 [project.optional-dependencies]
 test = ['pytest',
         'pandas',
-        "joblib",
-        'rpy2']
+        "joblib"]
 dev = [
     "pytest",
     "scipy",
@@ -50,9 +49,14 @@ doc = [
 ]
 
 [build-system]
-requires = ["meson-python", "pybind11", "numpy>=1.7.1", "setuptools_scm", "ninja"]
+requires = ["meson-python",
+            "pybind11",
+	    "numpy>=1.7.1",
+	    "setuptools_scm",
+	    "ninja",
+	    "pybind11",
+	    "meson"]
 build-backend = "mesonpy"
 
 [tool.setuptools_scm]
 # This will use the latest git tag for the version
-

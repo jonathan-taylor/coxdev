@@ -2,30 +2,6 @@ import numpy as np
 import pandas as pd
 from coxdev import CoxDeviance, StratifiedCoxDeviance
 
-try:
-    import rpy2.robjects as rpy
-    has_rpy2 = True
-
-except ImportError:
-    has_rpy2 = False
-
-if has_rpy2:
-    from rpy2.robjects.packages import importr
-    from rpy2.robjects import numpy2ri
-    from rpy2.robjects import default_converter
-
-    np_cv_rules = default_converter + numpy2ri.converter
-
-    rpy.r('''if (!require("glmnet", character.only = TRUE)) {
-  install.packages("glmnet")
-    }''')
-
-    glmnetR = importr('glmnet')
-    baseR = importr('base')
-    survivalR = importr('survival')
-else:
-    raise ImportError('cannot find rpy2, tests cannot be run')
-
 import pytest
 from .simulate import (simulate_df,
                        all_combos,
