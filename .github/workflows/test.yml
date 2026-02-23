@@ -33,12 +33,13 @@ jobs:
         r-version: '4.2'
         use-public-rspm: true
 
-    - name: Install Python dependencies
+    - name: Install R test dependencies
       run: |
         Rscript -e "install.packages('glmnet', repos='http://cloud.r-project.org')"
         pip install .[test]
-        pip install .
+        pip install .[dev]
+	pip install .
 
-    - name: Test pyglmnet
+    - name: Test coxdev
       run: |
         pytest tests --test-size=100
