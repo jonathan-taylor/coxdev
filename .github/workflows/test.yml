@@ -30,9 +30,14 @@ jobs:
 
     - name: Install coxdev
       run: |
+        pip uninstall -y coxdev || true      
         pip install --upgrade pip
         pip install meson-python ninja meson pybind11 setuptools_scm
         pip install .[test]
+
+    - name: Verify installed source
+      run: |
+        python -c "import coxdev.base; import inspect; print(inspect.getsourcefile(coxdev.base)); print(''.join(open(inspect.getsourcefile(coxdev.base)).readlines()[:20]))"
 
     - name: Debug Installation
       run: |
