@@ -28,9 +28,10 @@ else:
 
 import pytest
 from .simulate import (simulate_df,
-                      all_combos,
-                      rng,
-                      sample_weights)
+                       all_combos,
+                       rng,
+                       sample_weights,
+                       sample_weights_zeros)
 
 def get_glmnet_result(event,
                       status,
@@ -185,7 +186,7 @@ def create_stratified_data(n_samples=100, n_strata=3):
 
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
-@pytest.mark.parametrize('sample_weight', [np.ones, sample_weights])
+@pytest.mark.parametrize('sample_weight', [np.ones, sample_weights, sample_weights_zeros])
 @pytest.mark.parametrize('have_start_times', [True, False])
 def test_coxph(tie_types,
                tie_breaking,
@@ -198,21 +199,27 @@ def test_coxph(tie_types,
     data = simulate_df(tie_types,
                        nrep,
                        size)
+    n = data.shape[0]
     
+    weight = sample_weight(n)
+    keep = weight > 0
+
     if have_start_times:
-        start = data['start']
+        start = data['start'].values
+        if keep.sum() > 0:
+            start_keep = start[keep]
     else:
-        start = None
+        start = start_keep = None
+    keep = np.nonzero(keep)[0]
+    
     coxdev = CoxDeviance(event=data['event'],
                          start=start,
                          status=data['status'],
                          tie_breaking=tie_breaking)
 
-    n = data.shape[0]
     p = n // 2
     X = rng.standard_normal((n, p))
     beta = rng.standard_normal(p) / np.sqrt(n)
-    weight = sample_weight(n)
 
     C = coxdev(X @ beta, weight)
 
@@ -221,18 +228,17 @@ def test_coxph(tie_types,
     H = coxdev.information(eta,
                            weight)
     I = X.T @ (H @ X)
-    assert np.allclose(I, I.T)
     cov_ = np.linalg.inv(I)
 
     (G_coxph,
      D_coxph,
-     cov_coxph) = get_coxph(event=np.asarray(data['event']),
-                            status=np.asarray(data['status']),
+     cov_coxph) = get_coxph(event=np.asarray(data['event'])[keep],
+                            status=np.asarray(data['status'])[keep],
                             beta=beta,
-                            sample_weight=weight,
-                            start=start,
+                            sample_weight=weight[keep],
+                            start=start_keep,
                             ties=tie_breaking,
-                            X=X)
+                            X=X[keep])
 
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)

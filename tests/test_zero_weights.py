@@ -50,7 +50,7 @@ def test_zero_weights(tie_types,
     data = simulate_df(tie_types,
                        nrep,
                        size,
-                       noinfo=False)
+                       noinfo=True)
     
     n = data.shape[0]
     
@@ -94,9 +94,7 @@ def test_zero_weights(tie_types,
     G0 = G0[np.fabs(G0) > 1e-12]
     G1 = G1[np.fabs(G1) > 1e-12]
     assert np.allclose(G0, G1)
-
-    # assert np.allclose(C0.deviance, C.deviance)
-
+    assert np.allclose(C0.deviance, C.deviance)
     H_keep = H[np.ix_(keep, keep)]
     mask = (np.isnan(H_keep).sum(1) + np.isnan(H_keep).sum(0) > 0)
     assert np.allclose(H0[np.ix_(~mask, ~mask)], H_keep[np.ix_(~mask, ~mask)])

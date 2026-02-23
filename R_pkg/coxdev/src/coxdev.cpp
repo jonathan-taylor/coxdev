@@ -4,7 +4,7 @@
 #ifdef R_INTERFACE
 #include "../inst/include/coxdev.h"
 #endif
-
+#include <cmath>
 #include <iostream>
 #ifdef PY_INTERFACE
    #define DEBUG_PRINT(x) std::cout << x << std::endl
@@ -131,9 +131,9 @@ void forward_prework(const EIGEN_REF<Eigen::VectorXi> status,
 {
   // No checks on size compatibility yet.
   if (use_w_avg) {
-    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / risk_sums.array().pow(j);
+    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / risk_sums.array().pow(j).cwiseMax(1e-15);
   } else {
-    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / risk_sums.array().pow(j);    
+    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / risk_sums.array().pow(j).cwiseMax(1e-15);    
   }
   if (arg.size() > 0) {
     moment_buffer = moment_buffer.array() * arg.array();
@@ -164,7 +164,7 @@ double compute_sat_loglik(const EIGEN_REF<Eigen::VectorXi> first,
 
   for (int i = 0; i < first.size(); ++i) {
     int f = first(i); double s = sums(i);
-    if (s > 0 && f != prev_first) {
+    if ((s > 0 && f != prev_first) && (weight(event_order(i)) > 0)) {
       loglik_sat -= s * log(s);
     }
     prev_first = f;
@@ -488,9 +488,9 @@ double cox_dev(const EIGEN_REF<Eigen::VectorXd> eta, //eta is in native order  -
       w_avg_buffer(i) = 0;
     }  
   }
-  // w_avg = w_avg_buffer # shorthand
+
   double loglik = ( w_event.array() * eta_event.array() * status.cast<double>().array() ).sum() -
-		   ( risk_sums.array().log() * w_avg_buffer.array() * status.cast<double>().array() ).sum();
+    ( risk_sums.array().cwiseMax(1e-15).log() * w_avg_buffer.array() * status.cast<double>().array() ).sum();
     
   // forward cumsums for gradient and Hessian
   
@@ -690,7 +690,7 @@ HESSIAN_MATVEC_TYPE hessian_matvec(const EIGEN_REF<Eigen::VectorXd> arg, // # ar
   // # forward_scratch_buffer[:] = status * w_avg * E_arg / risk_sums
 
   // # one less step to compute from above representation
-  forward_scratch_buffer = ( status.cast<double>().array() * w_avg.array() * risk_sums_arg.array() ) / risk_sums.array().pow(2);
+  forward_scratch_buffer = ( status.cast<double>().array() * w_avg.array() * risk_sums_arg.array() ) / risk_sums.array().pow(2).cwiseMax(1e-15);
 
   if (have_start_times) {
     sum_over_events(event_order,
