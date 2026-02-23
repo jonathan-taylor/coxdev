@@ -101,6 +101,7 @@ double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
 			  const Eigen::Ref<const Eigen::VectorXd> weight,
 			  const Eigen::Ref<const Eigen::VectorXi> event_order,
 			  const Eigen::Ref<const Eigen::VectorXi> status,
+			  const Eigen::Ref<const Eigen::VectorXd> scaling,
 			  Eigen::Ref<Eigen::VectorXd> W_status)
 {
   
@@ -117,14 +118,53 @@ double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
   double loglik_sat = 0.0;
   int prev_first = -1;
 
-  for (int i = 0; i < first.size(); ++i) {
-    int f = first(i); double s = sums(i);
-    if ((s > 0 && f != prev_first) && (weight(event_order(i)) > 0)) {
-      loglik_sat -= s * log(s);
+ for (int i = 0; i < first.size(); ++i) {
+    int f = first(i);
+    int l = last(i);
+    
+    // Process each unique cluster of tied failure times only once
+    if (f != prev_first) {
+      double W_C = sums(i); // W_C: Total valid weight in this cluster
+
+      if (W_C > 0) {
+        // 1. Structural Term (Identical to Breslow)
+        loglik_sat -= W_C * std::log(W_C);
+
+        // 2. Efron Penalty Term
+        int K_C_plus = 0;
+        double sum_log_penalty = 0.0;
+
+        // Iterate through the cluster to count K_C^+ and sum the scaling penalty
+        for (int j = f; j <= l; ++j) {
+          // Only include individuals who actually failed and have positive weight
+          if (weight(event_order(j)) > 0 && status(j) == 1) {
+            K_C_plus++;
+            // Using the scaling vector (\sigma) passed as an argument
+            // Note: scaling(j) should be m / K_C^+ where m is 0, 1, ..., K_C^+ - 1
+            sum_log_penalty += std::log(1.0 - scaling(j));
+          }
+        }
+
+        // Apply the penalty, weighted by the average weight per valid observation
+        if (K_C_plus > 0) {
+          loglik_sat += (W_C / K_C_plus) * sum_log_penalty;
+          
+          /* // ALTERNATIVE: Compute without relying on the `scaling` array argument.
+          // This is mathematically identical and safer against float precision errors:
+          
+          // double alt_sum_log_penalty = 0.0;
+          // for (int m = 0; m < K_C_plus; ++m) {
+          //   alt_sum_log_penalty += std::log(1.0 - (double)m / K_C_plus);
+          // }
+          // loglik_sat += (W_C / K_C_plus) * alt_sum_log_penalty;
+          */
+        }
+      }
+      prev_first = f;
     }
-    prev_first = f;
   }
-  return(loglik_sat);
+  
+  return loglik_sat;
 }
 
 void sum_over_events(const CoxContext& ctx,
@@ -547,7 +587,7 @@ double CoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
     Eigen::VectorXd eta_centered = eta.array() - eta.mean();
     exp_w_buffer = sw.array() * (eta_centered.array().min(30.0)).exp();
 
-    loglik_sat = compute_sat_loglik(_first, _last, sample_weight, event_order, _status, forward_cumsum_buffers[0]);
+    loglik_sat = compute_sat_loglik(_first, _last, sample_weight, event_order, _status, _scaling, forward_cumsum_buffers[0]);
 
     return cox_dev(eta_centered,
                    sample_weight,
