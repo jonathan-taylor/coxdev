@@ -24,9 +24,9 @@ eigen_inc = include_directories('eigen')
 coxdev_inc = include_directories('R_pkg/coxdev/inst/include')
 
 python_sources = [
-  'coxdev/__init__.py',
-  'coxdev/base.py',
-  'coxdev/stratified.py'
+  'python/coxdev/__init__.py',
+  'python/coxdev/base.py',
+  'python/coxdev/stratified.py'
 ]
 
 py.install_sources(
