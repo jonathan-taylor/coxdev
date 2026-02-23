@@ -269,6 +269,12 @@ class CoxDeviance(object):
                                            self._status,
                                            np.asarray(sample_weight, float))
         
+        W = sample_weight[self._event_order]
+        A = self._preproc['neffective_cluster'] * (W > 0)
+        B = (self._preproc['last'] + 1 - self._preproc['first']) * (W > 0)
+        if not np.all(self._preproc['status'] * A == self._preproc['status'] * B):
+            raise ValueError('cluster size wrong!')
+
         self._event_order = self._event_order.astype(np.int32)
         self._start_order = self._start_order.astype(np.int32)
         

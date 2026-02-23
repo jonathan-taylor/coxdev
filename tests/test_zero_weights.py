@@ -49,15 +49,15 @@ def test_zero_weights(tie_types,
 
     data = simulate_df(tie_types,
                        nrep,
-                       size)
-#    data = pd.read_csv('test_data.csv')
+                       size,
+                       noinfo=False)
     
     n = data.shape[0]
     
     weight = sample_weight(n) 
 
     keep = weight > 0
-
+    
     if have_start_times:
         start = data['start']
         start_no0 = start[keep]
@@ -85,9 +85,10 @@ def test_zero_weights(tie_types,
     C0 = coxdev_no0(eta[keep], weight[keep])
 
     H0 = coxdev_no0.information(eta[keep],
-                            weight[keep])
+                                weight[keep])
     H0 = H0 @ np.eye(H0.shape[0])
     
+    keep = np.nonzero(keep)[0]
     G0 = C0.gradient # [~mask]
     G1 = C.gradient[keep] # [~mask]
     G0 = G0[np.fabs(G0) > 1e-12]
