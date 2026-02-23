@@ -5,8 +5,7 @@ from coxdev import CoxDeviance
 try:
     import rpy2.robjects as rpy
     has_rpy2 = True
-
-except ImportError:
+except: # which exception a bit hard to predict
     has_rpy2 = False
 
 if has_rpy2:
