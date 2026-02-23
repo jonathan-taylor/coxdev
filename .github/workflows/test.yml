@@ -30,7 +30,7 @@ jobs:
 
     - name: Install coxdev
       run: |
-        pip install ".[dev,test]"
+        pip install ".[dev,test]" --no-build-isolation
 
     - name: Test coxdev
       run: |
