@@ -137,3 +137,105 @@ private:
     Eigen::VectorXd sample_weight;
     double loglik_sat;
 };
+
+// Standalone function declarations
+void forward_cumsum(const Eigen::Ref<const Eigen::VectorXd> sequence,
+		    Eigen::Ref<Eigen::VectorXd> output);
+
+void reverse_cumsums(const Eigen::Ref<const Eigen::VectorXd> sequence,
+                     Eigen::Ref<Eigen::VectorXd> event_buffer,
+                     Eigen::Ref<Eigen::VectorXd> start_buffer,
+                     const Eigen::Ref<const Eigen::VectorXi> event_order,
+                     const Eigen::Ref<const Eigen::VectorXi> start_order,
+		     bool do_event = false,
+		     bool do_start = false);
+
+void to_native_from_event(Eigen::Ref<Eigen::VectorXd> arg,
+			  const Eigen::Ref<const Eigen::VectorXi> event_order,
+			  Eigen::Ref<Eigen::VectorXd> reorder_buffer);
+
+void to_event_from_native(const Eigen::Ref<const Eigen::VectorXd> arg,
+                          const Eigen::Ref<const Eigen::VectorXi> event_order,
+                          Eigen::Ref<Eigen::VectorXd> reorder_buffer);
+
+void forward_prework(const Eigen::Ref<const Eigen::VectorXi> status,
+                     const Eigen::Ref<const Eigen::VectorXd> w_avg,
+                     const Eigen::Ref<const Eigen::VectorXd> scaling,
+                     const Eigen::Ref<const Eigen::VectorXd> risk_sums,
+                     int i,
+                     int j,
+                     Eigen::Ref<Eigen::VectorXd> moment_buffer,
+		     const Eigen::Ref<const Eigen::VectorXd> arg,		     
+                     bool use_w_avg = true);
+
+double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
+			  const Eigen::Ref<const Eigen::VectorXi> last,
+			  const Eigen::Ref<const Eigen::VectorXd> weight,
+			  const Eigen::Ref<const Eigen::VectorXi> event_order,
+			  const Eigen::Ref<const Eigen::VectorXi> status,
+			  Eigen::Ref<Eigen::VectorXd> W_status);
+
+void sum_over_events(const CoxContext& ctx,
+                     Eigen::Ref<Eigen::VectorXd> C_arg,
+                     Eigen::Ref<Eigen::VectorXd> C_arg_scale,
+                     Eigen::Ref<Eigen::VectorXd> forward_scratch_buffer,
+                     Eigen::Ref<Eigen::VectorXd> value_buffer);
+
+void sum_over_risk_set(const Eigen::Ref<const Eigen::VectorXd> arg,
+                       const CoxContext& ctx,
+                       Eigen::Ref<Eigen::VectorXd> risk_sum_buffer,
+                       Eigen::Ref<Eigen::VectorXd> event_cumsum,
+                       Eigen::Ref<Eigen::VectorXd> start_cumsum);
+
+double cox_dev(const Eigen::Ref<const Eigen::VectorXd> eta,
+	       const Eigen::Ref<const Eigen::VectorXd> sample_weight,
+	       const Eigen::Ref<const Eigen::VectorXd> exp_w,
+               const CoxContext& ctx,
+	       double loglik_sat,
+	       Eigen::Ref<Eigen::VectorXd> T_1_term,
+	       Eigen::Ref<Eigen::VectorXd> T_2_term,
+	       Eigen::Ref<Eigen::VectorXd> grad_buffer,
+	       Eigen::Ref<Eigen::VectorXd> diag_hessian_buffer,
+	       Eigen::Ref<Eigen::VectorXd> diag_part_buffer,
+	       Eigen::Ref<Eigen::VectorXd> w_avg_buffer,
+               Eigen::Ref<Eigen::VectorXd> eta_event,
+               Eigen::Ref<Eigen::VectorXd> w_event,
+               Eigen::Ref<Eigen::VectorXd> exp_eta_w_event,
+               Eigen::Ref<Eigen::VectorXd> risk_sums,
+               Eigen::Ref<Eigen::VectorXd> forward_cumsum0,
+               Eigen::Ref<Eigen::VectorXd> forward_cumsum1,
+               Eigen::Ref<Eigen::VectorXd> forward_cumsum2,
+               Eigen::Ref<Eigen::VectorXd> forward_cumsum3,
+               Eigen::Ref<Eigen::VectorXd> forward_cumsum4,
+	       Eigen::Ref<Eigen::VectorXd> forward_scratch_buffer,
+               Eigen::Ref<Eigen::VectorXd> event_cumsum,
+               Eigen::Ref<Eigen::VectorXd> start_cumsum);
+
+void hessian_matvec(const Eigen::Ref<const Eigen::VectorXd> arg,
+                    const CoxContext& ctx,
+                    Eigen::Ref<Eigen::VectorXd> risk_sums,
+                    Eigen::Ref<const Eigen::VectorXd> diag_part,
+                    Eigen::Ref<const Eigen::VectorXd> w_avg,
+                    Eigen::Ref<const Eigen::VectorXd> exp_w,
+                    Eigen::Ref<Eigen::VectorXd> risk_sum_arg,
+                    Eigen::Ref<Eigen::VectorXd> forward_cumsum0,
+                    Eigen::Ref<Eigen::VectorXd> forward_cumsum1,
+                    Eigen::Ref<Eigen::VectorXd> forward_scratch_buffer,
+                    Eigen::Ref<Eigen::VectorXd> event_cumsum,
+                    Eigen::Ref<Eigen::VectorXd> start_cumsum,
+                    Eigen::Ref<Eigen::VectorXd> hess_matvec_buffer);
+
+void setup_preprocess(const Eigen::Ref<const Eigen::VectorXd> start,
+                      const Eigen::Ref<const Eigen::VectorXd> event,
+                      const Eigen::Ref<const Eigen::VectorXi> status,
+                      const Eigen::Ref<const Eigen::VectorXd> weight,
+                      Eigen::VectorXd& _start,
+                      Eigen::VectorXd& _event,
+                      Eigen::VectorXi& _status,
+                      Eigen::VectorXi& _first,
+                      Eigen::VectorXi& _last,
+                      Eigen::VectorXd& _scaling,
+                      Eigen::VectorXi& _start_map,
+                      Eigen::VectorXi& _event_map,
+                      Eigen::VectorXi& event_order,
+                      Eigen::VectorXi& start_order);

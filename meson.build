@@ -25,7 +25,7 @@ coxdev_inc = include_directories('R_pkg/coxdev/inst/include')
 
 # Extension module
 py.extension_module('coxc',
-  'R_pkg/coxdev/src/coxdev.cpp',
+  ['R_pkg/coxdev/src/coxdev.cpp', 'R_pkg/coxdev/src/coxdev_py.cpp'],
   dependencies: pybind11_dep,
   include_directories: inc,
   cpp_args: ['-DPY_INTERFACE=1'],
