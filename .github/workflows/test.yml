@@ -33,6 +33,10 @@ jobs:
         pip install meson-python ninja meson pybind11 setuptools_scm
         pip install ".[test]" 
 
+    - name: Debug Installation
+      run: |
+        python -c "import coxdev; print(f'Location: {coxdev.__file__}'); import os; print(f'Contents: {os.listdir(os.path.dirname(coxdev.__file__))}')"
+
     - name: Test coxdev
       run: |
         mkdir empty_dir
