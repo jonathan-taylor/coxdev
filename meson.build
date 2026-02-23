@@ -34,9 +34,9 @@ py.extension_module('coxc',
 )
 
 # Install Python sources
-install_subdir(
-    'coxdev',
-    install_dir: py.get_install_dir(),
-    exclude_directories: ['__pycache__', '.ipynb_checkpoints'],
-    exclude_files: ['.gitignore']
-)
+# install_subdir(
+#     'coxdev',
+#     install_dir: py.get_install_dir(),
+#     exclude_directories: ['__pycache__', '.ipynb_checkpoints'],
+#     exclude_files: ['.gitignore']
+# )
