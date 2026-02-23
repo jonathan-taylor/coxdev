@@ -5,7 +5,7 @@ project('coxdev', 'cpp',
 py = import('python').find_installation(pure: false)
 
 # Eigen is vendored in src/eigen
-inc = include_directories('eigen', 'R_pkg/coxdev/inst/include')
+inc = include_directories('eigen', 'cpp/include')
 
 # Pybind11 dependency
 pybind11_dep = dependency('pybind11', required: false)
@@ -19,9 +19,6 @@ if not pybind11_dep.found()
 endif
 
 
-# Includes
-eigen_inc = include_directories('eigen')
-coxdev_inc = include_directories('R_pkg/coxdev/inst/include')
 
 python_sources = [
   'python/coxdev/__init__.py',
@@ -36,18 +33,10 @@ py.install_sources(
 
 # Extension module
 py.extension_module('coxc',
-  'R_pkg/coxdev/src/coxdev.cpp',
+  ['cpp/src/coxdev.cpp', 'cpp/src/coxdev_py.cpp'],
   dependencies: pybind11_dep,
   include_directories: inc,
   cpp_args: ['-DPY_INTERFACE=1'],
   install: true,
   subdir: 'coxdev'
 )
-
-# Install Python sources
-# install_subdir(
-#     'coxdev',
-#     install_dir: py.get_install_dir(),
-#     exclude_directories: ['__pycache__', '.ipynb_checkpoints'],
-#     exclude_files: ['.gitignore']
-# )
