@@ -30,8 +30,7 @@ maintainers = [
 [project.optional-dependencies]
 test = ['pytest',
         'pandas',
-        "joblib",
-        'rpy2']
+        "joblib"]
 dev = [
     "pytest",
     "scipy",
