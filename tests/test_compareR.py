@@ -27,7 +27,7 @@ else:
     raise ImportError('cannot find rpy2, tests cannot be run')
 
 import pytest
-from simulate import (simulate_df,
+from .simulate import (simulate_df,
                       all_combos,
                       rng,
                       sample_weights)

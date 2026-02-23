@@ -26,5 +26,9 @@ def pytest_collection_modifyitems(config, items):
                 cumsum.append(item)
             else:
                 new_items.append(item)
-        items[:] = (new_items + list(set(rng.choice(compare_R, test_size, replace=True))) +
-                    list(set(rng.choice(cumsum, test_size, replace=True))))
+        if len(compare_R) > 0:
+            new_items += list(set(rng.choice(compare_R, test_size, replace=True)))
+        if len(cumsum) > 0:
+            new_items += list(set(rng.choice(cumsum, test_size, replace=True)))
+        items[:] = new_items
+
