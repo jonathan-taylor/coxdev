@@ -54,4 +54,3 @@ build-backend = "mesonpy"
 
 [tool.setuptools_scm]
 # This will use the latest git tag for the version
-
