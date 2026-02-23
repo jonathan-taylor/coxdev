@@ -49,7 +49,13 @@ doc = [
 ]
 
 [build-system]
-requires = ["meson-python", "pybind11", "numpy>=1.7.1", "setuptools_scm", "ninja"]
+requires = ["meson-python",
+            "pybind11",
+	    "numpy>=1.7.1",
+	    "setuptools_scm",
+	    "ninja",
+	    "pybind11",
+	    "meson"]
 build-backend = "mesonpy"
 
 [tool.setuptools_scm]

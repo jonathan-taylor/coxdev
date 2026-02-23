@@ -31,8 +31,8 @@ jobs:
       run: |
         pip install .[dev]
         pip install .[test]
-        pip install .
+        pip install . 
 
     - name: Test coxdev
       run: |
-        pytest tests --test-size=100
+        python -m pytest tests --test-size=100
