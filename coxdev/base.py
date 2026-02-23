@@ -110,9 +110,10 @@ class CoxDeviance(object):
         Initialize the CoxDeviance object with survival data.
         """
         event = np.asarray(event).astype(float)
-        status = np.asarray(status).astype(np.int32)
+        status = np.asarray(status)
         if not set(np.unique(status)).issubset({0, 1}):
             raise ValueError('status must be binary')
+        status = status.astype(np.int32)
             
         if start is None:
             start = -np.ones_like(event) * np.inf

@@ -1138,6 +1138,117 @@ void CoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
     out = hess_matvec_buffer;
 }
 
+StratifiedCoxDeviance::StratifiedCoxDeviance(const Eigen::VectorXd& start,
+                                           const Eigen::VectorXd& event,
+                                           const Eigen::VectorXi& status,
+                                           const Eigen::VectorXi& strata,
+                                           const Eigen::VectorXd& weight,
+                                           bool efron) {
+    int n = status.size();
+    grad_buffer.setZero(n);
+    diag_hessian_buffer.setZero(n);
+    
+    // Find unique strata
+    std::vector<int> strata_std(strata.data(), strata.data() + strata.size());
+    unique_strata = strata_std;
+    std::sort(unique_strata.begin(), unique_strata.end());
+    auto last = std::unique(unique_strata.begin(), unique_strata.end());
+    unique_strata.erase(last, unique_strata.end());
+
+    // Collect indices for each stratum
+    stratum_indices.resize(unique_strata.size());
+    for (int i = 0; i < n; ++i) {
+        int s = strata(i);
+        auto it = std::lower_bound(unique_strata.begin(), unique_strata.end(), s);
+        int idx = std::distance(unique_strata.begin(), it);
+        stratum_indices[idx].push_back(i);
+    }
+
+    // Initialize CoxDeviance for each stratum
+    for (size_t i = 0; i < unique_strata.size(); ++i) {
+        const auto& indices = stratum_indices[i];
+        int n_stratum = indices.size();
+        Eigen::VectorXd s_start(n_stratum);
+        Eigen::VectorXd s_event(n_stratum);
+        Eigen::VectorXi s_status(n_stratum);
+        Eigen::VectorXd s_weight(n_stratum);
+
+        for (int j = 0; j < n_stratum; ++j) {
+            int orig_idx = indices[j];
+            s_start(j) = start(orig_idx);
+            s_event(j) = event(orig_idx);
+            s_status(j) = status(orig_idx);
+            s_weight(j) = weight(orig_idx);
+        }
+
+        cox_devs.push_back(std::make_shared<CoxDeviance>(s_start, s_event, s_status, s_weight, efron));
+    }
+}
+
+double StratifiedCoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
+                                               const Eigen::VectorXd& sw) {
+    linear_predictor = eta;
+    sample_weight = sw;
+    double total_deviance = 0.0;
+    double total_loglik_sat = 0.0;
+    
+    grad_buffer.setZero(eta.size());
+    diag_hessian_buffer.setZero(eta.size());
+
+    for (size_t i = 0; i < unique_strata.size(); ++i) {
+        const auto& indices = stratum_indices[i];
+        int n_stratum = indices.size();
+        Eigen::VectorXd s_eta(n_stratum);
+        Eigen::VectorXd s_sw(n_stratum);
+
+        for (int j = 0; j < n_stratum; ++j) {
+            int orig_idx = indices[j];
+            s_eta(j) = eta(orig_idx);
+            s_sw(j) = sw(orig_idx);
+        }
+
+        double dev = cox_devs[i]->compute_deviance(s_eta, s_sw);
+        total_deviance += dev;
+        total_loglik_sat += cox_devs[i]->get_loglik_sat();
+
+        const auto& s_grad = cox_devs[i]->get_gradient();
+        const auto& s_diag_hessian = cox_devs[i]->get_diag_hessian();
+
+        for (int j = 0; j < n_stratum; ++j) {
+            int orig_idx = indices[j];
+            grad_buffer(orig_idx) = s_grad(j);
+            diag_hessian_buffer(orig_idx) = s_diag_hessian(j);
+        }
+    }
+
+    loglik_sat = total_loglik_sat;
+    return total_deviance;
+}
+
+void StratifiedCoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
+                                                   Eigen::VectorXd& out) {
+    out.setZero(arg.size());
+
+    for (size_t i = 0; i < unique_strata.size(); ++i) {
+        const auto& indices = stratum_indices[i];
+        int n_stratum = indices.size();
+        Eigen::VectorXd s_arg(n_stratum);
+        Eigen::VectorXd s_out(n_stratum);
+
+        for (int j = 0; j < n_stratum; ++j) {
+            int orig_idx = indices[j];
+            s_arg(j) = arg(orig_idx);
+        }
+
+        cox_devs[i]->compute_hessian_matvec(s_arg, s_out);
+
+        for (int j = 0; j < n_stratum; ++j) {
+            int orig_idx = indices[j];
+            out(orig_idx) = s_out(j);
+        }
+    }
+}
+
 // pybind11 module stuff
 PYBIND11_MODULE(coxc, m) {
   m.doc() = "Cumsum implementations";
@@ -1151,7 +1262,7 @@ PYBIND11_MODULE(coxc, m) {
   m.def("hessian_matvec", &hessian_matvec, "Hessian Matrix Vector");
   m.def("c_preprocess", &preprocess, "C Preprocessing");
 
-  py::class_<CoxDeviance>(m, "CoxDeviance")
+  py::class_<CoxDeviance, std::shared_ptr<CoxDeviance>>(m, "CoxDeviance")
       .def(py::init<const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXi&, const Eigen::VectorXd&, bool>())
       .def("compute_deviance", &CoxDeviance::compute_deviance)
       .def("compute_hessian_matvec", [](CoxDeviance &self, const Eigen::VectorXd &arg) {
@@ -1174,5 +1285,22 @@ PYBIND11_MODULE(coxc, m) {
       .def_property_readonly("status", &CoxDeviance::get_status, py::return_value_policy::reference_internal)
       .def_property_readonly("event", &CoxDeviance::get_event, py::return_value_policy::reference_internal)
       .def_property_readonly("start", &CoxDeviance::get_start, py::return_value_policy::reference_internal);
+
+  py::class_<StratifiedCoxDeviance>(m, "StratifiedCoxDeviance")
+      .def(py::init<const Eigen::VectorXd&, const Eigen::VectorXd&, const Eigen::VectorXi&, const Eigen::VectorXi&, const Eigen::VectorXd&, bool>())
+      .def("compute_deviance", &StratifiedCoxDeviance::compute_deviance)
+      .def("compute_hessian_matvec", [](StratifiedCoxDeviance &self, const Eigen::VectorXd &arg) {
+          Eigen::VectorXd out(arg.size());
+          self.compute_hessian_matvec(arg, out);
+          return out;
+      })
+      .def_property_readonly("gradient", &StratifiedCoxDeviance::get_gradient, py::return_value_policy::reference_internal)
+      .def_property_readonly("diag_hessian", &StratifiedCoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)
+      .def_property_readonly("linear_predictor", &StratifiedCoxDeviance::get_linear_predictor, py::return_value_policy::reference_internal)
+      .def_property_readonly("sample_weight", &StratifiedCoxDeviance::get_sample_weight, py::return_value_policy::reference_internal)
+      .def_property_readonly("loglik_sat", &StratifiedCoxDeviance::get_loglik_sat)
+      .def_property_readonly("cox_devs", &StratifiedCoxDeviance::get_cox_devs, py::return_value_policy::reference_internal)
+      .def_property_readonly("unique_strata", &StratifiedCoxDeviance::get_unique_strata, py::return_value_policy::reference_internal)
+      .def_property_readonly("stratum_indices", &StratifiedCoxDeviance::get_stratum_indices, py::return_value_policy::reference_internal);
 }
 #endif

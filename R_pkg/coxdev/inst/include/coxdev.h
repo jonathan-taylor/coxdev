@@ -83,6 +83,43 @@ private:
     void setup_buffers(int n);
 };
 
+class StratifiedCoxDeviance {
+public:
+    StratifiedCoxDeviance(const Eigen::VectorXd& start,
+                          const Eigen::VectorXd& event,
+                          const Eigen::VectorXi& status,
+                          const Eigen::VectorXi& strata,
+                          const Eigen::VectorXd& weight,
+                          bool efron);
+
+    double compute_deviance(const Eigen::VectorXd& eta,
+                            const Eigen::VectorXd& sample_weight);
+
+    void compute_hessian_matvec(const Eigen::VectorXd& arg,
+                                Eigen::VectorXd& out);
+
+    const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
+    const Eigen::VectorXd& get_diag_hessian() const { return diag_hessian_buffer; }
+    const Eigen::VectorXd& get_linear_predictor() const { return linear_predictor; }
+    const Eigen::VectorXd& get_sample_weight() const { return sample_weight; }
+    double get_loglik_sat() const { return loglik_sat; }
+
+    const std::vector<int>& get_unique_strata() const { return unique_strata; }
+    const std::vector<std::vector<int>>& get_stratum_indices() const { return stratum_indices; }
+    const std::vector<std::shared_ptr<CoxDeviance>>& get_cox_devs() const { return cox_devs; }
+
+private:
+    std::vector<int> unique_strata;
+    std::vector<std::vector<int>> stratum_indices;
+    std::vector<std::shared_ptr<CoxDeviance>> cox_devs;
+
+    Eigen::VectorXd grad_buffer;
+    Eigen::VectorXd diag_hessian_buffer;
+    Eigen::VectorXd linear_predictor;
+    Eigen::VectorXd sample_weight;
+    double loglik_sat;
+};
+
 #endif
 
 #ifdef R_INTERFACE
