@@ -7,6 +7,7 @@ try:
     has_rpy2 = True
 except: # which exception a bit hard to predict
     has_rpy2 = False
+    has_glmnet = False
 
 if has_rpy2:
     from rpy2.robjects.packages import importr
