@@ -30,7 +30,7 @@ py.install_sources(
 
 # Extension module
 py.extension_module('coxc',
-  ['cpp/src/coxdev.cpp', 'cpp/src/coxdev_py.cpp'],
+  ['cpp/src/coxdev.cpp', 'python/coxdev_py.cpp'],
   dependencies: pybind11_dep,
   include_directories: inc,
   cpp_args: ['-DPY_INTERFACE=1'],
