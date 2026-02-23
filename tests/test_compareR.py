@@ -234,7 +234,6 @@ def test_coxph(tie_types,
                             ties=tie_breaking,
                             X=X)
 
-    print(D_coxph, C.deviance - 2 * C.loglik_sat)
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
     assert delta_ph < tol
@@ -343,7 +342,7 @@ def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
     )
     
     # Compare deviance (adjust for saturated log-likelihood)
-    print(f"R deviance: {D_coxph[0]}, Python deviance: {C.deviance - 2 * C.loglik_sat}")
+
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat, rtol=tol)
     
     # Compare gradients
