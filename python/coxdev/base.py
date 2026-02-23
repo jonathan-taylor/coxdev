@@ -12,9 +12,6 @@ from typing import Literal, Optional
 
 from scipy.sparse.linalg import LinearOperator
 
-from . import _version
-__version__ = _version.get_versions()['version']
-
 import numpy as np
 from joblib import hash as _hash
 

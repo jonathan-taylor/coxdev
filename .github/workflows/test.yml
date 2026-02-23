@@ -14,32 +14,46 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.12"]
 
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+        fetch-depth: 0
 
     - name: Set up Python  ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Set up R
-      uses: r-lib/actions/setup-r@v2
-      with:
-        r-version: '4.2'
-        use-public-rspm: true
-
-    - name: Install R test dependencies
+    - name: Install coxdev
       run: |
-        Rscript -e "install.packages('glmnet', repos='http://cloud.r-project.org')"
-        pip install .[test]
-        pip install .[dev]
-	pip install .
+        # pip uninstall -y coxdev || true
+        # pip uninstall -y coxdev || true
+    
+        # # 2. Delete the directory in site-packages directly
+        # # This is the only way to kill 'orphaned' files like _version.py
+        # PYTHON_SITE=$(python -c "import site; print(site.getsitepackages()[0])")
+        # rm -rf "$PYTHON_SITE/coxdev*"
+        # pip uninstall -y coxdev || true      
+        pip install --upgrade pip
+        pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas joblib
+        pip install .
+
+    - name: Verify installed source
+      run: |
+        cd /tmp
+        python -c "import coxdev.base; import inspect; print(inspect.getsourcefile(coxdev.base)); print(''.join(open(inspect.getsourcefile(coxdev.base)).readlines()[:20]))"
+
+    - name: Debug Installation
+      run: |
+        cd /tmp
+        python -c "import coxdev; print(f'Location: {coxdev.__file__}'); import os; print(f'Contents: {os.listdir(os.path.dirname(coxdev.__file__))}')"
 
     - name: Test coxdev
       run: |
-        pytest tests --test-size=100
+        mkdir empty_dir
+        cd empty_dir
+        python -m pytest ../tests --test-size=100

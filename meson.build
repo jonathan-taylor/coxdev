@@ -19,6 +19,18 @@ if not pybind11_dep.found()
 endif
 
 
+
+python_sources = [
+  'python/coxdev/__init__.py',
+  'python/coxdev/base.py',
+  'python/coxdev/stratified.py'
+]
+
+py.install_sources(
+  python_sources,
+  subdir: 'coxdev'
+)
+
 # Extension module
 py.extension_module('coxc',
   ['cpp/src/coxdev.cpp', 'cpp/src/coxdev_py.cpp'],
@@ -27,12 +39,4 @@ py.extension_module('coxc',
   cpp_args: ['-DPY_INTERFACE=1'],
   install: true,
   subdir: 'coxdev'
-)
-
-# Install Python sources
-install_subdir(
-    'coxdev',
-    install_dir: py.get_install_dir(),
-    exclude_directories: ['__pycache__', '.ipynb_checkpoints'],
-    exclude_files: ['.gitignore']
 )

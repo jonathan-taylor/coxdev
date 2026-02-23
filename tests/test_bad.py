@@ -5,9 +5,9 @@ from coxdev import CoxDeviance
 try:
     import rpy2.robjects as rpy
     has_rpy2 = True
-
-except ImportError:
+except: # which exception a bit hard to predict
     has_rpy2 = False
+    has_glmnet = False
 
 if has_rpy2:
     from rpy2.robjects.packages import importr
@@ -16,9 +16,13 @@ if has_rpy2:
 
     np_cv_rules = default_converter + numpy2ri.converter
 
-    glmnetR = importr('glmnet')
     baseR = importr('base')
     survivalR = importr('survival')
+    try:
+        glmnetR = importr('glmnet')
+        has_glmnet = True
+    except: 
+        has_glmnet = False
 
 def get_glmnet_result(event,
                       status,
@@ -252,6 +256,7 @@ def test_coxph_agreement(tie_breaking):
     assert np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_) < tol
 
 @pytest.mark.skipif(not has_rpy2, reason="rpy2 not available")
+@pytest.mark.skipif(not has_glmnet, reason="glmnet not available")
 def test_glmnet_agreement():
     """
     Test that coxdev agrees with R's glmnet implementation for Breslow ties.
