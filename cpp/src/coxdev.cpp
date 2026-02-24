@@ -86,13 +86,24 @@ void forward_prework(const Eigen::Ref<const Eigen::VectorXi> status,
 		     const Eigen::Ref<const Eigen::VectorXd> arg,		     
                      bool use_w_avg)
 {
-  if (use_w_avg) {
-    moment_buffer = status.cast<double>().array() * w_avg.array() * scaling.array().pow(i) / risk_sums.array().pow(j).cwiseMax(1e-15);
-  } else {
-    moment_buffer = status.cast<double>().array() * scaling.array().pow(i) / risk_sums.array().pow(j).cwiseMax(1e-15);    
-  }
-  if (arg.size() > 0) {
-    moment_buffer = moment_buffer.array() * arg.array();
+  bool has_arg = arg.size() > 0;
+  for (int k = 0; k < status.size(); ++k) {
+    if (use_w_avg) {
+      if (w_avg(k) > 0) {
+        moment_buffer(k) = status(k) * w_avg(k) * std::pow(scaling(k), i) / std::pow(risk_sums(k), j);
+      } else {
+        moment_buffer(k) = 0.0;
+      }
+    } else {
+      if (status(k) > 0) {
+        moment_buffer(k) = status(k) * std::pow(scaling(k), i) / std::pow(risk_sums(k), j);
+      } else {
+        moment_buffer(k) = 0.0;
+      }
+    }
+    if (has_arg) {
+      moment_buffer(k) *= arg(k);
+    }
   }
 }
 
@@ -253,8 +264,14 @@ double cox_dev(const Eigen::Ref<const Eigen::VectorXd> eta,
     }  
   }
 
-  double loglik = ( w_event.array() * eta_event.array() * ctx.status.cast<double>().array() ).sum() -
-    ( risk_sums.array().cwiseMax(1e-15).log() * w_avg_buffer.array() * ctx.status.cast<double>().array() ).sum();
+  double loglik_penalty = 0.0;
+  for (int i = 0; i < risk_sums.size(); ++i) {
+    if (w_avg_buffer(i) > 0) {
+      loglik_penalty += std::log(risk_sums(i)) * w_avg_buffer(i) * ctx.status(i);
+    }
+  }
+
+  double loglik = ( w_event.array() * eta_event.array() * ctx.status.cast<double>().array() ).sum() - loglik_penalty;
     
   Eigen::VectorXd dummy;
   Eigen::Map<Eigen::VectorXd> dummy_map(dummy.data(), dummy.size());  
@@ -341,7 +358,13 @@ void hessian_matvec(const Eigen::Ref<const Eigen::VectorXd> arg,
                     event_cumsum,
                     start_cumsum);
 
-  forward_scratch_buffer = ( ctx.status.cast<double>().array() * w_avg.array() * risk_sum_arg.array() ) / risk_sums.array().pow(2).cwiseMax(1e-15);
+  for (int i = 0; i < ctx.status.size(); ++i) {
+    if (w_avg(i) > 0) {
+      forward_scratch_buffer(i) = (ctx.status(i) * w_avg(i) * risk_sum_arg(i)) / (risk_sums(i) * risk_sums(i));
+    } else {
+      forward_scratch_buffer(i) = 0.0;
+    }
+  }
 
   sum_over_events(ctx,
                   forward_cumsum0,
@@ -353,6 +376,14 @@ void hessian_matvec(const Eigen::Ref<const Eigen::VectorXd> arg,
   hess_matvec_buffer = hess_matvec_buffer.array() * exp_w.array() - (diag_part.array() * arg.array());
 }
 
+/**
+ * Among observations with tied times, the sort order is:
+ * 1. Events (status == 1) occur first.
+ * 2. Within events, those with positive weights occur first.
+ * 
+ * This ensures every other observation is a candidate for being in the risk set. 
+ * Those with weight == 0 are ultimately not included in the risk set.
+ */
 std::vector<int> lexsort(const Eigen::VectorXi & a,  // is_start
                          const Eigen::VectorXd & b,  // weight
 			 const Eigen::VectorXi & c,  // status
