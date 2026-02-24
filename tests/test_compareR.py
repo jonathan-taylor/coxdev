@@ -300,7 +300,9 @@ def test_glmnet(tie_types,
     delta_G = np.linalg.norm(G_R - C.gradient) / np.linalg.norm(G_R)
     delta_H = np.linalg.norm(H_R - C.diag_hessian) / np.linalg.norm(H_R)
 
-    assert (delta_D < tol) and (delta_G < tol) and (delta_H < tol)
+    assert (delta_D < tol)    
+    assert (delta_G < tol)
+    assert (delta_H < tol)
     
 
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
