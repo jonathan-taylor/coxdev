@@ -31,8 +31,9 @@ PYBIND11_MODULE(coxc, m) {
                                  const Eigen::Ref<const Eigen::VectorXi>& event_order,
                                  const Eigen::Ref<const Eigen::VectorXi>& status,
                                  const Eigen::Ref<const Eigen::VectorXd>& scaling,
-                                 Eigen::Ref<Eigen::VectorXd> W_status) {
-    return compute_sat_loglik(first, last, weight, event_order, status, scaling, W_status);
+                                 Eigen::Ref<Eigen::VectorXd> W_status,
+				 bool efron) {
+    return compute_sat_loglik(first, last, weight, event_order, status, scaling, W_status, efron);
   }, "Compute saturated log likelihood");
   
   m.def("cox_dev", [](const Eigen::Ref<const Eigen::VectorXd>& eta,
