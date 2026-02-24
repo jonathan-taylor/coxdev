@@ -174,7 +174,8 @@ double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
 			  const Eigen::Ref<const Eigen::VectorXi> event_order,
 			  const Eigen::Ref<const Eigen::VectorXi> status,
 			  const Eigen::Ref<const Eigen::VectorXd> scaling,
-			  Eigen::Ref<Eigen::VectorXd> W_status);
+			  Eigen::Ref<Eigen::VectorXd> W_status,
+			  bool efron);
 
 void sum_over_events(const CoxContext& ctx,
                      Eigen::Ref<Eigen::VectorXd> C_arg,
