@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 # basic model for times
-rng = np.random.default_rng(0)
+rng = np.random.default_rng(10)
 def sample_weights(size=1):
     W = rng.poisson(2, size=size) + rng.uniform(size=size)
     W[size//3] += 2.

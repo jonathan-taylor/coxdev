@@ -2,32 +2,6 @@ import numpy as np
 import pandas as pd
 from coxdev import CoxDeviance, CoxDeviance
 
-try:
-    import rpy2.robjects as rpy
-    has_rpy2 = True
-except: # which exception a bit hard to predict
-    has_rpy2 = False
-    has_glmnet = False
-    
-if has_rpy2:
-    from rpy2.robjects.packages import importr
-    from rpy2.robjects import numpy2ri
-    from rpy2.robjects import default_converter
-
-    np_cv_rules = default_converter + numpy2ri.converter
-
-    rpy.r('''if (!require("glmnet", character.only = TRUE)) {
-  install.packages("glmnet")
-    }''')
-
-    try:
-        glmnetR = importr('glmnet')
-        has_glmnet = True
-    except: 
-        has_glmnet = False
-    baseR = importr('base')
-    survivalR = importr('survival')
-
 import pytest
 from .simulate import (simulate_df,
                        all_combos,
@@ -35,11 +9,32 @@ from .simulate import (simulate_df,
                        sample_weights,
                        sample_weights_zeros)
 
+def numpy_to_r_matrix(Rinfo, X):
+    """
+    Convert a 2D numpy array to an R matrix.
+    
+    Ensures proper row/column major ordering during the conversion.
+    
+    Parameters
+    ----------
+    X : np.ndarray
+        The 2D numpy array to convert.
+        
+    Returns
+    -------
+    rpy.r.matrix
+        The corresponding R matrix object.
+    """
+    rpy = Rinfo["rpy"]
+    FloatVector = Rinfo["FloatVector"]
+    return rpy.r.matrix(FloatVector(X.T.flatten()), nrow=X.shape[0], ncol=X.shape[1])
+
 def get_glmnet_result(event,
                       status,
                       start,
                       eta,
                       weight,
+                      Rinfo,
                       time=False):
 
     event = np.asarray(event)
@@ -47,7 +42,12 @@ def get_glmnet_result(event,
     weight = np.asarray(weight)
     eta = np.asarray(eta)
 
-    with np_cv_rules.context():
+    if not Rinfo.get('has_rpy2'):
+        pytest.skip('requires rpy2')
+    rpy = Rinfo['rpy']
+
+
+    with Rinfo['np_cv_rules'].context():
 
         rpy.r.assign('status', status)
         rpy.r.assign('event', event)
@@ -83,6 +83,7 @@ def get_coxph(event,
               X,
               beta,
               sample_weight,
+              Rinfo,
               start=None,
               ties='efron'):
 
@@ -91,7 +92,9 @@ def get_coxph(event,
     status = np.asarray(status)
     event = np.asarray(event)
 
-    with np_cv_rules.context():
+    rpy = Rinfo['rpy']
+
+    with Rinfo['np_cv_rules'].context():
         rpy.r.assign('status', status)
         rpy.r.assign('event', event)
         rpy.r.assign('X', X)
@@ -104,7 +107,7 @@ def get_coxph(event,
             rpy.r('y = Surv(start, event, status)')
         else:
             rpy.r('y = Surv(event, status)')
-        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE)')
+        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE, timefix=FALSE)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')
@@ -118,6 +121,7 @@ def get_stratified_coxph(event,
                          X,
                          beta,
                          sample_weight,
+                         Rinfo,
                          start=None,
                          ties='efron'):
     """Get stratified Cox model results from R's survival package."""
@@ -128,7 +132,9 @@ def get_stratified_coxph(event,
     event = np.asarray(event)
     strata = np.asarray(strata).astype(np.int32)
 
-    with np_cv_rules.context():
+    rpy = Rinfo['rpy']
+
+    with Rinfo['np_cv_rules'].context():
         rpy.r.assign('status', status)
         rpy.r.assign('event', event)
         rpy.r.assign('strata', strata)
@@ -145,7 +151,7 @@ def get_stratified_coxph(event,
         else:
             rpy.r('y = Surv(event, status)')
             
-        rpy.r('F = coxph(y ~ X + strata(strata), init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE)')
+        rpy.r('F = coxph(y ~ X + strata(strata), init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE, timefix=FALSE)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')
@@ -186,7 +192,6 @@ def create_stratified_data(n_samples=100, n_strata=3):
     }
 
 
-@pytest.mark.skipif(not has_rpy2, reason='rpy2 not available')
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
 @pytest.mark.parametrize('sample_weight', [np.ones, sample_weights, sample_weights_zeros])
@@ -195,6 +200,7 @@ def test_coxph(tie_types,
                tie_breaking,
                sample_weight,
                have_start_times,
+               Rinfo,
                nrep=5,
                size=5,
                tol=1e-10):
@@ -241,6 +247,7 @@ def test_coxph(tie_types,
                             sample_weight=weight[keep],
                             start=start_keep,
                             ties=tie_breaking,
+                            Rinfo=Rinfo,
                             X=X[keep])
 
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat)
@@ -248,7 +255,8 @@ def test_coxph(tie_types,
     assert delta_ph < tol
     assert np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_) < tol
 
-def test_simple(nrep=5,
+def test_simple(Rinfo,
+                nrep=5,
                 size=5,
                 tol=1e-10):
     test_coxph(all_combos[-1],
@@ -257,16 +265,17 @@ def test_simple(nrep=5,
                True,
                nrep=5,
                size=5,
+               Rinfo=Rinfo,
                tol=1e-10)
     
 
-@pytest.mark.skipif(not has_glmnet, reason='glmnet not available')
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('sample_weight', [np.ones, sample_weights])
 @pytest.mark.parametrize('have_start_times', [True, False])
 def test_glmnet(tie_types,
                 sample_weight,
                 have_start_times,
+                Rinfo,
                 nrep=5,
                 size=5,
                 tol=1e-10):
@@ -287,7 +296,8 @@ def test_glmnet(tie_types,
                                       data['status'],
                                       start,
                                       eta,
-                                      weight)
+                                      weight,
+                                      Rinfo=Rinfo)
 
     coxdev = CoxDeviance(event=data['event'],
                          start=start,
@@ -308,10 +318,14 @@ def test_glmnet(tie_types,
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
 @pytest.mark.parametrize('have_start_times', [True, False])
 @pytest.mark.parametrize('n_strata', [2, 3, 5])
-def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
+def test_stratified_coxph(tie_breaking,
+                          have_start_times,
+                          n_strata,
+                          Rinfo,
+                          tol=1e-10):
     """Test CoxDeviance against R's stratified coxph."""
     
-    if not has_rpy2:
+    if not Rinfo['has_rpy2']:
         pytest.skip("rpy2 not available")
     
     # Create stratified data
@@ -350,7 +364,8 @@ def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
         beta=data['beta'],
         sample_weight=data['weight'],
         start=start,
-        ties=tie_breaking
+        ties=tie_breaking,
+        Rinfo=Rinfo
     )
     
     # Compare deviance (adjust for saturated log-likelihood)
@@ -365,56 +380,10 @@ def test_stratified_coxph(tie_breaking, have_start_times, n_strata, tol=1e-10):
     assert np.linalg.norm(cov_ - cov_coxph) / np.linalg.norm(cov_) < tol
 
 
-@pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
-@pytest.mark.parametrize('have_start_times', [True, False])
-def test_stratified_single_stratum(tie_breaking, have_start_times, tol=1e-10):
-    """Test that CoxDeviance with single stratum matches CoxDeviance."""
-    
-    if not has_rpy2:
-        pytest.skip("rpy2 not available")
-    
-    # Create data with single stratum
-    data = create_stratified_data(n_samples=100, n_strata=1)
-    
-    if have_start_times:
-        start = data['start']
-    else:
-        start = None
-    
-    # Create both models
-    coxdev = CoxDeviance(
-        event=data['event'],
-        start=start,
-        status=data['status'],
-        tie_breaking=tie_breaking
-    )
-    
-    stratdev = CoxDeviance(
-        event=data['event'],
-        start=start,
-        status=data['status'],
-        strata=data['strata'],
-        tie_breaking=tie_breaking
-    )
-    
-    # Compute results
-    eta = data['X'] @ data['beta']
-    C1 = coxdev(eta, data['weight'])
-    C2 = stratdev(eta, data['weight'])
-    
-    # Results should be identical
-    assert np.allclose(C1.deviance, C2.deviance, rtol=tol)
-    assert np.allclose(C1.gradient, C2.gradient, rtol=tol)
-    assert np.allclose(C1.diag_hessian, C2.diag_hessian, rtol=tol)
-    assert np.allclose(C1.loglik_sat, C2.loglik_sat, rtol=tol)
-
 
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
-def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
+def test_stratified_multiple_strata_sizes(tie_breaking, Rinfo, tol=1e-10):
     """Test CoxDeviance with varying stratum sizes."""
-    
-    if not has_rpy2:
-        pytest.skip("rpy2 not available")
     
     # Create data with uneven stratum sizes using create_stratified_data
     n_samples = 200
@@ -460,6 +429,7 @@ def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
         beta=beta,
         sample_weight=weight,
         start=start,
+        Rinfo=Rinfo,
         ties=tie_breaking
     )
     
@@ -467,3 +437,48 @@ def test_stratified_multiple_strata_sizes(tie_breaking, tol=1e-10):
     assert np.allclose(D_coxph[0], C.deviance - 2 * C.loglik_sat, rtol=tol)
     delta_ph = np.linalg.norm(G_coxph - X.T @ C.gradient) / np.linalg.norm(X.T @ C.gradient)
     assert delta_ph < tol
+
+@pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+@pytest.mark.parametrize('have_start_times', [True, False])
+def test_stratified_single_stratum(tie_breaking,
+                                   have_start_times,
+                                   tol=1e-10):
+    """Test that CoxDeviance with single stratum matches CoxDeviance."""
+    
+    # Create data with single stratum
+    data = create_stratified_data(n_samples=100, n_strata=1)
+    
+    if have_start_times:
+        start = data['start']
+    else:
+        start = None
+    
+    # Create both models
+    coxdev = CoxDeviance(
+        event=data['event'],
+        start=start,
+        status=data['status'],
+        tie_breaking=tie_breaking
+    )
+    
+    stratdev = CoxDeviance(
+        event=data['event'],
+        start=start,
+        status=data['status'],
+        strata=data['strata'],
+        tie_breaking=tie_breaking
+    )
+    
+    # Compute results
+    eta = data['X'] @ data['beta']
+    C1 = coxdev(eta, data['weight'])
+    C2 = stratdev(eta, data['weight'])
+    
+    # Results should be identical
+    assert np.allclose(C1.deviance, C2.deviance, rtol=tol)
+    assert np.allclose(C1.gradient, C2.gradient, rtol=tol)
+    assert np.allclose(C1.diag_hessian, C2.diag_hessian, rtol=tol)
+    assert np.allclose(C1.loglik_sat, C2.loglik_sat, rtol=tol)
+
+        
+    

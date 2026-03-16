@@ -629,3 +629,4 @@ def test_coxdeviance2_matches_stratified_and_coxdeviance(tie_breaking, use_weigh
         v = rng.standard_normal(n)
         assert np.allclose(info_cox @ v, info_strat @ v)
         assert np.allclose(info_cox @ v, info2 @ v)
+
