@@ -83,8 +83,10 @@ the distinction between a start time equalling $t_i$ or not irrelevant.
 
 {\bf We'll assume that we've sorted things
 by event time. That is, $j > i \implies t_j > t_i$. As
-we have no ties in this section, we can recover "disk order"
-by reversing the sort. }
+we have no ties in this section, we can recover ``disk order''
+by reversing the sort. More generally, with ties we'll assume that
+$j > i \implies t_j \geq t_i$ and that tied event and start times
+will be sorted in an arbitrary but fixed order. Therefore, we can unambiguously map between this fixed order and ``disk order''.}
 
 \subsection{Right censored}
 % ------------------------------------------------------------------------------
@@ -93,7 +95,7 @@ Ignoring the linear term, and sign,  we need to differentiate (by $\eta_k$)
 \begin{equation}
    \sum_{i = 1}^n d_i w_i \log \left(\sum_{j \geq i} w_j e^{\eta_j}\right)
 \end{equation}
-Below, $d_i=\text{status}_i$ so it is always binary. Ties will be dealt with shortly.
+Below, $d_i=\text{status}_i$ so it will always be binary even in the presence of ties. Ties will be dealt with shortly.
 
 % ------------------------------------------------------------------------------
 % Reference and Cited Works
@@ -263,9 +265,11 @@ $$
 \pi_{i,\eta}[r] \pi_{i,\eta}[c] \right).
 $$
 
-\section{Ties}
+{\bf This also tells us about saturated log-likelihood by considering multinomials of successive risk sets.}
 
-{\bf We'll assume that we've picked an arbitrary
+\section{Ties and zero weights}
+
+{\bf As mentioned previously, we'll assume that we've picked an arbitrary
 sort of event times
 by event time. That is, $j \geq i \implies t_j \geq t_i$. We can recover ``disk order''
 by inverting this particular sort. So series indexed by $i$
@@ -278,7 +282,7 @@ hypothetical ordering of the events were given, then the
 risk sums for each failure at some time be computed.
 
 This is usually not done exactly. The Breslow and Efron methods
-"approximate" this computation of risk sums in a certain sense. 
+``approximate'' this computation of risk sums in a certain sense. 
 The two methods proceed essentially as above, i.e.
 computing a risk sum for each individual and then
 compute the log of the risk sum.
@@ -291,7 +295,7 @@ failures at a given obsered failure time.
 The linear term clearly has no issue,
 it is the sum of log risk sums that needs to be addressed. For this, we rewrite the log-likelihood as
 $$
-\sum_{i=1}^n d_i \left[w_i  \eta_i - \bar{w}_i \log \left( \bar{R}_i(we^{\eta}) \right) \right].
+\sum_{i=1, w_i > 0}^n d_i \left[w_i  \eta_i - \bar{w}_i \log \left( \bar{R}_i(we^{\eta}) \right) \right].
 $$
 
 As above, we recall that we restricted $d_i \in \{0,1\}$. Again,
