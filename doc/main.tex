@@ -47,10 +47,12 @@
 
 % ------------------------------------------------------------------------------
 
+\title{Some notes on the score and Hessian of weighted Cox's proportional hazards with ties}
+\author{Trevor Hastie, Balasubrmianian Narasimhan, Jonathan Taylor} % Replace with the actual author's name
+\date{April 13, 2026}
+
 \begin{document}
 
-\title{Some notes on the score and Hessian of  weighted
-Cox's proportional hazards with ties}
 
 \maketitle
 
@@ -83,8 +85,10 @@ the distinction between a start time equalling $t_i$ or not irrelevant.
 
 {\bf We'll assume that we've sorted things
 by event time. That is, $j > i \implies t_j > t_i$. As
-we have no ties in this section, we can recover "disk order"
-by reversing the sort. }
+we have no ties in this section, we can recover ``disk order''
+by reversing the sort. More generally, with ties we'll assume that
+$j > i \implies t_j \geq t_i$ and that tied event and start times
+will be sorted in an arbitrary but fixed order. Therefore, we can unambiguously map between this fixed order and ``disk order''.}
 
 \subsection{Right censored}
 % ------------------------------------------------------------------------------
@@ -93,7 +97,7 @@ Ignoring the linear term, and sign,  we need to differentiate (by $\eta_k$)
 \begin{equation}
    \sum_{i = 1}^n d_i w_i \log \left(\sum_{j \geq i} w_j e^{\eta_j}\right)
 \end{equation}
-Below, $d_i=\text{status}_i$ so it is always binary. Ties will be dealt with shortly.
+Below, $d_i=\text{status}_i$ so it will always be binary even in the presence of ties. Ties will be dealt with shortly.
 
 % ------------------------------------------------------------------------------
 % Reference and Cited Works
@@ -263,9 +267,11 @@ $$
 \pi_{i,\eta}[r] \pi_{i,\eta}[c] \right).
 $$
 
-\section{Ties}
+{\bf This also tells us about saturated log-likelihood by considering multinomials of successive risk sets.}
 
-{\bf We'll assume that we've picked an arbitrary
+\section{Ties and zero weights}
+
+{\bf As mentioned previously, we'll assume that we've picked an arbitrary
 sort of event times
 by event time. That is, $j \geq i \implies t_j \geq t_i$. We can recover ``disk order''
 by inverting this particular sort. So series indexed by $i$
@@ -278,7 +284,7 @@ hypothetical ordering of the events were given, then the
 risk sums for each failure at some time be computed.
 
 This is usually not done exactly. The Breslow and Efron methods
-"approximate" this computation of risk sums in a certain sense. 
+``approximate'' this computation of risk sums in a certain sense. 
 The two methods proceed essentially as above, i.e.
 computing a risk sum for each individual and then
 compute the log of the risk sum.
@@ -291,7 +297,7 @@ failures at a given obsered failure time.
 The linear term clearly has no issue,
 it is the sum of log risk sums that needs to be addressed. For this, we rewrite the log-likelihood as
 $$
-\sum_{i=1}^n d_i \left[w_i  \eta_i - \bar{w}_i \log \left( \bar{R}_i(we^{\eta}) \right) \right].
+\sum_{i=1, w_i > 0}^n d_i \left[w_i  \eta_i - \bar{w}_i \log \left( \bar{R}_i(we^{\eta}) \right) \right].
 $$
 
 As above, we recall that we restricted $d_i \in \{0,1\}$. Again,
@@ -564,6 +570,60 @@ $$
 \sum_{i=1}^n d_i \bar{w}_i  (\xi_r - E_{i,\eta}[\xi]) \pi_{i,\eta}[r] 
 $$
 
+\appendix
+\section{Proofs of Lemmas}
+
+\subsection*{Proof of Lemma \ref{lem:forward}}
+\begin{proof}
+Consider the evaluation of the risk sum for an individual $i$ that experiences an event ($d_i = 1$). The sum can be decomposed into two parts based on the definition of the risk set at time $t_i$, which includes all individuals $j$ such that $s_j < t_i \leq t_j$:
+$$
+\sum_{j: s_j < t_i \leq t_j} Z_j = \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i, t_m \geq t_i} Z_m.
+$$
+Because the start time $s_m$ is always strictly less than the event time $t_m$ ($s_m < t_m$), the condition $s_m \geq t_i$ naturally implies $t_m \geq t_i$. Thus, the second sum simplifies:
+$$
+\sum_{j: s_j < t_i \leq t_j} Z_j = \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i} Z_m.
+$$
+
+Let us assume 0-based indexing for the sequences. The sequence $Z$ is sorted in ascending order of event times $t$. The index ${\tt first}(i)$ represents the first occurrence of the event time $t_i$ in this sorted sequence. Therefore, summing $Z_j$ for all $j$ where $t_j \geq t_i$ is equivalent to summing the sequence from index ${\tt first}(i)$ to the end ($n-1$). By definition, the reversed cumsum $E(Z)_{{\tt first}(i)}$ computes exactly this quantity.
+
+Similarly, let $S(Z)$ be the reversed cumsum of $Z$ sorted by start times $s$. The quantity ${\tt eventmap}(i) = \#\{j : s_j < t_i\}$ gives the exact number of start times strictly less than $t_i$. In a 0-based indexed array sorted by start times, the indices $0, 1, \dots, {\tt eventmap}(i)-1$ correspond to $s_m < t_i$, and the indices from ${\tt eventmap}(i)$ onwards correspond to $s_m \geq t_i$. Thus, the reversed cumsum $S(Z)_{{\tt eventmap}(i)}$ computes the sum of $Z_m$ for $s_m \geq t_i$. 
+
+Multiplying by $d_i$ (which trivially yields $0$ on both sides if $d_i=0$) establishes the first equality:
+$$
+d_i \cdot \left( \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i} Z_m \right) = d_i  \cdot \left( E(Z)_{{\tt first}(i)} - S(Z)_{{\tt eventmap}(i)} \right).
+$$
+
+For the second part of the Lemma, recall the definition of $\bar{R}_i(\xi)$ from Equation \ref{eq:risk:sum}:
+$$
+\bar{R}_i(Z) = \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i} Z_m - \delta \cdot \sigma_i \cdot \Delta_i(Z)
+$$
+where $\Delta_i(Z) = \sum_{j: C_j=C_i} Z_j$ is the sum over the cluster of tied event times at $t_i$. The cluster spans indices from ${\tt first}(i)$ to ${\tt last}(i)$. In terms of the reversed cumsum $E(Z)$, the sum over this finite slice is simply $E(Z)_{{\tt first}(i)} - E(Z)_{{\tt last}(i)+1}$. Substituting this difference into the expression for $\bar{R}_i(Z)$ yields:
+$$
+\bar{r}_i'Z = E(Z)_{{\tt first}(i)} - S(Z)_{{\tt eventmap}(i)} - \delta \cdot \sigma_i  \cdot \left( E(Z)_{{\tt first}(i)} - E(Z)_{{\tt last}(i)+1} \right),
+$$
+which concludes the proof.
+\end{proof}
+
+\subsection*{Proof of Lemma \ref{lem:adjoint}}
+\begin{proof}
+We want to evaluate the sum $\sum_{i=1}^n d_i Z_i (1_{\{t_k \geq t_i\}} - 1_{\{s_k \geq t_i\}})$. The indicator $(1_{\{t_k \geq t_i\}} - 1_{\{s_k \geq t_i\}})$ equals $1$ if and only if $s_k < t_i \leq t_k$, and is $0$ otherwise. Thus, the sum effectively accumulates $d_i Z_i$ over the interval $(s_k, t_k]$.
+
+Assuming 0-based indexing for the arrays sorted by event time $t$, let us identify the bounds of this interval in terms of the sequence indices. 
+The upper bound is defined by $t_i \leq t_k$. In the sorted array, the elements satisfying this condition occupy indices $0$ through ${\tt last}(k)$. The total number of such elements is ${\tt last}(k) + 1$.
+The lower bound is defined by $s_k < t_i$, which means we exclude elements where $t_i \leq s_k$. The number of elements with $t_i \leq s_k$ is precisely given by ${\tt startmap}(k) = \#\{j : t_j \leq s_k\}$. Thus, the excluded indices are $0$ through ${\tt startmap}(k) - 1$.
+
+Consequently, the interval $s_k < t_i \leq t_k$ corresponds exactly to the index range $i \in \{{\tt startmap}(k), \dots, {\tt last}(k)\}$.
+
+Let $\bar{E}(d \cdot Z)$ denote the forward cumsum sequence of $d \cdot Z$, padded with a $0$ at the 0-th index. That is, $\bar{E}(d \cdot Z)_m = \sum_{i=0}^{m-1} d_i Z_i$.
+Using this forward cumsum, the sum over our target index range can be computed as the difference between the sum up to ${\tt last}(k)$ and the sum up to ${\tt startmap}(k)-1$:
+$$
+\sum_{i={\tt startmap}(k)}^{{\tt last}(k)} d_i Z_i = \bar{E}(d \cdot Z)_{{\tt last}(k)+1} - \bar{E}(d \cdot Z)_{{\tt startmap}(k)}.
+$$
+This establishes the first equality. 
+
+The second equality, ${\tt startmap}(k) = {\tt first}({\tt startmap}(k))$, holds because all individuals $j$ that share the exact same event time $t_j = s_k$ must either entirely fall within or outside the threshold boundary. Hence, the index count maps cleanly to the ${\tt first}$ function of that start boundary, ensuring numerical stability in implementations with ties.
+\end{proof}
+
 \end{document}
 
 \section{Blah}
@@ -682,4 +742,58 @@ $$
 m(k)=
 \max(\text{start}(k),{\tt first}(k)-1).$$
 
- \end{document}
+ \appendix
+\section{Proofs of Lemmas}
+
+\subsection*{Proof of Lemma \ref{lem:forward}}
+\begin{proof}
+Consider the evaluation of the risk sum for an individual $i$ that experiences an event ($d_i = 1$). The sum can be decomposed into two parts based on the definition of the risk set at time $t_i$, which includes all individuals $j$ such that $s_j < t_i \leq t_j$:
+$$
+\sum_{j: s_j < t_i \leq t_j} Z_j = \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i, t_m \geq t_i} Z_m.
+$$
+Because the start time $s_m$ is always strictly less than the event time $t_m$ ($s_m < t_m$), the condition $s_m \geq t_i$ naturally implies $t_m \geq t_i$. Thus, the second sum simplifies:
+$$
+\sum_{j: s_j < t_i \leq t_j} Z_j = \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i} Z_m.
+$$
+
+Let us assume 0-based indexing for the sequences. The sequence $Z$ is sorted in ascending order of event times $t$. The index ${\tt first}(i)$ represents the first occurrence of the event time $t_i$ in this sorted sequence. Therefore, summing $Z_j$ for all $j$ where $t_j \geq t_i$ is equivalent to summing the sequence from index ${\tt first}(i)$ to the end ($n-1$). By definition, the reversed cumsum $E(Z)_{{\tt first}(i)}$ computes exactly this quantity.
+
+Similarly, let $S(Z)$ be the reversed cumsum of $Z$ sorted by start times $s$. The quantity ${\tt eventmap}(i) = \#\{j : s_j < t_i\}$ gives the exact number of start times strictly less than $t_i$. In a 0-based indexed array sorted by start times, the indices $0, 1, \dots, {\tt eventmap}(i)-1$ correspond to $s_m < t_i$, and the indices from ${\tt eventmap}(i)$ onwards correspond to $s_m \geq t_i$. Thus, the reversed cumsum $S(Z)_{{\tt eventmap}(i)}$ computes the sum of $Z_m$ for $s_m \geq t_i$. 
+
+Multiplying by $d_i$ (which trivially yields $0$ on both sides if $d_i=0$) establishes the first equality:
+$$
+d_i \cdot \left( \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i} Z_m \right) = d_i  \cdot \left( E(Z)_{{\tt first}(i)} - S(Z)_{{\tt eventmap}(i)} \right).
+$$
+
+For the second part of the Lemma, recall the definition of $\bar{R}_i(\xi)$ from Equation \ref{eq:risk:sum}:
+$$
+\bar{R}_i(Z) = \sum_{j: t_j \geq t_i} Z_j - \sum_{m: s_m \geq t_i} Z_m - \delta \cdot \sigma_i \cdot \Delta_i(Z)
+$$
+where $\Delta_i(Z) = \sum_{j: C_j=C_i} Z_j$ is the sum over the cluster of tied event times at $t_i$. The cluster spans indices from ${\tt first}(i)$ to ${\tt last}(i)$. In terms of the reversed cumsum $E(Z)$, the sum over this finite slice is simply $E(Z)_{{\tt first}(i)} - E(Z)_{{\tt last}(i)+1}$. Substituting this difference into the expression for $\bar{R}_i(Z)$ yields:
+$$
+\bar{r}_i'Z = E(Z)_{{\tt first}(i)} - S(Z)_{{\tt eventmap}(i)} - \delta \cdot \sigma_i  \cdot \left( E(Z)_{{\tt first}(i)} - E(Z)_{{\tt last}(i)+1} \right),
+$$
+which concludes the proof.
+\end{proof}
+
+\subsection*{Proof of Lemma \ref{lem:adjoint}}
+\begin{proof}
+We want to evaluate the sum $\sum_{i=1}^n d_i Z_i (1_{\{t_k \geq t_i\}} - 1_{\{s_k \geq t_i\}})$. The indicator $(1_{\{t_k \geq t_i\}} - 1_{\{s_k \geq t_i\}})$ equals $1$ if and only if $s_k < t_i \leq t_k$, and is $0$ otherwise. Thus, the sum effectively accumulates $d_i Z_i$ over the interval $(s_k, t_k]$.
+
+Assuming 0-based indexing for the arrays sorted by event time $t$, let us identify the bounds of this interval in terms of the sequence indices. 
+The upper bound is defined by $t_i \leq t_k$. In the sorted array, the elements satisfying this condition occupy indices $0$ through ${\tt last}(k)$. The total number of such elements is ${\tt last}(k) + 1$.
+The lower bound is defined by $s_k < t_i$, which means we exclude elements where $t_i \leq s_k$. The number of elements with $t_i \leq s_k$ is precisely given by ${\tt startmap}(k) = \#\{j : t_j \leq s_k\}$. Thus, the excluded indices are $0$ through ${\tt startmap}(k) - 1$.
+
+Consequently, the interval $s_k < t_i \leq t_k$ corresponds exactly to the index range $i \in \{{\tt startmap}(k), \dots, {\tt last}(k)\}$.
+
+Let $\bar{E}(d \cdot Z)$ denote the forward cumsum sequence of $d \cdot Z$, padded with a $0$ at the 0-th index. That is, $\bar{E}(d \cdot Z)_m = \sum_{i=0}^{m-1} d_i Z_i$.
+Using this forward cumsum, the sum over our target index range can be computed as the difference between the sum up to ${\tt last}(k)$ and the sum up to ${\tt startmap}(k)-1$:
+$$
+\sum_{i={\tt startmap}(k)}^{{\tt last}(k)} d_i Z_i = \bar{E}(d \cdot Z)_{{\tt last}(k)+1} - \bar{E}(d \cdot Z)_{{\tt startmap}(k)}.
+$$
+This establishes the first equality. 
+
+The second equality, ${\tt startmap}(k) = {\tt first}({\tt startmap}(k))$, holds because all individuals $j$ that share the exact same event time $t_j = s_k$ must either entirely fall within or outside the threshold boundary. Hence, the index count maps cleanly to the ${\tt first}$ function of that start boundary, ensuring numerical stability in implementations with ties.
+\end{proof}
+
+\end{document}
