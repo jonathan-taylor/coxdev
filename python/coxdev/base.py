@@ -278,8 +278,8 @@ class CoxInformation(LinearOperator):
     def __post_init__(self):
         """Initialize the linear operator dimensions."""
         n = self.result.linear_predictor.shape[0]
-        self.shape = (n, n)
-        self.dtype = float
+        # sets shape and dtype (and, in SciPy >= 1.18, the array namespace used by @)
+        LinearOperator.__init__(self, dtype=float, shape=(n, n))
         
     def _matvec(self, arg):
         """
