@@ -9,6 +9,7 @@ A high-performance C++ for computing Cox proportional hazards model deviance, gr
 - **Left-Truncated Data**: Support for left-truncated survival data
 - **Efficient Computations**: Optimized algorithms for deviance, gradient, and Hessian calculations
 - **Memory Efficient**: Uses linear operators for large-scale computations
+- **Sampling the Score**: Draws of the score from the fitted model (multinomial, Bernoulli or Wallenius draws of the failures at each event time) or from its score residuals (a wild bootstrap), reproducible from a seed on every platform
 - **Cross-Platform**: Works on Linux, macOS, and Windows
 
 ## Installation
@@ -101,6 +102,51 @@ I = info_matrix @ X
 information_matrix = X.T @ I
 ```
 
+### Sampling the Score
+
+`sample_score` draws the score at a linear predictor. Each draw has one
+entry per observation, on the scale of the score `-gradient / 2`, so for a
+design `X` the vector `X.T @ draw` is a draw of the score of the
+coefficients. Ties, start times and strata are handled as for the
+deviance.
+
+```python
+X = np.random.normal(0, 1, (n_samples, 3))
+eta = X @ np.array([0.5, -0.5, 0.25])
+coxdev = CoxDeviance(event=event_times, status=status, tie_breaking='efron')
+
+# 2000 draws of the score of the coefficients
+draws = X.T @ coxdev.sample_score(eta, method='multinomial', n_draws=2000, seed=1)
+
+# their covariance is about the (Breslow) information: the ratios are near 1
+I = coxdev.information(eta)
+information_matrix = X.T @ (I @ X)
+print(np.diag(np.cov(draws)) / np.diag(information_matrix))
+```
+
+The methods are:
+
+| `method` | Draw | Covariance |
+|---|---|---|
+| `'multinomial'` | the failures at each event time drawn with replacement from the risk set, with probabilities proportional to `sample_weight * exp(eta)`; the difference of two independent draws over `sqrt(2)` | the Breslow information |
+| `'multinomial_centered'` | one such draw, minus its expectation | the Breslow information |
+| `'bernoulli'` | each subject at risk fails independently with probability `min(1, d * p)`, centered within the risk set; two draws | less than the information when ties are heavy |
+| `'wallenius'` | the failures at each event time drawn without replacement, one at a time (Wallenius' noncentral hypergeometric distribution); two draws | less than the information when ties are heavy |
+| `'wild'` | the score residuals of the observations times independent standard normals | the sandwich, the sum of the outer products of the score residuals |
+
+The model-based methods (all but `'wild'`) need equal positive weights.
+`'wild'` does not rely on the model: its covariance is the sandwich, which
+is right even when the proportional hazards model is not.
+
+`wild_score` gives the wild draw for given multipliers: with multipliers
+`G`, `X.T @ coxdev.wild_score(eta, G)` is the sum over observations of
+`G[i]` times the score residual of observation `i`. With `G` all one it is
+the score.
+
+The random numbers come from the C++ code, from the bits of
+`std::mt19937_64`, so the same `seed` gives the same draws on every
+platform. With `seed=None`, a fresh seed is drawn.
+
 ### Different Tie-Breaking Methods
 
 ```python
@@ -128,6 +174,8 @@ The main class for computing Cox model quantities.
 
 - **`__call__(linear_predictor, sample_weight=None)`**: Compute deviance and related quantities
 - **`information(linear_predictor, sample_weight=None)`**: Get information matrix as linear operator
+- **`sample_score(linear_predictor, sample_weight=None, method='multinomial', n_draws=None, seed=None)`**: Draws of the score, one entry per observation: a vector if `n_draws` is None, else an `(n, n_draws)` array. See [Sampling the Score](#sampling-the-score)
+- **`wild_score(linear_predictor, multipliers, sample_weight=None)`**: The wild draw of the score for given multipliers
 
 ### CoxDevianceResult
 
