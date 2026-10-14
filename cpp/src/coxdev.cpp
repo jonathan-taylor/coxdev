@@ -298,7 +298,7 @@ double cox_dev(const Eigen::Ref<const Eigen::VectorXd> eta,
     forward_prework(ctx.status, w_avg_buffer, ctx.scaling, risk_sums, 1, 1, forward_scratch_buffer, dummy_map, true);
     forward_cumsum(forward_scratch_buffer, forward_cumsum2);
 
-    forward_prework(ctx.status, w_avg_buffer, ctx.scaling, risk_sums, 2, 1, forward_scratch_buffer, dummy_map, true);
+    forward_prework(ctx.status, w_avg_buffer, ctx.scaling, risk_sums, 1, 2, forward_scratch_buffer, dummy_map, true);
     forward_cumsum(forward_scratch_buffer, forward_cumsum3);
 
     forward_prework(ctx.status, w_avg_buffer, ctx.scaling, risk_sums, 2, 2, forward_scratch_buffer, dummy_map, true);
@@ -316,7 +316,7 @@ double cox_dev(const Eigen::Ref<const Eigen::VectorXd> eta,
 	T_1_term(i) -= forward_cumsum0(ctx.start_map(i));
       }
       for (int i = 0; i < ctx.first.size(); ++i) {      
-	T_2_term(i) -= forward_cumsum1(ctx.first(i));
+	T_2_term(i) -= forward_cumsum1(ctx.start_map(i));
       }
     }
   }
