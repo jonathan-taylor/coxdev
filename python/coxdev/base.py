@@ -51,6 +51,36 @@ class CoxDevianceResult(object):
 
 
 @dataclass
+class BaselineHazard(object):
+    """
+    The estimate of the baseline hazard of a Cox model.
+
+    One entry per distinct failure time with positive weight, in increasing
+    time within each stratum. The hazard is for the linear predictor as
+    given: the cumulative hazard of observation ``i`` at time ``t`` is the
+    ``cumulative_hazard`` at the last failure time ``<= t`` in its stratum,
+    times ``exp(linear_predictor[i])``.
+
+    Attributes
+    ----------
+    time : np.ndarray
+        The distinct failure times.
+    hazard : np.ndarray
+        The increment of the cumulative hazard at each time.
+    cumulative_hazard : np.ndarray
+        The cumulative hazard, the running sum of ``hazard`` within each
+        stratum.
+    stratum : np.ndarray
+        The stratum label of each entry (0 without strata).
+    """
+
+    time: np.ndarray
+    hazard: np.ndarray
+    cumulative_hazard: np.ndarray
+    stratum: np.ndarray
+
+
+@dataclass
 class CoxDeviance(object):
     """
     Cox Proportional Hazards Model Deviance Calculator.
@@ -379,6 +409,73 @@ class CoxDeviance(object):
         """
         self(linear_predictor, sample_weight)
         return self._coxc.wild_score(np.asarray(multipliers, float))
+
+    def score_residuals(self,
+                        linear_predictor,
+                        X,
+                        sample_weight=None):
+        """
+        The score residuals of a design ``X`` at ``linear_predictor``.
+
+        Row ``i`` is ``U_i``, the contribution of observation ``i`` to the
+        score of the coefficients ``X.T @ (-gradient / 2)``: the sum over the
+        failure times of ``(w_i 1{i fails} / d - wbar p_i) (x_i - xbar)``,
+        centered within each risk set, with Efron's weights for ties if
+        ``tie_breaking='efron'`` (Lin and Wei, 1989). The rows sum to the
+        score, ``multipliers @ U`` is ``X.T @ wild_score(eta, multipliers)``,
+        and ``U.T @ U`` is the middle of the robust (sandwich) variance.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        X : np.ndarray
+            The design, one row per observation.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n, p)``, or ``(n,)`` for a one-dimensional ``X``.
+        """
+        X = np.asarray(X, float)
+        one_dim = X.ndim == 1
+        X2 = X.reshape((-1, 1)) if one_dim else X
+        if X2.shape[0] != np.asarray(linear_predictor).shape[0]:
+            raise ValueError('X must have one row per observation')
+        self(linear_predictor, sample_weight)
+        U = self._coxc.score_residuals(X2)
+        return U[:, 0] if one_dim else U
+
+    def baseline_hazard(self,
+                        linear_predictor,
+                        sample_weight=None):
+        """
+        The estimate of the baseline hazard at ``linear_predictor``:
+        Breslow's, or with ``tie_breaking='efron'`` Efron's, which spreads the
+        tied failures at a time over Efron's shrinking risk sets.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        BaselineHazard
+            The failure times, the increments of the cumulative hazard and
+            the cumulative hazard, for ``linear_predictor`` as given, with
+            the stratum of each.
+        """
+        self(linear_predictor, sample_weight)
+        time, hazard, cumulative_hazard, stratum = self._coxc.baseline_hazard()
+        return BaselineHazard(time=np.asarray(time),
+                              hazard=np.asarray(hazard),
+                              cumulative_hazard=np.asarray(cumulative_hazard),
+                              stratum=np.asarray(stratum))
 
 
 @dataclass
