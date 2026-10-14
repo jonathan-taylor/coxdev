@@ -986,6 +986,120 @@ Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   return out;
 }
 
+Eigen::MatrixXd CoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    ERROR_MSG("score_residuals: call compute_deviance first");
+  }
+  if (X.rows() != n) {
+    ERROR_MSG("score_residuals: X must have one row per observation");
+  }
+  CoxContext ctx = get_context();
+
+  // the risk sums of w exp(eta), with Efron's weights if efron
+  Eigen::VectorXd S(n), event_cumsum(n + 1), start_cumsum(n + 1);
+  sum_over_risk_set(exp_w_buffer, ctx, S, event_cumsum, start_cumsum);
+
+  // in event order: weights, exp(eta) w, the score in eta (-gradient / 2)
+  Eigen::VectorXd w_ev(n), M_ev(n), e_ev(n);
+  for (int i = 0; i < n; ++i) {
+    int k = event_order(i);
+    w_ev(i) = sample_weight(k);
+    M_ev(i) = -0.5 * grad_buffer(k);
+    e_ev(i) = exp_w_buffer(k);
+  }
+  Eigen::VectorXd status_w = ctx.status.cast<double>().array() * w_ev.array();
+  Eigen::VectorXd Cw(n + 1);
+  forward_cumsum(status_w, Cw);
+
+  // the failure terms t (as in wild_score), with their average weight wbar
+  std::vector<bool> term(n, false);
+  Eigen::VectorXd wbar = Eigen::VectorXd::Zero(n);
+  for (int t = 0; t < n; ++t) {
+    if (ctx.status(t) == 1 && w_ev(t) > 0 && S(t) > 0) {
+      int f = ctx.first(t), l = ctx.last(t);
+      term[t] = true;
+      wbar(t) = (Cw(l + 1) - Cw(f)) / (l + 1 - f);
+    }
+  }
+
+  // For each column x, with xbar_t the mean of x over the risk set of term t
+  // (with weights w exp(eta), and Efron's for ties):
+  //   U_i = x_i M_i - (w_i delta_i / d) sum_{t at i's time} xbar_t
+  //         + e_i sum_{t containing i} wbar_t xbar_t / S_t.
+  Eigen::MatrixXd out(n, X.cols());
+  Eigen::VectorXd ex(n), SX(n), xbar(n), c(n), Cx(n + 1);
+  for (Eigen::Index j = 0; j < X.cols(); ++j) {
+    ex = exp_w_buffer.array() * X.col(j).array();
+    sum_over_risk_set(ex, ctx, SX, event_cumsum, start_cumsum);
+    for (int t = 0; t < n; ++t) {
+      xbar(t) = term[t] ? SX(t) / S(t) : 0.0;
+      c(t) = term[t] ? wbar(t) * xbar(t) / S(t) : 0.0;
+    }
+    Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
+    forward_cumsum(xbar, Cx);
+    for (int i = 0; i < n; ++i) {
+      int k = event_order(i);
+      double own = 0.0;
+      if (status_w(i) > 0) {
+        int f = ctx.first(i), l = ctx.last(i);
+        own = status_w(i) * (Cx(l + 1) - Cx(f)) / (l + 1 - f);
+      }
+      out(k, j) = X(k, j) * M_ev(i) - own + e_ev(i) * T(i);
+    }
+  }
+  return out;
+}
+
+BaselineHazard CoxDeviance::baseline_hazard() const {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    ERROR_MSG("baseline_hazard: call compute_deviance first");
+  }
+  CoxContext ctx = get_context();
+
+  Eigen::VectorXd S(n), event_cumsum(n + 1), start_cumsum(n + 1);
+  sum_over_risk_set(exp_w_buffer, ctx, S, event_cumsum, start_cumsum);
+  Eigen::VectorXd w_ev(n);
+  for (int i = 0; i < n; ++i) w_ev(i) = sample_weight(event_order(i));
+  Eigen::VectorXd status_w = ctx.status.cast<double>().array() * w_ev.array();
+  Eigen::VectorXd Cw(n + 1);
+  forward_cumsum(status_w, Cw);
+
+  // the increment at a failure time is the sum over its failure terms t of
+  // wbar_t / S_t: d wbar / S for Breslow's ties, Efron's estimate for his.
+  // exp_w is w exp(eta - mean(eta)), so the increments for eta as given are
+  // these times exp(-mean(eta)).
+  double scale = std::exp(-linear_predictor.mean());
+  std::vector<double> time, hazard;
+  int current = -1;
+  for (int t = 0; t < n; ++t) {
+    if (ctx.status(t) == 1 && w_ev(t) > 0 && S(t) > 0) {
+      int f = ctx.first(t), l = ctx.last(t);
+      double wbar = (Cw(l + 1) - Cw(f)) / (l + 1 - f);
+      if (f != current) {
+        current = f;
+        time.push_back(_event(t));
+        hazard.push_back(0.0);
+      }
+      hazard.back() += scale * wbar / S(t);
+    }
+  }
+
+  BaselineHazard out;
+  int m = time.size();
+  out.time = Eigen::Map<Eigen::VectorXd>(time.data(), m);
+  out.hazard = Eigen::Map<Eigen::VectorXd>(hazard.data(), m);
+  out.cumulative_hazard.resize(m);
+  double total = 0.0;
+  for (int k = 0; k < m; ++k) {
+    total += hazard[k];
+    out.cumulative_hazard(k) = total;
+  }
+  out.stratum = Eigen::VectorXi::Zero(m);
+  return out;
+}
+
 Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
                                             int n_draws,
                                             std::uint64_t seed) {
@@ -1223,6 +1337,48 @@ Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& multipl
     for (size_t j = 0; j < indices.size(); ++j) G(j) = multipliers(indices[j]);
     Eigen::VectorXd draw = cox_devs[s]->wild_score(G);
     for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = draw(j);
+  }
+  return out;
+}
+
+Eigen::MatrixXd StratifiedCoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
+  int n = linear_predictor.size();
+  if (X.rows() != n) {
+    ERROR_MSG("score_residuals: X must have one row per observation");
+  }
+  Eigen::MatrixXd out = Eigen::MatrixXd::Zero(n, X.cols());
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    const auto& indices = stratum_indices[s];
+    Eigen::MatrixXd Xs(indices.size(), X.cols());
+    for (size_t j = 0; j < indices.size(); ++j) Xs.row(j) = X.row(indices[j]);
+    Eigen::MatrixXd U = cox_devs[s]->score_residuals(Xs);
+    for (size_t j = 0; j < indices.size(); ++j) out.row(indices[j]) = U.row(j);
+  }
+  return out;
+}
+
+BaselineHazard StratifiedCoxDeviance::baseline_hazard() const {
+  // the strata in turn: each stratum's hazard is already for its linear
+  // predictor as given
+  std::vector<BaselineHazard> parts;
+  int m = 0;
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    parts.push_back(cox_devs[s]->baseline_hazard());
+    m += parts.back().time.size();
+  }
+  BaselineHazard out;
+  out.time.resize(m);
+  out.hazard.resize(m);
+  out.cumulative_hazard.resize(m);
+  out.stratum.resize(m);
+  int k = 0;
+  for (size_t s = 0; s < parts.size(); ++s) {
+    int ms = parts[s].time.size();
+    out.time.segment(k, ms) = parts[s].time;
+    out.hazard.segment(k, ms) = parts[s].hazard;
+    out.cumulative_hazard.segment(k, ms) = parts[s].cumulative_hazard;
+    out.stratum.segment(k, ms).setConstant(unique_strata[s]);
+    k += ms;
   }
   return out;
 }
