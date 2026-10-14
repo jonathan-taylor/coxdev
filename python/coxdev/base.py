@@ -9,6 +9,7 @@ different tie-breaking methods (Efron and Breslow) and stratified models.
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
 
+from scipy.sparse import issparse
 from scipy.sparse.linalg import LinearOperator
 
 import numpy as np
@@ -425,12 +426,19 @@ class CoxDeviance(object):
         score, ``multipliers @ U`` is ``X.T @ wild_score(eta, multipliers)``,
         and ``U.T @ U`` is the middle of the robust (sandwich) variance.
 
+        The residuals are built a column at a time, each in ``O(n)``. ``U``
+        is dense even for a sparse ``X``, since the risk-set means spread
+        each covariate over the subjects at risk. For draws ``U.T @ G`` (a
+        wild bootstrap) there is no need to form ``U``:
+        ``X.T @ wild_score(eta, G)`` is the same, in one ``O(n)`` call.
+
         Parameters
         ----------
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
-        X : np.ndarray
-            The design, one row per observation.
+        X : np.ndarray or scipy.sparse matrix
+            The design, one row per observation; a sparse ``X`` is made
+            dense a column at a time.
         sample_weight : np.ndarray, optional
             Defaults to one.
 
@@ -439,16 +447,22 @@ class CoxDeviance(object):
         np.ndarray
             ``(n, p)``, or ``(n,)`` for a one-dimensional ``X``.
         """
-        X = np.asarray(X, float)
-        one_dim = X.ndim == 1
-        X2 = X.reshape((-1, 1)) if one_dim else X
+        if issparse(X):
+            X2 = X.tocsc()
+            one_dim = False
+            column = lambda j: X2[:, [j]].toarray().ravel().astype(float)
+        else:
+            X = np.asarray(X, float)
+            one_dim = X.ndim == 1
+            X2 = X.reshape((-1, 1)) if one_dim else X
+            column = lambda j: X2[:, j]
         if X2.shape[0] != np.asarray(linear_predictor).shape[0]:
             raise ValueError('X must have one row per observation')
         self(linear_predictor, sample_weight)
         # the C++ takes one covariate at a time
         U = np.empty(X2.shape)
         for j in range(X2.shape[1]):
-            U[:, j] = self._coxc.score_residuals(X2[:, j])
+            U[:, j] = self._coxc.score_residuals(column(j))
         return U[:, 0] if one_dim else U
 
     def baseline_hazard(self,
