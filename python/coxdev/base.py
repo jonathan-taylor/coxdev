@@ -9,6 +9,7 @@ different tie-breaking methods (Efron and Breslow) and stratified models.
 from dataclasses import dataclass, InitVar
 from typing import Literal, Optional
 
+from scipy.sparse import issparse
 from scipy.sparse.linalg import LinearOperator
 
 import numpy as np
@@ -48,6 +49,36 @@ class CoxDevianceResult(object):
     gradient: Optional[np.ndarray]
     diag_hessian: Optional[np.ndarray]
     __hash_args__: str
+
+
+@dataclass
+class BaselineHazard(object):
+    """
+    The estimate of the baseline hazard of a Cox model.
+
+    One entry per distinct failure time with positive weight, in increasing
+    time within each stratum. The hazard is for the linear predictor as
+    given: the cumulative hazard of observation ``i`` at time ``t`` is the
+    ``cumulative_hazard`` at the last failure time ``<= t`` in its stratum,
+    times ``exp(linear_predictor[i])``.
+
+    Attributes
+    ----------
+    time : np.ndarray
+        The distinct failure times.
+    hazard : np.ndarray
+        The increment of the cumulative hazard at each time.
+    cumulative_hazard : np.ndarray
+        The cumulative hazard, the running sum of ``hazard`` within each
+        stratum.
+    stratum : np.ndarray
+        The stratum label of each entry (0 without strata).
+    """
+
+    time: np.ndarray
+    hazard: np.ndarray
+    cumulative_hazard: np.ndarray
+    stratum: np.ndarray
 
 
 @dataclass
@@ -379,6 +410,89 @@ class CoxDeviance(object):
         """
         self(linear_predictor, sample_weight)
         return self._coxc.wild_score(np.asarray(multipliers, float))
+
+    def score_residuals(self,
+                        linear_predictor,
+                        X,
+                        sample_weight=None):
+        """
+        The score residuals of a design ``X`` at ``linear_predictor``.
+
+        Row ``i`` is ``U_i``, the contribution of observation ``i`` to the
+        score of the coefficients ``X.T @ (-gradient / 2)``: the sum over the
+        failure times of ``(w_i 1{i fails} / d - wbar p_i) (x_i - xbar)``,
+        centered within each risk set, with Efron's weights for ties if
+        ``tie_breaking='efron'`` (Lin and Wei, 1989). The rows sum to the
+        score, ``multipliers @ U`` is ``X.T @ wild_score(eta, multipliers)``,
+        and ``U.T @ U`` is the middle of the robust (sandwich) variance.
+
+        The residuals are built a column at a time, each in ``O(n)``. ``U``
+        is dense even for a sparse ``X``, since the risk-set means spread
+        each covariate over the subjects at risk. For draws ``U.T @ G`` (a
+        wild bootstrap) there is no need to form ``U``:
+        ``X.T @ wild_score(eta, G)`` is the same, in one ``O(n)`` call.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        X : np.ndarray or scipy.sparse matrix
+            The design, one row per observation; a sparse ``X`` is made
+            dense a column at a time.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n, p)``, or ``(n,)`` for a one-dimensional ``X``.
+        """
+        if issparse(X):
+            X2 = X.tocsc()
+            one_dim = False
+            column = lambda j: X2[:, [j]].toarray().ravel().astype(float)
+        else:
+            X = np.asarray(X, float)
+            one_dim = X.ndim == 1
+            X2 = X.reshape((-1, 1)) if one_dim else X
+            column = lambda j: X2[:, j]
+        if X2.shape[0] != np.asarray(linear_predictor).shape[0]:
+            raise ValueError('X must have one row per observation')
+        self(linear_predictor, sample_weight)
+        # the C++ takes one covariate at a time
+        U = np.empty(X2.shape)
+        for j in range(X2.shape[1]):
+            U[:, j] = self._coxc.score_residuals(column(j))
+        return U[:, 0] if one_dim else U
+
+    def baseline_hazard(self,
+                        linear_predictor,
+                        sample_weight=None):
+        """
+        The estimate of the baseline hazard at ``linear_predictor``:
+        Breslow's, or with ``tie_breaking='efron'`` Efron's, which spreads the
+        tied failures at a time over Efron's shrinking risk sets.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        BaselineHazard
+            The failure times, the increments of the cumulative hazard and
+            the cumulative hazard, for ``linear_predictor`` as given, with
+            the stratum of each.
+        """
+        self(linear_predictor, sample_weight)
+        time, hazard, cumulative_hazard, stratum = self._coxc.baseline_hazard()
+        return BaselineHazard(time=np.asarray(time),
+                              hazard=np.asarray(hazard),
+                              cumulative_hazard=np.asarray(cumulative_hazard),
+                              stratum=np.asarray(stratum))
 
 
 @dataclass

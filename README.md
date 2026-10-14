@@ -67,6 +67,15 @@ print(f"Saturated log-likelihood: {result.loglik_sat:.4f}")
 print(f"Gradient norm: {np.linalg.norm(result.gradient):.4f}")
 ```
 
+## Notebooks
+
+`doc/using_coxdev.md` (fitting by Newton's method with the information
+operator, robust standard errors, the baseline hazard and survival curves,
+and what keeping state saves) and `doc/sampling.md` (the methods of
+`sample_score` compared) are [jupytext](https://jupytext.readthedocs.io)
+notebooks, with executed copies in `doc/*.ipynb`. The R package has the
+same two as vignettes.
+
 ## Advanced Usage
 
 ### Left-Truncated Data
@@ -193,6 +202,25 @@ The random numbers come from the C++ code, from the bits of
 `std::mt19937_64`, so the same `seed` gives the same draws on every
 platform. With `seed=None`, a fresh seed is drawn.
 
+### Score Residuals and the Baseline Hazard
+
+```python
+# the score residuals of a design: row i is observation i's contribution
+# to the score of the coefficients
+U = coxdev.score_residuals(eta, X)
+I = X.T @ (coxdev.information(eta) @ X)
+robust_cov = np.linalg.solve(I, np.linalg.solve(I, U.T @ U).T)   # the sandwich
+
+# Breslow's (or, with Efron's ties, Efron's) baseline hazard, for eta as given
+H = coxdev.baseline_hazard(eta)
+H.time, H.hazard, H.cumulative_hazard, H.stratum
+```
+
+The cumulative hazard of observation `i` at time `t` is the
+`cumulative_hazard` at the last failure time `<= t` (in its stratum) times
+`exp(eta[i])`. Both agree with R's `survival` (`residuals(fit, type =
+"score")`, which is per unit weight, and `basehaz(fit, centered = FALSE)`).
+
 ### Different Tie-Breaking Methods
 
 ```python
@@ -222,6 +250,8 @@ The main class for computing Cox model quantities.
 - **`information(linear_predictor, sample_weight=None)`**: Get information matrix as linear operator
 - **`sample_score(linear_predictor, sample_weight=None, method='multinomial', n_draws=None, seed=None)`**: Draws of the score, one entry per observation: a vector if `n_draws` is None, else an `(n, n_draws)` array. See [Sampling the Score](#sampling-the-score)
 - **`wild_score(linear_predictor, multipliers, sample_weight=None)`**: The wild draw of the score for given multipliers
+- **`score_residuals(linear_predictor, X, sample_weight=None)`**: The `(n, p)` score residuals of a design `X`
+- **`baseline_hazard(linear_predictor, sample_weight=None)`**: The baseline hazard, a `BaselineHazard` with `time`, `hazard`, `cumulative_hazard` and `stratum`
 
 ### CoxDevianceResult
 
