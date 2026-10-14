@@ -1,0 +1,31 @@
+version: 1
+project:
+  title: coxdev
+  description: The Cox model's deviance, gradient and Hessian, as a stand-alone class
+  authors:
+    - name: Jonathan Taylor
+    - name: Trevor Hastie
+    - name: Balasubramanian Narasimhan
+  github: https://github.com/jonathan-taylor/coxdev
+  exclude:
+    - '*.ipynb'
+    - final.md
+    - hessian.md
+    - Different_tie_types.md
+    - _build
+  toc:
+    - file: index.md
+    - title: Using coxdev
+      children:
+        - file: using_coxdev.md
+        - file: sampling.md
+    - title: Computations
+      children:
+        - file: notes_no_ties.md
+        - file: notes_ties.md
+        - file: notes_hessian.md
+
+site:
+  options:
+    folders: true
+  template: book-theme
