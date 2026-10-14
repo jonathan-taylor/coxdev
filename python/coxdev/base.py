@@ -265,6 +265,72 @@ class CoxDeviance(object):
         return CoxInformation(result=result,
                               coxdev=self)
 
+    def sample_score(self,
+                       linear_predictor,
+                       sample_weight=None,
+                       method='multinomial',
+                       n_draws=None,
+                       seed=None):
+        """
+        Draws of the score at ``linear_predictor``: from the Cox model with
+        that linear predictor, or (``'wild'``) from its score residuals.
+
+        Each draw ``r`` has one entry per observation, on the scale of the
+        score ``-gradient / 2``, so that ``X.T @ r`` is a draw of the score of
+        the coefficients of a design ``X``.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one. The model-based methods (all but ``'wild'``)
+            need equal positive weights.
+        method : {'multinomial', 'multinomial_centered', 'bernoulli', 'wallenius', 'wild'}
+            ``'multinomial'``: at each event time, the failures are drawn with
+            replacement from the risk set with probabilities proportional to
+            ``sample_weight * exp(linear_predictor)``, and the draw is the
+            difference of two such draws over ``sqrt(2)``; its covariance is the
+            Breslow information. ``'multinomial_centered'``: one such draw minus
+            its expectation. ``'bernoulli'``: each subject at risk fails
+            independently with probability ``min(1, d p)``, centered within the
+            risk set, two draws. ``'wallenius'``: the failures drawn without
+            replacement, one at a time, two draws. ``'wild'``: the score
+            residuals multiplied by independent standard normals; its
+            covariance is the sandwich, the sum of the outer products of the
+            score residuals.
+        n_draws : int, optional
+            The number of draws. If None, one draw, as a vector.
+        seed : int, optional
+            Seed of the random number generator (a nonnegative integer below
+            2**64). The same seed gives the same draws on every platform, and
+            from R. If None, a seed is drawn from numpy's random entropy.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n,)`` if ``n_draws`` is None, else ``(n, n_draws)``.
+        """
+        if seed is None:
+            seed = int(np.random.SeedSequence().generate_state(1, np.uint64)[0])
+        self(linear_predictor, sample_weight)
+        draws = self._coxc.sample_score(method, 1 if n_draws is None else int(n_draws), int(seed))
+        return draws[:, 0] if n_draws is None else draws
+
+    def wild_score(self,
+                   linear_predictor,
+                   multipliers,
+                   sample_weight=None):
+        """
+        The wild draw of the score for given multipliers: ``r`` with
+        ``X.T @ r = sum_i multipliers[i] * U_i``, where ``U_i`` is the score
+        residual of observation ``i`` (its contribution to the score, centered
+        within each risk set, with Efron's weights if ``tie_breaking='efron'``).
+        With ``multipliers`` all one, ``r`` is the score ``-gradient / 2``.
+        """
+        self(linear_predictor, sample_weight)
+        return self._coxc.wild_score(np.asarray(multipliers, float))
+
 
 @dataclass
 class CoxInformation(LinearOperator):
