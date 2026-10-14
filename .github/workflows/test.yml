@@ -49,6 +49,13 @@ jobs:
         cd /tmp
         python -c "import coxdev; print(f'Location: {coxdev.__file__}'); import os; print(f'Contents: {os.listdir(os.path.dirname(coxdev.__file__))}')"
 
+    - name: Run the notebooks in doc
+      run: |
+        pip install jupytext nbconvert ipykernel matplotlib pandas
+        for nb in using_coxdev sampling; do
+          jupytext --to ipynb --execute doc/$nb.md --output "$RUNNER_TEMP/$nb.ipynb"
+        done
+
     - name: Test coxdev
       run: |
         mkdir empty_dir
