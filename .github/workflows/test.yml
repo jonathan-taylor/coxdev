@@ -51,7 +51,7 @@ jobs:
 
     - name: Run the notebooks in doc
       run: |
-        pip install jupytext nbconvert ipykernel matplotlib pandas
+        pip install jupytext nbconvert ipykernel matplotlib pandas glmstar
         for nb in using_coxdev sampling; do
           jupytext --to ipynb --execute doc/$nb.md --output "$RUNNER_TEMP/$nb.ipynb"
         done
