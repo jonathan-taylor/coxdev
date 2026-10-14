@@ -4,6 +4,8 @@
 #include <memory>
 #include <algorithm>
 #include <stdexcept>
+#include <string>
+#include <cstdint>
 #include <Eigen/Dense>
 
 #ifdef PY_INTERFACE
@@ -55,6 +57,34 @@ public:
     void compute_hessian_matvec(const Eigen::VectorXd& arg,
                                 Eigen::VectorXd& out);
 
+    // Draws of the score from the model at the linear predictor and weights of
+    // the last compute_deviance (or, for "wild", from its score residuals). Each column r of the (n x n_draws) result is in native
+    // order and on the scale of the score -gradient / 2, so that X^T r is a draw
+    // of the score of the coefficients of a design X. method is one of
+    //   "multinomial"           the d_k failures at each event time drawn with
+    //                           replacement from the risk set, with probabilities
+    //                           proportional to w exp(eta): the difference of two
+    //                           independent draws over sqrt(2)
+    //   "multinomial_centered"  one such draw, minus its expectation
+    //   "bernoulli"             each subject at risk fails independently with
+    //                           probability min(1, d_k p_k), centered within the
+    //                           risk set: the difference of two draws over sqrt(2)
+    //   "wallenius"             the d_k failures drawn without replacement, one
+    //                           at a time (Wallenius' distribution): the difference
+    //                           of two draws over sqrt(2)
+    //   "wild"                  sum_i G_i U_i over the score residuals U_i, with
+    //                           independent standard normal G_i
+    // The model-based methods (all but "wild") need equal positive weights.
+    // Draws depend only on seed, not on the platform.
+    Eigen::MatrixXd sample_score(const std::string& method,
+                                   int n_draws,
+                                   std::uint64_t seed);
+
+    // The wild draw for given multipliers G (native order): r with
+    // X^T r = sum_i G_i U_i, U_i the score residual of subject i (centered in
+    // each risk set, with Efron's weights for ties if efron).
+    Eigen::VectorXd wild_score(const Eigen::VectorXd& multipliers);
+
     // Getters for buffers (for result construction or debugging)
     const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
     const Eigen::VectorXd& get_diag_hessian() const { return diag_hessian_buffer; }
@@ -77,6 +107,7 @@ public:
 private:
     // Preprocessing results
     Eigen::VectorXd _start, _event, _scaling;
+    Eigen::VectorXd raw_start;    // start times in native order
     Eigen::VectorXi _status, _first, _last, _start_map, _event_map;
     Eigen::VectorXi event_order, start_order;
     
@@ -115,6 +146,13 @@ public:
 
     void compute_hessian_matvec(const Eigen::VectorXd& arg,
                                 Eigen::VectorXd& out);
+
+    // As for CoxDeviance, stratum by stratum (each with its own seed derived
+    // from seed).
+    Eigen::MatrixXd sample_score(const std::string& method,
+                                   int n_draws,
+                                   std::uint64_t seed);
+    Eigen::VectorXd wild_score(const Eigen::VectorXd& multipliers);
 
     const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
     const Eigen::VectorXd& get_diag_hessian() const { return diag_hessian_buffer; }

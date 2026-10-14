@@ -143,6 +143,9 @@ PYBIND11_MODULE(coxc, m) {
           self.compute_hessian_matvec(arg, out);
           return out;
       })
+      .def("sample_score", &CoxDeviance::sample_score,
+           py::arg("method"), py::arg("n_draws"), py::arg("seed"))
+      .def("wild_score", &CoxDeviance::wild_score, py::arg("multipliers"))
       .def_property_readonly("gradient", &CoxDeviance::get_gradient, py::return_value_policy::reference_internal)
       .def_property_readonly("diag_hessian", &CoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)
       .def_property_readonly("linear_predictor", &CoxDeviance::get_linear_predictor, py::return_value_policy::reference_internal)
@@ -167,6 +170,9 @@ PYBIND11_MODULE(coxc, m) {
           self.compute_hessian_matvec(arg, out);
           return out;
       })
+      .def("sample_score", &StratifiedCoxDeviance::sample_score,
+           py::arg("method"), py::arg("n_draws"), py::arg("seed"))
+      .def("wild_score", &StratifiedCoxDeviance::wild_score, py::arg("multipliers"))
       .def_property_readonly("gradient", &StratifiedCoxDeviance::get_gradient, py::return_value_policy::reference_internal)
       .def_property_readonly("diag_hessian", &StratifiedCoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)
       .def_property_readonly("linear_predictor", &StratifiedCoxDeviance::get_linear_predictor, py::return_value_policy::reference_internal)

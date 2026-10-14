@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iostream>
 #include <numeric>
+#include <random>
 
 #ifndef DEBUG_PRINT
 #define DEBUG_PRINT(x) std::cout << x << std::endl
@@ -599,6 +600,7 @@ CoxDeviance::CoxDeviance(const Eigen::VectorXd& start,
     
     have_start_times = (start.array() > -std::numeric_limits<double>::infinity()).any();
     sample_weight = weight;
+    raw_start = start;
 }
 
 double CoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
@@ -764,3 +766,399 @@ void StratifiedCoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Sampling the score
+
+namespace {
+
+// Random numbers from the bits of std::mt19937_64, whose output the C++
+// standard specifies exactly. The distributions of <random> differ between
+// standard libraries, so they are not used: the same seed gives the same
+// draws on every platform, from Python or R.
+class PortableRNG {
+public:
+  explicit PortableRNG(std::uint64_t seed) : engine(seed) {}
+
+  double uniform() {            // in (0, 1)
+    return ((engine() >> 11) + 0.5) * (1.0 / 9007199254740992.0);
+  }
+
+  double normal() {             // Box-Muller
+    if (have_spare) {
+      have_spare = false;
+      return spare;
+    }
+    double r = std::sqrt(-2.0 * std::log(uniform()));
+    double theta = 2.0 * 3.14159265358979323846 * uniform();
+    spare = r * std::sin(theta);
+    have_spare = true;
+    return r * std::cos(theta);
+  }
+
+private:
+  std::mt19937_64 engine;
+  bool have_spare = false;
+  double spare = 0.0;
+};
+
+// splitmix64: the seeds of strata, derived from one seed
+std::uint64_t mix_seed(std::uint64_t x) {
+  x += 0x9e3779b97f4a7c15ULL;
+  x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+  return x ^ (x >> 31);
+}
+
+// A Fenwick tree of nonnegative weights: draws an index >= first with
+// probability proportional to its weight, and changes a weight, in O(log n).
+class WeightTree {
+public:
+  explicit WeightTree(const Eigen::VectorXd& w)
+    : n(w.size()), weight(w), tree(w.size() + 1, 0.0), top(1) {
+    for (int i = 1; i <= n; ++i) {
+      tree[i] += w(i - 1);
+      int parent = i + (i & -i);
+      if (parent <= n) tree[parent] += tree[i];
+    }
+    while (2 * top <= n) top *= 2;
+  }
+
+  double get(int i) const { return weight(i); }
+
+  void set(int i, double value) {
+    double delta = value - weight(i);
+    weight(i) = value;
+    for (int j = i + 1; j <= n; j += j & -j) tree[j] += delta;
+  }
+
+  // sum of the weights of the indices < i
+  double prefix(int i) const {
+    double sum = 0.0;
+    for (int j = i; j > 0; j -= j & -j) sum += tree[j];
+    return sum;
+  }
+
+  // an index >= first, with probability proportional to its weight; -1 if
+  // their total is not positive. Rounding can return an index of weight 0,
+  // which the caller rejects.
+  int draw(int first, PortableRNG& rng) const {
+    double base = prefix(first);
+    double total = prefix(n) - base;
+    if (!(total > 0)) return -1;
+    double target = base + rng.uniform() * total;
+    int pos = 0;
+    for (int step = top; step > 0 && n > 0; step >>= 1) {
+      if (pos + step <= n && tree[pos + step] <= target) {
+        pos += step;
+        target -= tree[pos];
+      }
+    }
+    return std::min(std::max(pos, first), n - 1);
+  }
+
+private:
+  int n;
+  Eigen::VectorXd weight;
+  std::vector<double> tree;
+  int top;
+};
+
+// A distinct failure time: the failures with positive weight in event-order
+// positions first, ..., last, d of them, at time t.
+struct FailureTime {
+  int first;
+  int last;
+  int d;
+  double time;
+};
+
+std::vector<FailureTime> failure_times(const CoxContext& ctx,
+                                       const Eigen::VectorXd& w_event,
+                                       const Eigen::VectorXd& event_time) {
+  std::vector<FailureTime> times;
+  int n = ctx.status.size();
+  for (int i = 0; i < n; ) {
+    int l = std::max(ctx.last(i), i);
+    if (ctx.status(i) == 1 && ctx.first(i) == i && w_event(i) > 0) {
+      int d = 0;
+      for (int j = i; j <= l; ++j) {
+        if (ctx.status(j) == 1 && w_event(j) > 0) ++d;
+      }
+      if (d > 0) times.push_back({i, l, d, event_time(i)});
+    }
+    i = l + 1;
+  }
+  return times;
+}
+
+// For values c at the failure positions t (event order), the sum over t whose
+// risk set contains j of c_t, for each position j; with efron, the tied
+// failures at t count with weight 1 - scaling(t), as in the Efron risk sums.
+// This is the computation of T_1 in cox_dev, with c in place of w_avg / risk_sums.
+Eigen::VectorXd risk_set_accumulate(const CoxContext& ctx,
+                                    const Eigen::VectorXd& c,
+                                    bool efron) {
+  int n = c.size();
+  Eigen::VectorXd C(n + 1), out(n);
+  forward_cumsum(c, C);
+  for (int j = 0; j < n; ++j) {
+    out(j) = C(ctx.last(j) + 1) - (ctx.have_start_times ? C(ctx.start_map(j)) : 0.0);
+  }
+  if (efron) {
+    Eigen::VectorXd c_scaled = c.array() * ctx.scaling.array();
+    forward_cumsum(c_scaled, C);
+    for (int j = 0; j < n; ++j) {
+      out(j) -= C(ctx.last(j) + 1) - C(ctx.first(j));
+    }
+  }
+  return out;
+}
+
+// the common positive weight (the model-based draws need equal weights)
+double common_weight(const Eigen::VectorXd& w) {
+  double w0 = 0.0;
+  for (int i = 0; i < w.size(); ++i) {
+    if (w(i) > 0) {
+      if (w0 == 0.0) {
+        w0 = w(i);
+      } else if (std::abs(w(i) - w0) > 1e-12 * w0) {
+        ERROR_MSG("sample_score: the model-based methods need equal positive weights; use method 'wild'");
+      }
+    }
+  }
+  return w0;
+}
+
+}  // namespace
+
+Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    ERROR_MSG("wild_score: call compute_deviance first");
+  }
+  if (multipliers.size() != n) {
+    ERROR_MSG("wild_score: multipliers must have one entry per observation");
+  }
+  CoxContext ctx = get_context();
+
+  // risk sums of w exp(eta) and of G w exp(eta), with Efron's weights if efron
+  Eigen::VectorXd S(n), SG(n), event_cumsum(n + 1), start_cumsum(n + 1);
+  sum_over_risk_set(exp_w_buffer, ctx, S, event_cumsum, start_cumsum);
+  Eigen::VectorXd Ge = multipliers.array() * exp_w_buffer.array();
+  sum_over_risk_set(Ge, ctx, SG, event_cumsum, start_cumsum);
+
+  // in event order: weights, multipliers, the score in eta (-gradient / 2)
+  Eigen::VectorXd w_ev(n), G_ev(n), M_ev(n), e_ev(n);
+  for (int i = 0; i < n; ++i) {
+    int k = event_order(i);
+    w_ev(i) = sample_weight(k);
+    G_ev(i) = multipliers(k);
+    M_ev(i) = -0.5 * grad_buffer(k);
+    e_ev(i) = exp_w_buffer(k);
+  }
+
+  // For the failure term t at a time with failures D and average weight wbar:
+  //   c_t = sum_{i in D} G_i w_i / d - wbar * SG_t / S_t,
+  // and the draw is r_j = G_j M_j - e_j sum_{t containing j} c_t / S_t.
+  Eigen::VectorXd status_w = ctx.status.cast<double>().array() * w_ev.array();
+  Eigen::VectorXd status_Gw = status_w.array() * G_ev.array();
+  Eigen::VectorXd Cw(n + 1), CGw(n + 1);
+  forward_cumsum(status_w, Cw);
+  forward_cumsum(status_Gw, CGw);
+  Eigen::VectorXd c = Eigen::VectorXd::Zero(n);
+  for (int t = 0; t < n; ++t) {
+    if (ctx.status(t) == 1 && w_ev(t) > 0 && S(t) > 0) {
+      int f = ctx.first(t), l = ctx.last(t);
+      double size = l + 1 - f;
+      double wbar = (Cw(l + 1) - Cw(f)) / size;
+      double Gwbar = (CGw(l + 1) - CGw(f)) / size;
+      c(t) = (Gwbar - wbar * SG(t) / S(t)) / S(t);
+    }
+  }
+  Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
+
+  Eigen::VectorXd out(n);
+  for (int i = 0; i < n; ++i) {
+    out(event_order(i)) = G_ev(i) * M_ev(i) - e_ev(i) * T(i);
+  }
+  return out;
+}
+
+Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
+                                            int n_draws,
+                                            std::uint64_t seed) {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    ERROR_MSG("sample_score: call compute_deviance first");
+  }
+  if (n_draws < 0) {
+    ERROR_MSG("sample_score: n_draws must be nonnegative");
+  }
+  PortableRNG rng(seed);
+  Eigen::MatrixXd out(n, n_draws);
+
+  if (method == "wild") {
+    Eigen::VectorXd G(n);
+    for (int b = 0; b < n_draws; ++b) {
+      for (int i = 0; i < n; ++i) G(i) = rng.normal();
+      out.col(b) = wild_score(G);
+    }
+    return out;
+  }
+
+  bool multinomial = (method == "multinomial");
+  bool centered = (method == "multinomial_centered");
+  bool bernoulli = (method == "bernoulli");
+  bool wallenius = (method == "wallenius");
+  if (!(multinomial || centered || bernoulli || wallenius)) {
+    ERROR_MSG("sample_score: method must be one of 'multinomial', 'multinomial_centered', "
+              "'bernoulli', 'wallenius' or 'wild'");
+  }
+
+  CoxContext ctx = get_context();
+  double w0 = common_weight(sample_weight);
+
+  // in event order
+  Eigen::VectorXd e_ev(n), w_ev(n), start_ev(n);
+  for (int i = 0; i < n; ++i) {
+    int k = event_order(i);
+    e_ev(i) = exp_w_buffer(k);
+    w_ev(i) = sample_weight(k);
+    start_ev(i) = raw_start(k);
+  }
+  std::vector<FailureTime> times = failure_times(ctx, w_ev, _event);
+
+  // the risk sums without Efron's weights: the draws are from the whole risk set
+  CoxContext breslow = ctx;
+  breslow.efron = false;
+  Eigen::VectorXd S(n), event_cumsum(n + 1), start_cumsum(n + 1);
+  sum_over_risk_set(exp_w_buffer, breslow, S, event_cumsum, start_cumsum);
+
+  auto at_risk = [&](int j, double t) {
+    return e_ev(j) > 0 && (!have_start_times || start_ev(j) < t);
+  };
+
+  WeightTree tree(e_ev);
+
+  // a subject at risk at ft, with probability proportional to its weight in tree
+  auto draw_at_risk = [&](const FailureTime& ft) -> int {
+    // the tree holds every subject with event time >= t: reject those who
+    // entered at t or later
+    for (int attempt = 0; attempt < 64; ++attempt) {
+      int j = tree.draw(ft.first, rng);
+      if (j < 0) break;
+      if (tree.get(j) > 0 && at_risk(j, ft.time)) return j;
+    }
+    // many late entries: draw directly among those at risk
+    double total = 0.0;
+    for (int j = ft.first; j < n; ++j) {
+      if (tree.get(j) > 0 && at_risk(j, ft.time)) total += tree.get(j);
+    }
+    if (!(total > 0)) {
+      ERROR_MSG("sample_score: a failure time with an empty risk set");
+    }
+    double target = rng.uniform() * total;
+    int last_eligible = -1;
+    for (int j = ft.first; j < n; ++j) {
+      if (tree.get(j) > 0 && at_risk(j, ft.time)) {
+        last_eligible = j;
+        target -= tree.get(j);
+        if (target < 0) return j;
+      }
+    }
+    return last_eligible;
+  };
+
+  // the failure positions of ft (they carry the per-term values for risk_set_accumulate)
+  auto spread = [&](const FailureTime& ft, double value, Eigen::VectorXd& c) {
+    for (int t = ft.first; t <= ft.last; ++t) {
+      if (ctx.status(t) == 1 && w_ev(t) > 0) c(t) = value;
+    }
+  };
+
+  double half = w0 / std::sqrt(2.0);
+  Eigen::VectorXd r(n), c(n);
+  for (int b = 0; b < n_draws; ++b) {
+    r.setZero();
+    if (bernoulli) {
+      // each subject at risk fails with probability min(1, d e_j / S), two draws;
+      // centered within the risk set: r_j = sum_k a_kj - e_j sum_k A_k / S_k
+      c.setZero();
+      for (const FailureTime& ft : times) {
+        double S_k = S(ft.first);
+        double A = 0.0;
+        for (int j = ft.first; j < n; ++j) {
+          if (!at_risk(j, ft.time)) continue;
+          double pi = std::min(1.0, ft.d * e_ev(j) / S_k);
+          double a = half * ((rng.uniform() < pi) - (rng.uniform() < pi));
+          r(j) += a;
+          A += a;
+        }
+        spread(ft, A / (ft.d * S_k), c);
+      }
+      Eigen::VectorXd T = risk_set_accumulate(ctx, c, false);
+      r.array() -= e_ev.array() * T.array();
+    } else {
+      // d failures at each time, with (multinomial) or without (wallenius)
+      // replacement; two draws with opposite signs, or one centered draw
+      int n_sets = centered ? 1 : 2;
+      for (int set = 0; set < n_sets; ++set) {
+        double value = centered ? w0 : (set == 0 ? half : -half);
+        for (const FailureTime& ft : times) {
+          std::vector<int> drawn;
+          for (int m = 0; m < ft.d; ++m) {
+            int j = draw_at_risk(ft);
+            r(j) += value;
+            if (wallenius) {
+              drawn.push_back(j);
+              tree.set(j, 0.0);
+            }
+          }
+          for (int j : drawn) tree.set(j, e_ev(j));
+        }
+      }
+      if (centered) {
+        // the expected count of j is sum over its risk sets of d e_j / S
+        c.setZero();
+        for (const FailureTime& ft : times) spread(ft, 1.0 / S(ft.first), c);
+        Eigen::VectorXd T = risk_set_accumulate(ctx, c, false);
+        r.array() -= w0 * e_ev.array() * T.array();
+      }
+    }
+    for (int i = 0; i < n; ++i) out(event_order(i), b) = r(i);
+  }
+  return out;
+}
+
+Eigen::MatrixXd StratifiedCoxDeviance::sample_score(const std::string& method,
+                                                      int n_draws,
+                                                      std::uint64_t seed) {
+  int n = linear_predictor.size();
+  Eigen::MatrixXd out = Eigen::MatrixXd::Zero(n, std::max(n_draws, 0));
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    const auto& indices = stratum_indices[s];
+    Eigen::MatrixXd draws = cox_devs[s]->sample_score(method, n_draws,
+                                                        mix_seed(seed + mix_seed(s + 1)));
+    for (size_t j = 0; j < indices.size(); ++j) {
+      out.row(indices[j]) = draws.row(j);
+    }
+  }
+  return out;
+}
+
+Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
+  int n = linear_predictor.size();
+  if (multipliers.size() != n) {
+    ERROR_MSG("wild_score: multipliers must have one entry per observation");
+  }
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    const auto& indices = stratum_indices[s];
+    Eigen::VectorXd G(indices.size());
+    for (size_t j = 0; j < indices.size(); ++j) G(j) = multipliers(indices[j]);
+    Eigen::VectorXd draw = cox_devs[s]->wild_score(G);
+    for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = draw(j);
+  }
+  return out;
+}
