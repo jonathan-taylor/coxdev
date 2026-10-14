@@ -146,7 +146,7 @@ PYBIND11_MODULE(coxc, m) {
       .def("sample_score", &CoxDeviance::sample_score,
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &CoxDeviance::wild_score, py::arg("multipliers"))
-      .def("score_residuals", &CoxDeviance::score_residuals, py::arg("X"))
+      .def("score_residuals", &CoxDeviance::score_residuals, py::arg("x"))
       .def("baseline_hazard", [](const CoxDeviance &self) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
@@ -178,7 +178,7 @@ PYBIND11_MODULE(coxc, m) {
       .def("sample_score", &StratifiedCoxDeviance::sample_score,
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &StratifiedCoxDeviance::wild_score, py::arg("multipliers"))
-      .def("score_residuals", &StratifiedCoxDeviance::score_residuals, py::arg("X"))
+      .def("score_residuals", &StratifiedCoxDeviance::score_residuals, py::arg("x"))
       .def("baseline_hazard", [](const StratifiedCoxDeviance &self) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
