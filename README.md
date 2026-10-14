@@ -127,6 +127,14 @@ works on any version.
 The C++ sources in `R/coxdev/src` and `R/coxdev/inst/include` are copies of
 those in `cpp/`, so that the R package is self-contained: after editing
 `cpp/`, run `R/coxdev/tools/sync_cpp.sh` (CI checks that the copies agree).
+## Notebooks
+
+`doc/using_coxdev.md` (fitting by Newton's method with the information
+operator, robust standard errors, the baseline hazard and survival curves,
+and what keeping state saves) and `doc/sampling.md` (the methods of
+`sample_score` compared) are [jupytext](https://jupytext.readthedocs.io)
+notebooks, with executed copies in `doc/*.ipynb`. The R package has the
+same two as vignettes.
 
 ## Advanced Usage
 
