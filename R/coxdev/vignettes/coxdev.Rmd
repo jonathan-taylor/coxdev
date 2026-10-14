@@ -13,10 +13,13 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6, fig.height
 
 `coxdev` computes the deviance of the Cox proportional hazards model, its
 gradient and the diagonal of its Hessian with respect to the linear predictor,
-the information as a matrix-free operator, and draws of the score. This
-vignette fits a model by Newton's method and shows what keeping the sorted
-data in a `CoxDeviance` object saves. Sampling the score has its own
-vignette, `vignette("sampling", package = "coxdev")`.
+the information as a matrix-free operator, the score residuals, the baseline
+hazard, and draws of the score. This vignette fits a model by Newton's
+method, computes robust standard errors and survival curves, and shows what
+keeping the sorted data in a `CoxDeviance` object saves. Sampling the score
+has its own vignette, `vignette("sampling", package = "coxdev")`. The Python
+package has the same two, as the notebooks `doc/using_coxdev.md` and
+`doc/sampling.md`.
 
 ```{r}
 library(coxdev)
