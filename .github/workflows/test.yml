@@ -28,6 +28,11 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Test the C++ code
+      run: |
+        c++ -std=c++17 -O2 -Wall -Ieigen -Icpp/include cpp/src/coxdev.cpp cpp/tests/test_residuals_hazard.cpp -o test_residuals_hazard
+        ./test_residuals_hazard
+
     - name: Install coxdev
       run: |
         pip install --upgrade pip

@@ -254,6 +254,32 @@ The library is optimized for performance:
 - For Python library: Python >= 3.9 + pybind11
 
 
+## C++ API
+
+The Python package (and the R package in `R/coxdev`) wrap the C++ classes
+`CoxDeviance` and `StratifiedCoxDeviance` in `cpp/include/coxdev.h`. After
+`compute_deviance(eta, weights)`, besides the gradient, the diagonal of the
+Hessian, products with the information and draws of the score, they give:
+
+- `score_residuals(X)`: for a design `X`, the `n x p` matrix of score
+  residuals `U_i`, each observation's contribution to the score
+  `X^T (-gradient / 2)`, centered within each risk set (with Efron's
+  weights for ties if `efron`). The rows sum to the score, `sum_i G_i U_i`
+  is `X^T wild_score(G)`, and `U^T U` is the middle of the robust
+  (sandwich) variance (Lin and Wei, 1989).
+- `baseline_hazard()`: the estimate of the baseline hazard, Breslow's
+  (1972) or, with Efron's ties, Efron's (1977), at each distinct failure
+  time (within each stratum): its increments and cumulative sum, for the
+  linear predictor as given, so that the cumulative hazard of observation
+  `i` at time `t` is `cumulative_hazard(t) * exp(eta_i)`.
+
+`cpp/tests` has tests of these against direct computations:
+
+```bash
+c++ -std=c++17 -O2 -Ieigen -Icpp/include cpp/src/coxdev.cpp cpp/tests/test_residuals_hazard.cpp -o test_residuals_hazard
+./test_residuals_hazard
+```
+
 ## Testing
 
 Most of the tests compare `coxdev` with R's `survival` and `glmnet`
