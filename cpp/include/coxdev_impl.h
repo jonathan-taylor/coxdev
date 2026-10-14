@@ -1,23 +1,17 @@
-// The implementation of coxdev.h. Compile it in exactly one source file of
-// a program or extension module, as cpp/src/coxdev.cpp does:
-//   #include "coxdev_impl.h"
-// It defines non-inline functions, so including it in two source files that
-// are linked together gives duplicate symbols.
+// The implementation of coxdev.h, all inline: coxdev.h includes this file at
+// its end, so a program or extension module just includes coxdev.h, in as many
+// source files as it likes.
 #ifndef COXDEV_IMPL_H
 #define COXDEV_IMPL_H
 
 #include "coxdev.h"
 #include <cmath>
-#include <iostream>
 #include <limits>
 #include <numeric>
 #include <random>
 
-#ifndef DEBUG_PRINT
-#define DEBUG_PRINT(x) std::cout << x << std::endl
-#endif
 
-void forward_cumsum(const Eigen::Ref<const Eigen::VectorXd> sequence,
+inline void forward_cumsum(const Eigen::Ref<const Eigen::VectorXd> sequence,
 		    Eigen::Ref<Eigen::VectorXd> output)
 {
   if (sequence.size() + 1 != output.size()) {
@@ -32,7 +26,7 @@ void forward_cumsum(const Eigen::Ref<const Eigen::VectorXd> sequence,
   }
 }
 
-void reverse_cumsums(const Eigen::Ref<const Eigen::VectorXd> sequence,
+inline void reverse_cumsums(const Eigen::Ref<const Eigen::VectorXd> sequence,
                      Eigen::Ref<Eigen::VectorXd> event_buffer,
                      Eigen::Ref<Eigen::VectorXd> start_buffer,
                      const Eigen::Ref<const Eigen::VectorXi> event_order,
@@ -67,7 +61,7 @@ void reverse_cumsums(const Eigen::Ref<const Eigen::VectorXd> sequence,
   }
 }
 
-void to_native_from_event(Eigen::Ref<Eigen::VectorXd> arg,
+inline void to_native_from_event(Eigen::Ref<Eigen::VectorXd> arg,
 			  const Eigen::Ref<const Eigen::VectorXi> event_order,
 			  Eigen::Ref<Eigen::VectorXd> reorder_buffer)
 {
@@ -77,7 +71,7 @@ void to_native_from_event(Eigen::Ref<Eigen::VectorXd> arg,
   }
 }
 
-void to_event_from_native(const Eigen::Ref<const Eigen::VectorXd> arg,
+inline void to_event_from_native(const Eigen::Ref<const Eigen::VectorXd> arg,
                           const Eigen::Ref<const Eigen::VectorXi> event_order,
                           Eigen::Ref<Eigen::VectorXd> reorder_buffer)
 {
@@ -86,7 +80,7 @@ void to_event_from_native(const Eigen::Ref<const Eigen::VectorXd> arg,
   }
 }
 
-void forward_prework(const Eigen::Ref<const Eigen::VectorXi> status,
+inline void forward_prework(const Eigen::Ref<const Eigen::VectorXi> status,
                      const Eigen::Ref<const Eigen::VectorXd> w_avg,
                      const Eigen::Ref<const Eigen::VectorXd> scaling,
                      const Eigen::Ref<const Eigen::VectorXd> risk_sums,
@@ -117,7 +111,7 @@ void forward_prework(const Eigen::Ref<const Eigen::VectorXi> status,
   }
 }
 
-double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
+inline double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
 			  const Eigen::Ref<const Eigen::VectorXi> last,
 			  const Eigen::Ref<const Eigen::VectorXd> weight,
 			  const Eigen::Ref<const Eigen::VectorXi> event_order,
@@ -179,7 +173,7 @@ double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
   return loglik_sat;
 }
 
-void sum_over_events(const CoxContext& ctx,
+inline void sum_over_events(const CoxContext& ctx,
                      Eigen::Ref<Eigen::VectorXd> C_arg,
                      Eigen::Ref<Eigen::VectorXd> C_arg_scale,
                      Eigen::Ref<Eigen::VectorXd> forward_scratch_buffer,
@@ -205,7 +199,7 @@ void sum_over_events(const CoxContext& ctx,
   }
 }
 
-void sum_over_risk_set(const Eigen::Ref<const Eigen::VectorXd> arg,
+inline void sum_over_risk_set(const Eigen::Ref<const Eigen::VectorXd> arg,
                        const CoxContext& ctx,
                        Eigen::Ref<Eigen::VectorXd> risk_sum_buffer,
                        Eigen::Ref<Eigen::VectorXd> event_cumsum,
@@ -236,7 +230,7 @@ void sum_over_risk_set(const Eigen::Ref<const Eigen::VectorXd> arg,
   }
 }
 
-double cox_dev(const Eigen::Ref<const Eigen::VectorXd> eta,
+inline double cox_dev(const Eigen::Ref<const Eigen::VectorXd> eta,
 	       const Eigen::Ref<const Eigen::VectorXd> sample_weight,
 	       const Eigen::Ref<const Eigen::VectorXd> exp_w,
                const CoxContext& ctx,
@@ -346,7 +340,7 @@ double cox_dev(const Eigen::Ref<const Eigen::VectorXd> eta,
   return(deviance);
 }
 
-void hessian_matvec(const Eigen::Ref<const Eigen::VectorXd> arg,
+inline void hessian_matvec(const Eigen::Ref<const Eigen::VectorXd> arg,
                     const CoxContext& ctx,
                     Eigen::Ref<Eigen::VectorXd> risk_sums,
                     Eigen::Ref<const Eigen::VectorXd> diag_part,
@@ -394,7 +388,7 @@ void hessian_matvec(const Eigen::Ref<const Eigen::VectorXd> arg,
  * This ensures every other observation is a candidate for being in the risk set. 
  * Those with weight == 0 are ultimately not included in the risk set.
  */
-std::vector<int> lexsort(const Eigen::VectorXi & a,  // is_start
+inline std::vector<int> lexsort(const Eigen::VectorXi & a,  // is_start
                          const Eigen::VectorXd & b,  // weight
 			 const Eigen::VectorXi & c,  // status
 			 const Eigen::VectorXd & d)  // event
@@ -417,7 +411,7 @@ std::vector<int> lexsort(const Eigen::VectorXi & a,  // is_start
   return idx;
 }
 
-void setup_preprocess(const Eigen::Ref<const Eigen::VectorXd> start,
+inline void setup_preprocess(const Eigen::Ref<const Eigen::VectorXd> start,
                       const Eigen::Ref<const Eigen::VectorXd> event,
                       const Eigen::Ref<const Eigen::VectorXi> status,
                       const Eigen::Ref<const Eigen::VectorXd> weight,
@@ -576,7 +570,7 @@ void setup_preprocess(const Eigen::Ref<const Eigen::VectorXd> start,
   }
 }
 
-void CoxDeviance::setup_buffers(int n) {
+inline void CoxDeviance::setup_buffers(int n) {
     T_1_term.setZero(n);
     T_2_term.setZero(n);
     forward_scratch_buffer.setZero(n);
@@ -600,7 +594,7 @@ void CoxDeviance::setup_buffers(int n) {
     for (int i = 0; i < 2; ++i) risk_sum_buffers.push_back(Eigen::VectorXd::Zero(n));
 }
 
-CoxDeviance::CoxDeviance(const Eigen::VectorXd& start,
+inline CoxDeviance::CoxDeviance(const Eigen::VectorXd& start,
                          const Eigen::VectorXd& event,
                          const Eigen::VectorXi& status,
                          const Eigen::VectorXd& weight,
@@ -615,7 +609,7 @@ CoxDeviance::CoxDeviance(const Eigen::VectorXd& start,
     raw_start = start;
 }
 
-double CoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
+inline double CoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
                                      const Eigen::VectorXd& sw) {
     linear_predictor = eta;
     sample_weight = sw;
@@ -650,7 +644,7 @@ double CoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
                    reverse_cumsum_buffers[1]);
 }
 
-void CoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
+inline void CoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
                                          Eigen::VectorXd& out) {
     Eigen::VectorXd neg_arg = -arg;
 
@@ -670,7 +664,7 @@ void CoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
     out = hess_matvec_buffer;
 }
 
-StratifiedCoxDeviance::StratifiedCoxDeviance(const Eigen::VectorXd& start,
+inline StratifiedCoxDeviance::StratifiedCoxDeviance(const Eigen::VectorXd& start,
                                            const Eigen::VectorXd& event,
                                            const Eigen::VectorXi& status,
                                            const Eigen::VectorXi& strata,
@@ -714,7 +708,7 @@ StratifiedCoxDeviance::StratifiedCoxDeviance(const Eigen::VectorXd& start,
     }
 }
 
-double StratifiedCoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
+inline double StratifiedCoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
                                                const Eigen::VectorXd& sw) {
     linear_predictor = eta;
     sample_weight = sw;
@@ -754,7 +748,7 @@ double StratifiedCoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
     return total_deviance;
 }
 
-void StratifiedCoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
+inline void StratifiedCoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
                                                    Eigen::VectorXd& out) {
     out.setZero(arg.size());
 
@@ -782,7 +776,9 @@ void StratifiedCoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
 // ---------------------------------------------------------------------------
 // Sampling the score
 
-namespace {
+// Helpers of the score sampling, in a named namespace (not an anonymous one)
+// because the inline functions that use them have one definition program-wide.
+namespace coxdev_detail {
 
 // Random numbers from the bits of std::mt19937_64, whose output the C++
 // standard specifies exactly. The distributions of <random> differ between
@@ -815,7 +811,7 @@ private:
 };
 
 // splitmix64: the seeds of strata, derived from one seed
-std::uint64_t mix_seed(std::uint64_t x) {
+inline std::uint64_t mix_seed(std::uint64_t x) {
   x += 0x9e3779b97f4a7c15ULL;
   x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
   x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
@@ -885,7 +881,7 @@ struct FailureTime {
   double time;
 };
 
-std::vector<FailureTime> failure_times(const CoxContext& ctx,
+inline std::vector<FailureTime> failure_times(const CoxContext& ctx,
                                        const Eigen::VectorXd& w_event,
                                        const Eigen::VectorXd& event_time) {
   std::vector<FailureTime> times;
@@ -908,7 +904,7 @@ std::vector<FailureTime> failure_times(const CoxContext& ctx,
 // risk set contains j of c_t, for each position j; with efron, the tied
 // failures at t count with weight 1 - scaling(t), as in the Efron risk sums.
 // This is the computation of T_1 in cox_dev, with c in place of w_avg / risk_sums.
-Eigen::VectorXd risk_set_accumulate(const CoxContext& ctx,
+inline Eigen::VectorXd risk_set_accumulate(const CoxContext& ctx,
                                     const Eigen::VectorXd& c,
                                     bool efron) {
   int n = c.size();
@@ -928,7 +924,7 @@ Eigen::VectorXd risk_set_accumulate(const CoxContext& ctx,
 }
 
 // the common positive weight (the model-based draws need equal weights)
-double common_weight(const Eigen::VectorXd& w) {
+inline double common_weight(const Eigen::VectorXd& w) {
   double w0 = 0.0;
   for (int i = 0; i < w.size(); ++i) {
     if (w(i) > 0) {
@@ -942,9 +938,9 @@ double common_weight(const Eigen::VectorXd& w) {
   return w0;
 }
 
-}  // namespace
+}  // namespace coxdev_detail
 
-Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
+inline Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   int n = _status.size();
   if (linear_predictor.size() != n) {
     ERROR_MSG("wild_score: call compute_deviance first");
@@ -988,7 +984,7 @@ Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
       c(t) = (Gwbar - wbar * SG(t) / S(t)) / S(t);
     }
   }
-  Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
+  Eigen::VectorXd T = coxdev_detail::risk_set_accumulate(ctx, c, ctx.efron);
 
   Eigen::VectorXd out(n);
   for (int i = 0; i < n; ++i) {
@@ -997,7 +993,7 @@ Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   return out;
 }
 
-Eigen::MatrixXd CoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
+inline Eigen::MatrixXd CoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
     ERROR_MSG("score_residuals: call compute_deviance first");
@@ -1047,7 +1043,7 @@ Eigen::MatrixXd CoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
       xbar(t) = term[t] ? SX(t) / S(t) : 0.0;
       c(t) = term[t] ? wbar(t) * xbar(t) / S(t) : 0.0;
     }
-    Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
+    Eigen::VectorXd T = coxdev_detail::risk_set_accumulate(ctx, c, ctx.efron);
     forward_cumsum(xbar, Cx);
     for (int i = 0; i < n; ++i) {
       int k = event_order(i);
@@ -1062,7 +1058,7 @@ Eigen::MatrixXd CoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
   return out;
 }
 
-BaselineHazard CoxDeviance::baseline_hazard() const {
+inline BaselineHazard CoxDeviance::baseline_hazard() const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
     ERROR_MSG("baseline_hazard: call compute_deviance first");
@@ -1111,7 +1107,7 @@ BaselineHazard CoxDeviance::baseline_hazard() const {
   return out;
 }
 
-Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
+inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
                                             int n_draws,
                                             std::uint64_t seed) {
   int n = _status.size();
@@ -1121,7 +1117,7 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
   if (n_draws < 0) {
     ERROR_MSG("sample_score: n_draws must be nonnegative");
   }
-  PortableRNG rng(seed);
+  coxdev_detail::PortableRNG rng(seed);
   Eigen::MatrixXd out(n, n_draws);
 
   if (method == "wild") {
@@ -1142,7 +1138,7 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
   }
 
   CoxContext ctx = get_context();
-  double w0 = common_weight(sample_weight);
+  double w0 = coxdev_detail::common_weight(sample_weight);
 
   // in event order
   Eigen::VectorXd e_ev(n), w_ev(n), start_ev(n);
@@ -1152,7 +1148,7 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     w_ev(i) = sample_weight(k);
     start_ev(i) = raw_start(k);
   }
-  std::vector<FailureTime> times = failure_times(ctx, w_ev, _event);
+  std::vector<coxdev_detail::FailureTime> times = coxdev_detail::failure_times(ctx, w_ev, _event);
 
   // the risk sums without Efron's weights: the draws are from the whole risk set
   CoxContext breslow = ctx;
@@ -1164,10 +1160,10 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     return e_ev(j) > 0 && (!have_start_times || start_ev(j) < t);
   };
 
-  WeightTree tree(e_ev);
+  coxdev_detail::WeightTree tree(e_ev);
 
   // a subject at risk at ft, with probability proportional to its weight in tree
-  auto draw_at_risk = [&](const FailureTime& ft) -> int {
+  auto draw_at_risk = [&](const coxdev_detail::FailureTime& ft) -> int {
     // the tree holds every subject with event time >= t: reject those who
     // entered at t or later
     for (int attempt = 0; attempt < 64; ++attempt) {
@@ -1195,8 +1191,8 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     return last_eligible;
   };
 
-  // the failure positions of ft (they carry the per-term values for risk_set_accumulate)
-  auto spread = [&](const FailureTime& ft, double value, Eigen::VectorXd& c) {
+  // the failure positions of ft (they carry the per-term values for coxdev_detail::risk_set_accumulate)
+  auto spread = [&](const coxdev_detail::FailureTime& ft, double value, Eigen::VectorXd& c) {
     for (int t = ft.first; t <= ft.last; ++t) {
       if (ctx.status(t) == 1 && w_ev(t) > 0) c(t) = value;
     }
@@ -1219,7 +1215,7 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     Eigen::MatrixXd r_ev = Eigen::MatrixXd::Zero(n, n_draws);
     std::vector<int> risk;
     std::vector<double> loge, suffix, prefix;
-    for (const FailureTime& ft : times) {
+    for (const coxdev_detail::FailureTime& ft : times) {
       risk.clear();
       for (int j = ft.first; j < n; ++j) {
         if (at_risk(j, ft.time)) risk.push_back(j);
@@ -1291,7 +1287,7 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     c.setZero();
     if (bernoulli) {
       // each subject at risk fails independently with probability min(1, d e_j / S)
-      for (const FailureTime& ft : times) {
+      for (const coxdev_detail::FailureTime& ft : times) {
         double S_k = S(ft.first);
         double D = 0.0;
         for (int j = ft.first; j < n; ++j) {
@@ -1307,12 +1303,12 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
       }
     } else {
       // d failures at each time, drawn with replacement
-      for (const FailureTime& ft : times) {
+      for (const coxdev_detail::FailureTime& ft : times) {
         for (int m = 0; m < ft.d; ++m) r(draw_at_risk(ft)) += 1.0;
         spread(ft, 1.0 / S(ft.first), c);
       }
     }
-    Eigen::VectorXd T = risk_set_accumulate(ctx, c, false);
+    Eigen::VectorXd T = coxdev_detail::risk_set_accumulate(ctx, c, false);
     r.array() -= e_ev.array() * T.array();
     r *= w0;
     for (int i = 0; i < n; ++i) out(event_order(i), b) = r(i);
@@ -1320,7 +1316,7 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
   return out;
 }
 
-Eigen::MatrixXd StratifiedCoxDeviance::sample_score(const std::string& method,
+inline Eigen::MatrixXd StratifiedCoxDeviance::sample_score(const std::string& method,
                                                       int n_draws,
                                                       std::uint64_t seed) {
   int n = linear_predictor.size();
@@ -1328,7 +1324,7 @@ Eigen::MatrixXd StratifiedCoxDeviance::sample_score(const std::string& method,
   for (size_t s = 0; s < unique_strata.size(); ++s) {
     const auto& indices = stratum_indices[s];
     Eigen::MatrixXd draws = cox_devs[s]->sample_score(method, n_draws,
-                                                        mix_seed(seed + mix_seed(s + 1)));
+                                                        coxdev_detail::mix_seed(seed + coxdev_detail::mix_seed(s + 1)));
     for (size_t j = 0; j < indices.size(); ++j) {
       out.row(indices[j]) = draws.row(j);
     }
@@ -1336,7 +1332,7 @@ Eigen::MatrixXd StratifiedCoxDeviance::sample_score(const std::string& method,
   return out;
 }
 
-Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
+inline Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   int n = linear_predictor.size();
   if (multipliers.size() != n) {
     ERROR_MSG("wild_score: multipliers must have one entry per observation");
@@ -1352,7 +1348,7 @@ Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& multipl
   return out;
 }
 
-Eigen::MatrixXd StratifiedCoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
+inline Eigen::MatrixXd StratifiedCoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
   int n = linear_predictor.size();
   if (X.rows() != n) {
     ERROR_MSG("score_residuals: X must have one row per observation");
@@ -1368,7 +1364,7 @@ Eigen::MatrixXd StratifiedCoxDeviance::score_residuals(const Eigen::MatrixXd& X)
   return out;
 }
 
-BaselineHazard StratifiedCoxDeviance::baseline_hazard() const {
+inline BaselineHazard StratifiedCoxDeviance::baseline_hazard() const {
   // the strata in turn: each stratum's hazard is already for its linear
   // predictor as given
   std::vector<BaselineHazard> parts;

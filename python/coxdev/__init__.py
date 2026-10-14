@@ -32,12 +32,13 @@ from .base import CoxDeviance
 def get_include():
     """
     The directory of coxdev's C++ headers, for packages that compile against
-    coxdev: ``coxdev.h`` (the classes ``CoxDeviance`` and
-    ``StratifiedCoxDeviance``) and ``coxdev_impl.h`` (their implementation).
+    coxdev. coxdev is header-only: ``coxdev.h`` declares the classes
+    ``CoxDeviance`` and ``StratifiedCoxDeviance`` and includes their
+    implementation, all inline, from ``coxdev_impl.h``.
 
-    Add it to the include path (with Eigen's headers), and compile
-    ``#include <coxdev_impl.h>`` in exactly one source file of each extension
-    module. In a meson build::
+    Add this directory, and Eigen's headers, to the include path, and
+    ``#include <coxdev.h>`` in any source files that use the classes. In a
+    meson build::
 
         coxdev_include = run_command(py, '-c',
             'import coxdev; print(coxdev.get_include())', check : true).stdout().strip()

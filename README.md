@@ -275,11 +275,15 @@ Hessian, products with the information and draws of the score, they give:
 
 ### Compiling against coxdev's C++
 
-`cpp/include/coxdev.h` declares the classes, and `cpp/include/coxdev_impl.h`
-is their implementation (`cpp/src/coxdev.cpp` just includes it). The Python
-package installs both, and `coxdev.get_include()` returns their directory, so
-another package can compile coxdev's C++ into its own extension, as with
-`numpy.get_include()`:
+coxdev's C++ is header-only, like Eigen or pybind11:
+- `cpp/include/coxdev.h` declares the classes, and includes their
+  implementation from `cpp/include/coxdev_impl.h`;
+- every definition is `inline`, so any number of source files can include
+  `coxdev.h`.
+
+The Python package installs both headers, and `coxdev.get_include()` returns
+their directory, as `numpy.get_include()` does. Another package can then
+compile coxdev into its own extension:
 
 1. Add `coxdev` to `[build-system] requires`.
 2. Add `coxdev.get_include()`, and Eigen's headers (not part of coxdev's
@@ -290,12 +294,11 @@ another package can compile coxdev's C++ into its own extension, as with
                                 check : true).stdout().strip()
    ```
 
-3. Compile `#include <coxdev_impl.h>` in exactly one source file of each
-   extension module, and `#include <coxdev.h>` wherever the classes are used.
+3. `#include <coxdev.h>` where the classes are used.
 
-The implementation is compiled into the dependent package's own module, so
-it doesn't link against coxdev's. `tests/test_get_include.py` builds a
-program this way.
+The code is compiled into the dependent package's own module, so it doesn't
+link against coxdev's. `tests/test_get_include.py` builds a two-file program
+this way.
 
 `cpp/tests` has tests of these against direct computations:
 
