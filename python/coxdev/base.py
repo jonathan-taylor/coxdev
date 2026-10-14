@@ -286,19 +286,33 @@ class CoxDeviance(object):
         sample_weight : np.ndarray, optional
             Defaults to one. The model-based methods (all but ``'wild'``)
             need equal positive weights.
-        method : {'multinomial', 'multinomial_centered', 'bernoulli', 'wallenius', 'wild'}
-            ``'multinomial'``: at each event time, the failures are drawn with
-            replacement from the risk set with probabilities proportional to
-            ``sample_weight * exp(linear_predictor)``, and the draw is the
-            difference of two such draws over ``sqrt(2)``; its covariance is the
-            Breslow information. ``'multinomial_centered'``: one such draw minus
-            its expectation. ``'bernoulli'``: each subject at risk fails
-            independently with probability ``min(1, d p)``, centered within the
-            risk set, two draws. ``'wallenius'``: the failures drawn without
-            replacement, one at a time, two draws. ``'wild'``: the score
-            residuals multiplied by independent standard normals; its
-            covariance is the sandwich, the sum of the outer products of the
-            score residuals.
+        method : {'multinomial', 'bernoulli', 'fisher', 'wild'}
+            The model-based methods draw the failures at each event time from
+            the model and return their score: the sum over the failures of
+            ``x_j`` minus its expectation, with risk weights ``sample_weight *
+            exp(linear_predictor)``. They differ only at tied event times.
+
+            - ``'multinomial'``: the ``d`` failures drawn with replacement,
+              with probabilities proportional to the risk weights: the
+              sampling model of Breslow's likelihood [2]_, whose score it is.
+              Its covariance is the Breslow information.
+            - ``'bernoulli'``: each subject at risk fails independently with
+              probability ``min(1, d p)``, a Cox-model analogue of the weird
+              bootstrap [1]_ [3]_, centered with the number of failures drawn.
+              Its mean is zero only while ``d p < 1``: the cap biases it when
+              ties are heavy.
+            - ``'fisher'``: the set of ``d`` failures drawn from Fisher's
+              noncentral hypergeometric distribution [6]_ [8]_ (independent
+              Bernoullis given ``d`` failures), the sampling model of the
+              exact discrete partial likelihood [4]_ [9]_, whose score it is,
+              centered at its exact mean. Its covariance is the information of
+              the exact likelihood. Sampling and centering use the recursion
+              of Gail, Lubin and Rubinstein [7]_ on the log scale.
+            - ``'wild'``: the score residuals (of the likelihood set by
+              ``tie_breaking`` [2]_ [5]_) multiplied by independent standard
+              normals [10]_ [12]_; its covariance is the sandwich, the sum of
+              the outer products of the score residuals [11]_, which does not
+              need the model to be right.
         n_draws : int, optional
             The number of draws. If None, one draw, as a vector.
         seed : int, optional
@@ -310,6 +324,41 @@ class CoxDeviance(object):
         -------
         np.ndarray
             ``(n,)`` if ``n_draws`` is None, else ``(n, n_draws)``.
+
+        References
+        ----------
+        .. [1] Andersen, P. K., Borgan, O., Gill, R. D. and Keiding, N. (1993).
+           *Statistical Models Based on Counting Processes*. Springer, New York.
+        .. [2] Breslow, N. E. (1974). Covariance analysis of censored survival
+           data. *Biometrics*, 30(1), 89-99.
+        .. [3] Burr, D. (1994). A comparison of certain bootstrap confidence
+           intervals in the Cox model. *Journal of the American Statistical
+           Association*, 89(428), 1290-1302.
+        .. [4] Cox, D. R. (1972). Regression models and life-tables (with
+           discussion). *Journal of the Royal Statistical Society, Series B*,
+           34(2), 187-220.
+        .. [5] Efron, B. (1977). The efficiency of Cox's likelihood function for
+           censored data. *Journal of the American Statistical Association*,
+           72(359), 557-565.
+        .. [6] Fog, A. (2008). Sampling methods for Wallenius' and Fisher's
+           noncentral hypergeometric distributions. *Communications in
+           Statistics: Simulation and Computation*, 37(2), 241-257.
+        .. [7] Gail, M. H., Lubin, J. H. and Rubinstein, L. V. (1981). Likelihood
+           calculations for matched case-control studies and survival studies
+           with tied death times. *Biometrika*, 68(3), 703-707.
+        .. [8] Harkness, W. L. (1965). Properties of the extended hypergeometric
+           distribution. *The Annals of Mathematical Statistics*, 36(3),
+           938-945.
+        .. [9] Kalbfleisch, J. D. and Prentice, R. L. (2002). *The Statistical
+           Analysis of Failure Time Data*, 2nd edition. Wiley, Hoboken, NJ.
+        .. [10] Kline, P. and Santos, A. (2012). A score based approach to wild
+           bootstrap inference. *Journal of Econometric Methods*, 1(1), 23-41.
+        .. [11] Lin, D. Y. and Wei, L. J. (1989). The robust inference for the
+           Cox proportional hazards model. *Journal of the American Statistical
+           Association*, 84(408), 1074-1078.
+        .. [12] Lin, D. Y., Wei, L. J. and Ying, Z. (1993). Checking the Cox
+           model with cumulative sums of martingale-based residuals.
+           *Biometrika*, 80(3), 557-572.
         """
         if seed is None:
             seed = int(np.random.SeedSequence().generate_state(1, np.uint64)[0])

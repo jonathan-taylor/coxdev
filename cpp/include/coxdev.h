@@ -60,20 +60,23 @@ public:
     // Draws of the score from the model at the linear predictor and weights of
     // the last compute_deviance (or, for "wild", from its score residuals). Each column r of the (n x n_draws) result is in native
     // order and on the scale of the score -gradient / 2, so that X^T r is a draw
-    // of the score of the coefficients of a design X. method is one of
-    //   "multinomial"           the d_k failures at each event time drawn with
-    //                           replacement from the risk set, with probabilities
-    //                           proportional to w exp(eta): the difference of two
-    //                           independent draws over sqrt(2)
-    //   "multinomial_centered"  one such draw, minus its expectation
-    //   "bernoulli"             each subject at risk fails independently with
-    //                           probability min(1, d_k p_k), centered within the
-    //                           risk set: the difference of two draws over sqrt(2)
-    //   "wallenius"             the d_k failures drawn without replacement, one
-    //                           at a time (Wallenius' distribution): the difference
-    //                           of two draws over sqrt(2)
-    //   "wild"                  sum_i G_i U_i over the score residuals U_i, with
-    //                           independent standard normal G_i
+    // of the score of the coefficients of a design X. The model-based methods
+    // draw failures from the model and return their (Breslow) score: at each
+    // event time, the sum over the failures of x_j minus its expectation.
+    // method is one of
+    //   "multinomial"  the d_k failures at each event time drawn with replacement
+    //                  from the risk set, with probabilities proportional to
+    //                  w exp(eta); the covariance is the Breslow information
+    //   "bernoulli"    each subject at risk fails independently with
+    //                  probability min(1, d_k p_k)
+    //   "fisher"       the set of d_k failures drawn from Fisher's noncentral
+    //                  hypergeometric distribution (independent Bernoullis given
+    //                  d_k failures), centered at its exact mean: the score of
+    //                  the exact discrete partial likelihood (Cox, 1972), by the
+    //                  recursion of Gail, Lubin and Rubinstein (1981, Biometrika
+    //                  68, 703-707); see the README for full references
+    //   "wild"         sum_i G_i U_i over the score residuals U_i, with
+    //                  independent standard normal G_i
     // The model-based methods (all but "wild") need equal positive weights.
     // Draws depend only on seed, not on the platform.
     Eigen::MatrixXd sample_score(const std::string& method,

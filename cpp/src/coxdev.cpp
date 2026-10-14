@@ -1,6 +1,7 @@
 #include "coxdev.h"
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <random>
 
@@ -1008,12 +1009,11 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
   }
 
   bool multinomial = (method == "multinomial");
-  bool centered = (method == "multinomial_centered");
   bool bernoulli = (method == "bernoulli");
-  bool wallenius = (method == "wallenius");
-  if (!(multinomial || centered || bernoulli || wallenius)) {
-    ERROR_MSG("sample_score: method must be one of 'multinomial', 'multinomial_centered', "
-              "'bernoulli', 'wallenius' or 'wild'");
+  bool fisher = (method == "fisher");
+  if (!(multinomial || bernoulli || fisher)) {
+    ERROR_MSG("sample_score: method must be one of 'multinomial', 'bernoulli', "
+              "'fisher' or 'wild'");
   }
 
   CoxContext ctx = get_context();
@@ -1077,55 +1077,119 @@ Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     }
   };
 
-  double half = w0 / std::sqrt(2.0);
+  if (fisher) {
+    // At each failure time the set of d failures is drawn from Fisher's
+    // noncentral hypergeometric distribution, P(A) proportional to the product
+    // of e_j over A (|A| = d), the conditional law of independent Bernoullis
+    // given d failures; r is its score under the exact (discrete) partial
+    // likelihood, r_j = w0 sum_k (delta_kj - E_k delta_j). Both use the
+    // elementary symmetric polynomials E_k of the risk weights, computed on the
+    // log scale by the recursion of Gail, Lubin and Rubinstein (1981).
+    const double neg_inf = -std::numeric_limits<double>::infinity();
+    auto log_add = [neg_inf](double a, double b) {
+      if (a == neg_inf) return b;
+      if (b == neg_inf) return a;
+      return std::max(a, b) + std::log1p(std::exp(-std::abs(a - b)));
+    };
+    Eigen::MatrixXd r_ev = Eigen::MatrixXd::Zero(n, n_draws);
+    std::vector<int> risk;
+    std::vector<double> loge, suffix, prefix;
+    for (const FailureTime& ft : times) {
+      risk.clear();
+      for (int j = ft.first; j < n; ++j) {
+        if (at_risk(j, ft.time)) risk.push_back(j);
+      }
+      int m = risk.size();
+      int d = ft.d;
+      if (m < d) {
+        ERROR_MSG("sample_score: more failures than subjects at risk");
+      }
+      loge.resize(m);
+      for (int i = 0; i < m; ++i) loge[i] = std::log(e_ev(risk[i]));
+
+      // suffix(i, k) = log E_k(risk[i..m-1]), prefix(i, k) = log E_k(risk[0..i-1])
+      int D = d + 1;
+      suffix.assign((m + 1) * D, neg_inf);
+      prefix.assign((m + 1) * D, neg_inf);
+      suffix[m * D] = 0.0;
+      for (int i = m - 1; i >= 0; --i) {
+        suffix[i * D] = 0.0;
+        for (int k = 1; k <= d; ++k) {
+          suffix[i * D + k] = log_add(suffix[(i + 1) * D + k],
+                                      loge[i] + suffix[(i + 1) * D + k - 1]);
+        }
+      }
+      prefix[0] = 0.0;
+      for (int i = 1; i <= m; ++i) {
+        prefix[i * D] = 0.0;
+        for (int k = 1; k <= d; ++k) {
+          prefix[i * D + k] = log_add(prefix[(i - 1) * D + k],
+                                      loge[i - 1] + prefix[(i - 1) * D + k - 1]);
+        }
+      }
+      double log_total = suffix[d];
+
+      // the exact expectation: E delta_i = e_i E_{d-1}(risk without i) / E_d(risk)
+      for (int i = 0; i < m; ++i) {
+        double log_without = neg_inf;
+        for (int a = 0; a <= d - 1; ++a) {
+          log_without = log_add(log_without,
+                                prefix[i * D + a] + suffix[(i + 1) * D + d - 1 - a]);
+        }
+        double p = std::exp(loge[i] + log_without - log_total);
+        r_ev.row(risk[i]).array() -= w0 * p;
+      }
+
+      // sequential draws: include risk[i] with probability e_i E_{k-1}(after i) / E_k(from i)
+      for (int b = 0; b < n_draws; ++b) {
+        int k = d;
+        for (int i = 0; i < m && k > 0; ++i) {
+          double p = std::exp(loge[i] + suffix[(i + 1) * D + k - 1] - suffix[i * D + k]);
+          if (rng.uniform() < p) {
+            r_ev(risk[i], b) += w0;
+            --k;
+          }
+        }
+      }
+    }
+    for (int i = 0; i < n; ++i) out.row(event_order(i)) = r_ev.row(i);
+    return out;
+  }
+
+  // each draw is the (Breslow) score of failures drawn from the model: at
+  // each event time, sum over the failures of x_j minus the number of
+  // failures times the risk-set mean, i.e. r_j = w0 (count_j - e_j sum_k D_k / S_k)
+  // with D_k the number of failures drawn at time k
   Eigen::VectorXd r(n), c(n);
   for (int b = 0; b < n_draws; ++b) {
     r.setZero();
+    c.setZero();
     if (bernoulli) {
-      // each subject at risk fails with probability min(1, d e_j / S), two draws;
-      // centered within the risk set: r_j = sum_k a_kj - e_j sum_k A_k / S_k
-      c.setZero();
+      // each subject at risk fails independently with probability min(1, d e_j / S)
       for (const FailureTime& ft : times) {
         double S_k = S(ft.first);
-        double A = 0.0;
+        double D = 0.0;
         for (int j = ft.first; j < n; ++j) {
           if (!at_risk(j, ft.time)) continue;
           double pi = std::min(1.0, ft.d * e_ev(j) / S_k);
-          double a = half * ((rng.uniform() < pi) - (rng.uniform() < pi));
-          r(j) += a;
-          A += a;
-        }
-        spread(ft, A / (ft.d * S_k), c);
-      }
-      Eigen::VectorXd T = risk_set_accumulate(ctx, c, false);
-      r.array() -= e_ev.array() * T.array();
-    } else {
-      // d failures at each time, with (multinomial) or without (wallenius)
-      // replacement; two draws with opposite signs, or one centered draw
-      int n_sets = centered ? 1 : 2;
-      for (int set = 0; set < n_sets; ++set) {
-        double value = centered ? w0 : (set == 0 ? half : -half);
-        for (const FailureTime& ft : times) {
-          std::vector<int> drawn;
-          for (int m = 0; m < ft.d; ++m) {
-            int j = draw_at_risk(ft);
-            r(j) += value;
-            if (wallenius) {
-              drawn.push_back(j);
-              tree.set(j, 0.0);
-            }
+          if (rng.uniform() < pi) {
+            r(j) += 1.0;
+            D += 1.0;
           }
-          for (int j : drawn) tree.set(j, e_ev(j));
         }
+        // spread puts the value on each of the d failure positions
+        spread(ft, D / (ft.d * S_k), c);
       }
-      if (centered) {
-        // the expected count of j is sum over its risk sets of d e_j / S
-        c.setZero();
-        for (const FailureTime& ft : times) spread(ft, 1.0 / S(ft.first), c);
-        Eigen::VectorXd T = risk_set_accumulate(ctx, c, false);
-        r.array() -= w0 * e_ev.array() * T.array();
+    } else {
+      // d failures at each time, drawn with replacement
+      for (const FailureTime& ft : times) {
+        for (int m = 0; m < ft.d; ++m) r(draw_at_risk(ft)) += 1.0;
+        spread(ft, 1.0 / S(ft.first), c);
       }
     }
+    Eigen::VectorXd T = risk_set_accumulate(ctx, c, false);
+    r.array() -= e_ev.array() * T.array();
+    r *= w0;
     for (int i = 0; i < n; ++i) out(event_order(i), b) = r(i);
   }
   return out;

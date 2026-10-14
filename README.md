@@ -9,7 +9,7 @@ A high-performance C++ for computing Cox proportional hazards model deviance, gr
 - **Left-Truncated Data**: Support for left-truncated survival data
 - **Efficient Computations**: Optimized algorithms for deviance, gradient, and Hessian calculations
 - **Memory Efficient**: Uses linear operators for large-scale computations
-- **Sampling the Score**: Draws of the score from the fitted model (multinomial, Bernoulli or Wallenius draws of the failures at each event time) or from its score residuals (a wild bootstrap), reproducible from a seed on every platform
+- **Sampling the Score**: Draws of the score from the fitted model (multinomial, Bernoulli or Fisher noncentral hypergeometric draws of the failures at each event time) or from its score residuals (a wild bootstrap), reproducible from a seed on every platform
 - **Cross-Platform**: Works on Linux, macOS, and Windows
 
 ## Installation
@@ -126,22 +126,68 @@ print(np.diag(np.cov(draws)) / np.diag(information_matrix))
 
 The methods are:
 
-| `method` | Draw | Covariance |
-|---|---|---|
-| `'multinomial'` | the failures at each event time drawn with replacement from the risk set, with probabilities proportional to `sample_weight * exp(eta)`; the difference of two independent draws over `sqrt(2)` | the Breslow information |
-| `'multinomial_centered'` | one such draw, minus its expectation | the Breslow information |
-| `'bernoulli'` | each subject at risk fails independently with probability `min(1, d * p)`, centered within the risk set; two draws | less than the information when ties are heavy |
-| `'wallenius'` | the failures at each event time drawn without replacement, one at a time (Wallenius' noncentral hypergeometric distribution); two draws | less than the information when ties are heavy |
-| `'wild'` | the score residuals of the observations times independent standard normals | the sandwich, the sum of the outer products of the score residuals |
+| `method` | Draw | Score of the draw | Covariance |
+|---|---|---|---|
+| `'multinomial'` | the `d` failures at each event time drawn with replacement from the risk set, with probabilities proportional to `sample_weight * exp(eta)` | under Breslow's (1974) likelihood, of which this is the sampling model | the Breslow information |
+| `'bernoulli'` | each subject at risk fails independently with probability `min(1, d * p)`, a Cox-model analogue of the weird bootstrap (Andersen et al., 1993; Burr, 1994) | Breslow's, with the number of failures drawn | less than the information when ties are heavy |
+| `'fisher'` | the set of `d` failures at each event time drawn from Fisher's noncentral hypergeometric distribution (Harkness, 1965; Fog, 2008): independent Bernoullis given `d` failures, P(A) proportional to the product of `exp(eta_j)` over the set A | under the exact discrete partial likelihood (Cox, 1972; Kalbfleisch and Prentice, 2002), of which this is the sampling model, centered at its exact mean | the information of the exact likelihood |
+| `'wild'` | the score residuals of the observations times independent standard normals (Lin, Wei and Ying, 1993; Kline and Santos, 2012) | of the likelihood set by `tie_breaking` (Breslow, 1974; Efron, 1977) | the sandwich, the sum of the outer products of the score residuals (Lin and Wei, 1989) |
 
-The model-based methods (all but `'wild'`) need equal positive weights.
-`'wild'` does not rely on the model: its covariance is the sandwich, which
-is right even when the proportional hazards model is not.
+Each model-based draw is the score of failures drawn from the model: at
+each event time, the sum over the failures of `x_j` minus their expected
+sum. For `'multinomial'` and `'fisher'` the draw is from the model whose
+likelihood gives the score, so every draw has mean exactly zero. For
+`'bernoulli'` this holds only while `d * p < 1` for every subject at risk:
+the cap `min(1, d * p)` biases it when ties are heavy. The
+methods differ only at tied event times: with one failure at each event
+time all three draw the same failure distribution. The model-based methods
+(all but `'wild'`) need equal positive weights and do not depend on
+`tie_breaking`. `'wild'` does not rely on the model: its covariance is the
+sandwich, which is right even when the proportional hazards model is not.
+
+`'fisher'` samples and centers with the elementary symmetric polynomials
+of the risk weights, computed on the log scale by the recursion of Gail,
+Lubin and Rubinstein (1981), the one used for the exact partial likelihood
+by R's survival package and SAS PROC PHREG. Each event time with `d` tied
+failures among `m` at risk costs `O(m d)` once, and `O(m)` per draw.
 
 `wild_score` gives the wild draw for given multipliers: with multipliers
 `G`, `X.T @ coxdev.wild_score(eta, G)` is the sum over observations of
 `G[i]` times the score residual of observation `i`. With `G` all one it is
 the score.
+
+#### References
+
+- Andersen, P. K., Borgan, Ø., Gill, R. D. and Keiding, N. (1993).
+  *Statistical Models Based on Counting Processes*. Springer, New York.
+- Breslow, N. E. (1974). Covariance analysis of censored survival data.
+  *Biometrics*, 30(1), 89–99.
+- Burr, D. (1994). A comparison of certain bootstrap confidence intervals
+  in the Cox model. *Journal of the American Statistical Association*,
+  89(428), 1290–1302.
+- Cox, D. R. (1972). Regression models and life-tables (with discussion).
+  *Journal of the Royal Statistical Society, Series B*, 34(2), 187–220.
+- Efron, B. (1977). The efficiency of Cox's likelihood function for
+  censored data. *Journal of the American Statistical Association*,
+  72(359), 557–565.
+- Fog, A. (2008). Sampling methods for Wallenius' and Fisher's noncentral
+  hypergeometric distributions. *Communications in Statistics: Simulation
+  and Computation*, 37(2), 241–257.
+- Gail, M. H., Lubin, J. H. and Rubinstein, L. V. (1981). Likelihood
+  calculations for matched case-control studies and survival studies with
+  tied death times. *Biometrika*, 68(3), 703–707.
+- Harkness, W. L. (1965). Properties of the extended hypergeometric
+  distribution. *The Annals of Mathematical Statistics*, 36(3), 938–945.
+- Kalbfleisch, J. D. and Prentice, R. L. (2002). *The Statistical Analysis
+  of Failure Time Data*, 2nd edition. Wiley, Hoboken, NJ.
+- Kline, P. and Santos, A. (2012). A score based approach to wild
+  bootstrap inference. *Journal of Econometric Methods*, 1(1), 23–41.
+- Lin, D. Y. and Wei, L. J. (1989). The robust inference for the Cox
+  proportional hazards model. *Journal of the American Statistical
+  Association*, 84(408), 1074–1078.
+- Lin, D. Y., Wei, L. J. and Ying, Z. (1993). Checking the Cox model with
+  cumulative sums of martingale-based residuals. *Biometrika*, 80(3),
+  557–572.
 
 The random numbers come from the C++ code, from the bits of
 `std::mt19937_64`, so the same `seed` gives the same draws on every
