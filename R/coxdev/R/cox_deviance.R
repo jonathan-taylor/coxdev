@@ -229,7 +229,9 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
                      private$n_obs, nrow(X)))
       }
       private$prepare(linear_predictor, sample_weight)
-      U <- .cox_score_residuals(private$ptr, X)
+      # the C++ takes one covariate at a time
+      U <- X
+      for (j in seq_len(ncol(X))) U[, j] <- .cox_score_residuals(private$ptr, X[, j])
       if (vector_X) return(drop(U))
       dimnames(U) <- dimnames(X)
       U

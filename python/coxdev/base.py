@@ -445,7 +445,10 @@ class CoxDeviance(object):
         if X2.shape[0] != np.asarray(linear_predictor).shape[0]:
             raise ValueError('X must have one row per observation')
         self(linear_predictor, sample_weight)
-        U = self._coxc.score_residuals(X2)
+        # the C++ takes one covariate at a time
+        U = np.empty(X2.shape)
+        for j in range(X2.shape[1]):
+            U[:, j] = self._coxc.score_residuals(X2[:, j])
         return U[:, 0] if one_dim else U
 
     def baseline_hazard(self,

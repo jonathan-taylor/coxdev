@@ -91,14 +91,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // cox_score_residuals
-Eigen::MatrixXd cox_score_residuals(SEXP ptr, const Eigen::MatrixXd& X);
-RcppExport SEXP _coxdev_cox_score_residuals(SEXP ptrSEXP, SEXP XSEXP) {
+Eigen::VectorXd cox_score_residuals(SEXP ptr, const Eigen::VectorXd& x);
+RcppExport SEXP _coxdev_cox_score_residuals(SEXP ptrSEXP, SEXP xSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
-    Rcpp::traits::input_parameter< const Eigen::MatrixXd& >::type X(XSEXP);
-    rcpp_result_gen = Rcpp::wrap(cox_score_residuals(ptr, X));
+    Rcpp::traits::input_parameter< const Eigen::VectorXd& >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_score_residuals(ptr, x));
     return rcpp_result_gen;
 END_RCPP
 }

@@ -135,9 +135,9 @@ Eigen::VectorXd cox_wild_score(SEXP ptr, const Eigen::VectorXd& multipliers) {
 }
 
 // [[Rcpp::export(.cox_score_residuals)]]
-Eigen::MatrixXd cox_score_residuals(SEXP ptr, const Eigen::MatrixXd& X) {
+Eigen::VectorXd cox_score_residuals(SEXP ptr, const Eigen::VectorXd& x) {
   CoxModel* model = get_computed(ptr);
-  return model->apply([&](auto& cox) { return cox.score_residuals(X); });
+  return model->apply([&](auto& cox) { return cox.score_residuals(x); });
 }
 
 // [[Rcpp::export(.cox_baseline_hazard)]]
