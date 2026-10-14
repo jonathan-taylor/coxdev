@@ -1,0 +1,136 @@
+---
+title: "Using coxdev"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Using coxdev}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6, fig.height = 4)
+```
+
+`coxdev` computes the deviance of the Cox proportional hazards model, its
+gradient and the diagonal of its Hessian with respect to the linear predictor,
+the information as a matrix-free operator, and draws of the score. This
+vignette fits a model by Newton's method and shows what keeping the sorted
+data in a `CoxDeviance` object saves. Sampling the score has its own
+vignette, `vignette("sampling", package = "coxdev")`.
+
+```{r}
+library(coxdev)
+library(survival)
+```
+
+## A survival response
+
+Survival times on a coarse grid, so that there are many ties, with delayed
+entry and censoring.
+
+```{r}
+set.seed(1)
+n <- 500
+p <- 3
+X <- matrix(rnorm(n * p), n, p, dimnames = list(NULL, c("x1", "x2", "x3")))
+beta <- c(0.5, -0.5, 0.25)
+time <- rexp(n, exp(drop(X %*% beta)))
+cens <- rexp(n, 0.5)
+stop <- ceiling(pmin(time, cens) * 4) / 4
+status <- as.integer(time <= cens)
+start <- floor(runif(n, 0, 0.5) * stop * 8) / 8
+y <- Surv(start, stop, status)
+
+cox <- CoxDeviance$new(y, tie_breaking = "efron")
+cox
+```
+
+The response can also be given as vectors, as in the Python package:
+`CoxDeviance$new(event = stop, status = status, start = start)`.
+
+## Deviance, gradient and information
+
+`compute()` returns the deviance and its derivatives with respect to the
+linear predictor `eta`. `information()` returns the information (half the
+Hessian of the deviance) as an `n` by `n` operator. It is never formed: a
+product with it costs about as much as a gradient. For a design `X`,
+`crossprod(X, I %*% X)` is the information of the coefficients, so Newton's
+method takes a few lines.
+
+```{r}
+b <- rep(0, p)
+for (iter in 1:10) {
+  eta <- drop(X %*% b)
+  res <- cox$compute(eta)
+  score <- -drop(crossprod(X, res$gradient)) / 2
+  info <- crossprod(X, cox$information(eta) %*% X)
+  step <- solve(info, score)
+  b <- b + step
+  if (max(abs(step)) < 1e-10) break
+}
+iter
+b
+```
+
+These are the estimates of `coxph`, with the same standard errors:
+
+```{r}
+fit <- coxph(y ~ X, ties = "efron")
+rbind(coxdev = b, coxph = coef(fit))
+rbind(coxdev = sqrt(diag(solve(info))), coxph = sqrt(diag(vcov(fit))))
+```
+
+## What keeping state saves
+
+Creating a `CoxDeviance` sorts the data, once. Each `compute()` after that
+is linear in `n`, and repeating a call with the same linear predictor and
+weights returns the cached result. A stateless function has to sort on every
+call. That cost is paid at every step of an optimizer, and at every
+product with the information.
+
+We time 50 evaluations of the deviance and gradient at 100,000 observations,
+each at a different linear predictor.
+
+```{r timing}
+set.seed(2)
+N <- 1e5
+XN <- matrix(rnorm(N * p), N, p)
+etaN <- drop(XN %*% beta)
+stopN <- ceiling(rexp(N, exp(etaN)) * 20) / 20
+statusN <- rbinom(N, 1, 0.7)
+startN <- floor(runif(N, 0, 0.5) * stopN * 40) / 40
+yN <- Surv(startN, stopN, statusN)
+etas <- lapply(1:50, function(i) etaN + rnorm(N, sd = 0.1))
+
+per_call <- function(expr) {
+  t <- system.time(expr)[["elapsed"]]
+  sprintf("%.1f ms", 1000 * t / 50)
+}
+setup <- system.time(coxN <- CoxDeviance$new(yN))[["elapsed"]]
+timings <- c(
+  "one object, reused" = per_call(for (e in etas) coxN$compute(e)),
+  "a new object for each call" = per_call(for (e in etas) CoxDeviance$new(yN)$compute(e)),
+  "one object, same eta again (cached)" = per_call(for (e in etas) coxN$compute(etas[[1]])),
+  "one information product" = per_call({
+    I <- coxN$information(etas[[1]])
+    for (e in etas) I %*% XN[, 1]
+  })
+)
+if (requireNamespace("glmnet", quietly = TRUE) &&
+    utils::packageVersion("glmnet") >= "5.0") {
+  timings["glmnet::coxnet.deviance, then glmnet:::coxgrad"] <- per_call(for (e in etas) {
+    glmnet::coxnet.deviance(pred = e, y = yN, std.weights = FALSE, cox.ties = "efron")
+    glmnet:::coxgrad(e, yN, rep(1, N), std.weights = FALSE, cox.ties = "efron")
+  })
+}
+knitr::kable(data.frame(time = timings), caption = sprintf(
+  "Time per call, n = %d. Creating the object (the sort) took %.0f ms.",
+  N, 1000 * setup))
+```
+
+The times depend on the machine, but the pattern is stable. Reusing the
+object avoids the sort, which costs several times as much as an evaluation.
+glmnet's functions run the same C++ code, but have to start from scratch on
+every call. The information operator is what makes the Hessian usable at
+this size: as a dense matrix it would take
+`r format(8 * N^2 / 2^30, digits = 3)` GB.
