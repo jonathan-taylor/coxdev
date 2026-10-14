@@ -936,6 +936,19 @@ double common_weight(const Eigen::VectorXd& w) {
 
 }  // namespace
 
+// wild_score and score_residuals reuse what compute_deviance leaves in its
+// buffers, which depend only on the linear predictor and weights:
+// risk_sum_buffers[0] (S, the risk sums of w exp(eta), with Efron's weights
+// if efron), w_avg_buffer (wbar, the mean weight of the failures tied at each
+// time), event_reorder_buffers[1] and [2] (w and w exp(eta) in event order)
+// and grad_buffer. A call then costs one risk-set sum of its argument.
+
+// the failure terms t: a failure with positive weight and risk sum
+inline bool failure_term(const CoxContext& ctx, const Eigen::VectorXd& w_ev,
+                         const Eigen::VectorXd& S, int t) {
+  return ctx.status(t) == 1 && w_ev(t) > 0 && S(t) > 0;
+}
+
 Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   int n = _status.size();
   if (linear_predictor.size() != n) {
@@ -945,46 +958,40 @@ Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
     ERROR_MSG("wild_score: multipliers must have one entry per observation");
   }
   CoxContext ctx = get_context();
+  const Eigen::VectorXd& S = risk_sum_buffers[0];
+  const Eigen::VectorXd& w_ev = event_reorder_buffers[1];
+  const Eigen::VectorXd& e_ev = event_reorder_buffers[2];
 
-  // risk sums of w exp(eta) and of G w exp(eta), with Efron's weights if efron
-  Eigen::VectorXd S(n), SG(n), event_cumsum(n + 1), start_cumsum(n + 1);
-  sum_over_risk_set(exp_w_buffer, ctx, S, event_cumsum, start_cumsum);
+  // the risk sums of G w exp(eta), with Efron's weights if efron
+  Eigen::VectorXd SG(n), event_cumsum(n + 1), start_cumsum(n + 1);
   Eigen::VectorXd Ge = multipliers.array() * exp_w_buffer.array();
   sum_over_risk_set(Ge, ctx, SG, event_cumsum, start_cumsum);
 
-  // in event order: weights, multipliers, the score in eta (-gradient / 2)
-  Eigen::VectorXd w_ev(n), G_ev(n), M_ev(n), e_ev(n);
+  // in event order: the multipliers, and the mean of G w over the failures
+  Eigen::VectorXd G_ev(n), status_Gw(n), CGw(n + 1);
   for (int i = 0; i < n; ++i) {
-    int k = event_order(i);
-    w_ev(i) = sample_weight(k);
-    G_ev(i) = multipliers(k);
-    M_ev(i) = -0.5 * grad_buffer(k);
-    e_ev(i) = exp_w_buffer(k);
+    G_ev(i) = multipliers(event_order(i));
+    status_Gw(i) = ctx.status(i) * w_ev(i) * G_ev(i);
   }
+  forward_cumsum(status_Gw, CGw);
 
   // For the failure term t at a time with failures D and average weight wbar:
   //   c_t = sum_{i in D} G_i w_i / d - wbar * SG_t / S_t,
   // and the draw is r_j = G_j M_j - e_j sum_{t containing j} c_t / S_t.
-  Eigen::VectorXd status_w = ctx.status.cast<double>().array() * w_ev.array();
-  Eigen::VectorXd status_Gw = status_w.array() * G_ev.array();
-  Eigen::VectorXd Cw(n + 1), CGw(n + 1);
-  forward_cumsum(status_w, Cw);
-  forward_cumsum(status_Gw, CGw);
   Eigen::VectorXd c = Eigen::VectorXd::Zero(n);
   for (int t = 0; t < n; ++t) {
-    if (ctx.status(t) == 1 && w_ev(t) > 0 && S(t) > 0) {
+    if (failure_term(ctx, w_ev, S, t)) {
       int f = ctx.first(t), l = ctx.last(t);
-      double size = l + 1 - f;
-      double wbar = (Cw(l + 1) - Cw(f)) / size;
-      double Gwbar = (CGw(l + 1) - CGw(f)) / size;
-      c(t) = (Gwbar - wbar * SG(t) / S(t)) / S(t);
+      double Gwbar = (CGw(l + 1) - CGw(f)) / (l + 1 - f);
+      c(t) = (Gwbar - w_avg_buffer(t) * SG(t) / S(t)) / S(t);
     }
   }
   Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
 
   Eigen::VectorXd out(n);
   for (int i = 0; i < n; ++i) {
-    out(event_order(i)) = G_ev(i) * M_ev(i) - e_ev(i) * T(i);
+    int k = event_order(i);
+    out(k) = G_ev(i) * (-0.5 * grad_buffer(k)) - e_ev(i) * T(i);
   }
   return out;
 }
@@ -998,37 +1005,26 @@ Eigen::VectorXd CoxDeviance::score_residuals(const Eigen::VectorXd& x) const {
     ERROR_MSG("score_residuals: x must have one entry per observation");
   }
   CoxContext ctx = get_context();
+  const Eigen::VectorXd& S = risk_sum_buffers[0];
+  const Eigen::VectorXd& w_ev = event_reorder_buffers[1];
+  const Eigen::VectorXd& e_ev = event_reorder_buffers[2];
 
-  // the risk sums of w exp(eta) and of w exp(eta) x, with Efron's weights if efron
-  Eigen::VectorXd S(n), SX(n), event_cumsum(n + 1), start_cumsum(n + 1);
-  sum_over_risk_set(exp_w_buffer, ctx, S, event_cumsum, start_cumsum);
+  // the risk sums of w exp(eta) x, with Efron's weights if efron
+  Eigen::VectorXd SX(n), event_cumsum(n + 1), start_cumsum(n + 1);
   Eigen::VectorXd ex = exp_w_buffer.array() * x.array();
   sum_over_risk_set(ex, ctx, SX, event_cumsum, start_cumsum);
 
-  // in event order: weights, exp(eta) w, the score in eta (-gradient / 2)
-  Eigen::VectorXd w_ev(n), M_ev(n), e_ev(n);
-  for (int i = 0; i < n; ++i) {
-    int k = event_order(i);
-    w_ev(i) = sample_weight(k);
-    M_ev(i) = -0.5 * grad_buffer(k);
-    e_ev(i) = exp_w_buffer(k);
-  }
-  Eigen::VectorXd status_w = ctx.status.cast<double>().array() * w_ev.array();
-  Eigen::VectorXd Cw(n + 1);
-  forward_cumsum(status_w, Cw);
-
-  // For the failure terms t (as in wild_score), with their average weight
-  // wbar_t and xbar_t the mean of x over the risk set of t (with weights
-  // w exp(eta), and Efron's for ties):
+  // For the failure terms t, with their average weight wbar_t and xbar_t the
+  // mean of x over the risk set of t (with weights w exp(eta), and Efron's
+  // for ties):
   //   u_i = x_i M_i - (w_i delta_i / d) sum_{t at i's time} xbar_t
-  //         + e_i sum_{t containing i} wbar_t xbar_t / S_t.
+  //         + e_i sum_{t containing i} wbar_t xbar_t / S_t,
+  // with M = -gradient / 2.
   Eigen::VectorXd xbar = Eigen::VectorXd::Zero(n), c = Eigen::VectorXd::Zero(n);
   for (int t = 0; t < n; ++t) {
-    if (ctx.status(t) == 1 && w_ev(t) > 0 && S(t) > 0) {
-      int f = ctx.first(t), l = ctx.last(t);
-      double wbar = (Cw(l + 1) - Cw(f)) / (l + 1 - f);
+    if (failure_term(ctx, w_ev, S, t)) {
       xbar(t) = SX(t) / S(t);
-      c(t) = wbar * xbar(t) / S(t);
+      c(t) = w_avg_buffer(t) * xbar(t) / S(t);
     }
   }
   Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
@@ -1039,11 +1035,11 @@ Eigen::VectorXd CoxDeviance::score_residuals(const Eigen::VectorXd& x) const {
   for (int i = 0; i < n; ++i) {
     int k = event_order(i);
     double own = 0.0;
-    if (status_w(i) > 0) {
+    if (ctx.status(i) == 1 && w_ev(i) > 0) {
       int f = ctx.first(i), l = ctx.last(i);
-      own = status_w(i) * (Cx(l + 1) - Cx(f)) / (l + 1 - f);
+      own = w_ev(i) * (Cx(l + 1) - Cx(f)) / (l + 1 - f);
     }
-    out(k) = x(k) * M_ev(i) - own + e_ev(i) * T(i);
+    out(k) = x(k) * (-0.5 * grad_buffer(k)) - own + e_ev(i) * T(i);
   }
   return out;
 }
