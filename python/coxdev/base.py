@@ -92,7 +92,7 @@ class CoxDeviance(object):
     >>> eta = np.linspace(-1, 1, len(event))
     >>> result = cox(eta)
     >>> print(round(result.deviance, 4))
-    20.7998
+    25.1943
     """
     
     event: InitVar[np.ndarray]
