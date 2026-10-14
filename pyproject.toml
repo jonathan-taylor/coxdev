@@ -47,7 +47,7 @@ doc = [
     "pandas",
     "matplotlib",
     "rpy2",
-    "glmstar"
+    "glmstar>=0.2.0"
 ]
 
 [build-system]

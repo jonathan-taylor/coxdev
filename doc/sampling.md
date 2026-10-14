@@ -58,8 +58,7 @@ coxnet = CoxNetIRLS(family=CoxFamily(tie_breaking='efron', event_id='stop',
                                      status_id='status', start_id='start'),
                     lambda_values=np.array([0.]),
                     control=GLMNetControl(thresh=1e-14, epsnr=1e-12))
-with np.errstate(invalid='ignore'):  # glmstar 0.1.3 divides 0 by 0 at lambda = 0
-    fit = coxnet.fit(X, y)
+fit = coxnet.fit(X, y)
 b = fit.coefs_[0]
 b
 ```
