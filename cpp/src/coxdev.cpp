@@ -403,7 +403,7 @@ std::vector<int> lexsort(const Eigen::VectorXi & a,  // is_start
     // sample_score) does not depend on the standard library's std::sort
     return i < j;
   };
-
+  
   std::sort(idx.begin(), idx.end(), comparator);
   
   return idx;
