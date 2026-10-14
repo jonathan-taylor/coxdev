@@ -12,7 +12,6 @@ from typing import Literal, Optional
 from scipy.sparse.linalg import LinearOperator
 
 import numpy as np
-from joblib import hash as _hash
 
 from .coxc import CoxDeviance as _CoxDeviance
 from .coxc import StratifiedCoxDeviance as _StratifiedCoxDeviance
@@ -37,8 +36,8 @@ class CoxDevianceResult(object):
         Gradient of the deviance with respect to the linear predictor.
     diag_hessian : Optional[np.ndarray]
         Diagonal of the Hessian matrix.
-    __hash_args__ : str
-        Hash string for caching results.
+    __hash_args__ : str, optional
+        Unused; kept for compatibility.
     """
 
     linear_predictor: np.ndarray
@@ -47,7 +46,7 @@ class CoxDevianceResult(object):
     deviance: float
     gradient: Optional[np.ndarray]
     diag_hessian: Optional[np.ndarray]
-    __hash_args__: str
+    __hash_args__: Optional[str] = None
 
 
 @dataclass
@@ -71,8 +70,10 @@ class CoxDeviance(object):
     start : np.ndarray, optional
         Start times for left-truncated data. If None, assumes no truncation.
     sample_weight : np.ndarray, optional
-        If None, defaults to one. Necessary at construction only to determine
-        which entries are 0.
+        If None, defaults to one. A call with weights that are a positive
+        multiple ``c`` of these is computed with these weights, its results
+        (deviance, gradient, Hessian, information, score draws) multiplied by
+        ``c``; other weights rebuild the object, which sorts the data again.
     
     tie_breaking : {'efron', 'breslow'}, default='efron'
         Method for handling tied event times.
@@ -142,9 +143,17 @@ class CoxDeviance(object):
         self._strata = strata
         
         self._reconstruct_coxc(sample_weight)
-        self._weights_hash = _hash(sample_weight)
 
     def _reconstruct_coxc(self, sample_weight):
+        sample_weight = np.array(sample_weight, float)
+        self._weight = sample_weight
+        self._unit_weight = bool(np.all(sample_weight == 1))
+        # the weight of the failures: under weights c * w the log-likelihood and
+        # its saturated value are c times theirs under w, less c log(c) times it
+        self._failure_weight = (sample_weight * self._raw_status).sum()
+        self._cache = None
+        self._result = None
+        self._scale = 1.
         if self._strata is None:
             self._coxc = _CoxDeviance(self._raw_start, 
                                       self._raw_event, 
@@ -220,38 +229,68 @@ class CoxDeviance(object):
             'scaling': self._scaling
         }
 
+    def _weight_scale(self, sample_weight):
+        """
+        The multiple ``c`` of the weights of the C++ object that is
+        ``sample_weight`` (one if None). If it is not a positive multiple of
+        them, the object is rebuilt with ``sample_weight`` and ``c`` is 1.
+        """
+        if sample_weight is None:
+            if self._unit_weight:
+                return 1.
+            sample_weight = np.ones_like(self._weight)
+        else:
+            sample_weight = np.asarray(sample_weight, float)
+        w = self._weight
+        if sample_weight.shape == w.shape:
+            total = w.sum()
+            if total > 0:
+                scale = sample_weight.sum() / total
+                # atol=0: zero weights must stay zero, as they leave the risk sets
+                if scale > 0 and np.allclose(sample_weight, scale * w, rtol=1e-12, atol=0):
+                    return scale
+        self._reconstruct_coxc(sample_weight)
+        return 1.
+
     def __call__(self,
                  linear_predictor,
                  sample_weight=None):
         """
         Compute Cox model deviance and related quantities.
+
+        The computation is cached for the last ``linear_predictor``: calls at
+        it, with weights that are any positive multiple of those of the
+        object, only rescale it.
         """
-        if sample_weight is None:
-            sample_weight = np.ones_like(linear_predictor, float)
-        else:
-            sample_weight = np.asarray(sample_weight).astype(float)
+        linear_predictor = np.asarray(linear_predictor, float)
+        scale = self._weight_scale(sample_weight)
 
-        linear_predictor = np.asarray(linear_predictor).astype(float)
-            
-        cur_weight_hash = _hash(sample_weight)
-        if getattr(self, "_weights_hash", None) != cur_weight_hash:
-            self._reconstruct_coxc(sample_weight)
-            self._weights_hash = cur_weight_hash
+        cache = self._cache
+        if cache is None or not np.array_equal(cache['linear_predictor'], linear_predictor):
+            deviance = self._coxc.compute_deviance(linear_predictor, self._weight)
+            cache = self._cache = {'linear_predictor': linear_predictor.copy(),
+                                   'deviance': deviance,
+                                   'loglik_sat': self._coxc.loglik_sat,
+                                   'gradient': self._coxc.gradient.copy(),
+                                   'diag_hessian': self._coxc.diag_hessian.copy()}
+            self._result = None
 
-        cur_hash = _hash([linear_predictor, sample_weight])
-
-        if not hasattr(self, "_result") or getattr(self._result, "__hash_args__", None) != cur_hash:
-            deviance = self._coxc.compute_deviance(linear_predictor, sample_weight)
-            
-            # These are now references to internal Eigen buffers
+        if self._result is None or self._scale != scale:
+            if scale == 1:
+                sample_weight, loglik_sat = self._weight, cache['loglik_sat']
+                gradient, diag_hessian = cache['gradient'], cache['diag_hessian']
+            else:
+                sample_weight = scale * self._weight
+                loglik_sat = scale * (cache['loglik_sat'] - np.log(scale) * self._failure_weight)
+                gradient, diag_hessian = scale * cache['gradient'], scale * cache['diag_hessian']
+            # linear_predictor is a reference to an internal Eigen buffer
             self._result = CoxDevianceResult(linear_predictor=self._coxc.linear_predictor,
-                                             sample_weight=self._coxc.sample_weight,
-                                             loglik_sat=self._coxc.loglik_sat,
-                                             deviance=deviance,
-                                             gradient=self._coxc.gradient.copy(),
-                                             diag_hessian=self._coxc.diag_hessian.copy(),
-                                             __hash_args__=cur_hash)
-            
+                                             sample_weight=sample_weight,
+                                             loglik_sat=loglik_sat,
+                                             deviance=scale * cache['deviance'],
+                                             gradient=gradient,
+                                             diag_hessian=diag_hessian)
+        self._scale = scale
         return self._result
 
     def information(self,
@@ -263,7 +302,8 @@ class CoxDeviance(object):
         result = self(linear_predictor,
                       sample_weight)
         return CoxInformation(result=result,
-                              coxdev=self)
+                              coxdev=self,
+                              scale=self._scale)
 
     def sample_score(self,
                        linear_predictor,
@@ -364,6 +404,8 @@ class CoxDeviance(object):
             seed = int(np.random.SeedSequence().generate_state(1, np.uint64)[0])
         self(linear_predictor, sample_weight)
         draws = self._coxc.sample_score(method, 1 if n_draws is None else int(n_draws), int(seed))
+        if self._scale != 1:
+            draws = self._scale * draws
         return draws[:, 0] if n_draws is None else draws
 
     def wild_score(self,
@@ -378,7 +420,7 @@ class CoxDeviance(object):
         With ``multipliers`` all one, ``r`` is the score ``-gradient / 2``.
         """
         self(linear_predictor, sample_weight)
-        return self._coxc.wild_score(np.asarray(multipliers, float))
+        return self._scale * self._coxc.wild_score(np.asarray(multipliers, float))
 
 
 @dataclass
@@ -389,6 +431,7 @@ class CoxInformation(LinearOperator):
 
     coxdev: CoxDeviance
     result: CoxDevianceResult
+    scale: float = 1.
 
     def __post_init__(self):
         """Initialize the linear operator dimensions."""
@@ -402,7 +445,8 @@ class CoxInformation(LinearOperator):
         """
         # arg is in native order
         arg_arr = np.asarray(arg).reshape(-1).astype(float)
-        return self.coxdev._coxc.compute_hessian_matvec(arg_arr)
+        value = self.coxdev._coxc.compute_hessian_matvec(arg_arr)
+        return value if self.scale == 1 else self.scale * value
 
     def _adjoint(self, arg):
         """
