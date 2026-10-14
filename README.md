@@ -88,6 +88,9 @@ event <- rexp(n, exp(eta))
 status <- rbinom(n, 1, 0.7)
 
 cox <- CoxDeviance$new(event = event, status = status, tie_breaking = "efron")
+# or with a Surv response: Surv(time, status) or Surv(start, stop, status),
+# with strata from glmnet::stratifySurv() if set
+cox <- CoxDeviance$new(survival::Surv(event, status), tie_breaking = "efron")
 
 res <- cox$compute(eta)          # Python: coxdev(eta)
 res$deviance                     # the objective
@@ -106,6 +109,7 @@ w <- cox$wild_score(eta, G)
 | Python | R |
 |---|---|
 | `CoxDeviance(event=, status=, start=, strata=, sample_weight=, tie_breaking=)` | `CoxDeviance$new(event =, status =, start =, strata =, sample_weight =, tie_breaking =)` |
+| | `CoxDeviance$new(Surv(...), strata =, sample_weight =, tie_breaking =)` |
 | `coxdev(eta, sample_weight)` | `cox$compute(eta, sample_weight)` |
 | `coxdev.information(eta, sample_weight)` (a `LinearOperator`) | `cox$information(eta, sample_weight)` (a `CoxInformation`, with `%*%`, `$multiply()`, `$diagonal()`, `$to_dense()`, `dim()`) |
 | `coxdev.sample_score(eta, sample_weight, method, n_draws, seed)` | `cox$sample_score(eta, sample_weight, method, n_draws, seed)` |

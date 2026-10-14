@@ -87,3 +87,41 @@ test_that("make_cox_deviance still works", {
     expect_true(is.matrix(old$information(eta)(x[, 1])))
   }
 })
+
+test_that("the response can be a Surv object", {
+  skip_if_not_installed("survival")
+  set.seed(21)
+  start <- event - runif(12)
+  w <- runif(12)
+  same <- function(a, b) {
+    expect_equal(a$compute(eta, w)$deviance, b$compute(eta, w)$deviance)
+    expect_equal(a$compute(eta, w)$gradient, b$compute(eta, w)$gradient)
+  }
+  same(CoxDeviance$new(survival::Surv(event, status)),
+       CoxDeviance$new(event = event, status = status))
+  same(CoxDeviance$new(survival::Surv(start, event, status), tie_breaking = "breslow"),
+       CoxDeviance$new(event = event, status = status, start = start, tie_breaking = "breslow"))
+  # status coded 1/2 or logical, as Surv allows
+  same(CoxDeviance$new(survival::Surv(event, status + 1)),
+       CoxDeviance$new(event = event, status = status))
+  strata <- rep(c("a", "b", "c"), 4)
+  same(CoxDeviance$new(survival::Surv(event, status), strata = strata),
+       CoxDeviance$new(event = event, status = status, strata = strata))
+
+  expect_error(CoxDeviance$new(survival::Surv(event, status), status = status), "not both")
+  expect_error(CoxDeviance$new(survival::Surv(event, status), start = start), "not both")
+  expect_error(CoxDeviance$new(survival::Surv(event, status, type = "left")), "not left")
+})
+
+test_that("the strata of glmnet::stratifySurv are used", {
+  skip_if_not_installed("survival")
+  skip_if_not_installed("glmnet", minimum_version = "5.0")
+  strata <- rep(1:3, 4)
+  y <- glmnet::stratifySurv(survival::Surv(event, status), strata)
+  a <- CoxDeviance$new(y)
+  expect_true(a$stratified)
+  b <- CoxDeviance$new(event = event, status = status, strata = strata)
+  expect_equal(a$compute(eta)$deviance, b$compute(eta)$deviance)
+  expect_equal(a$sample_score(eta, seed = 1), b$sample_score(eta, seed = 1))
+  expect_error(CoxDeviance$new(y, strata = strata), "both")
+})

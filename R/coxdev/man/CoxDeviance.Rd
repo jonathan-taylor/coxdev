@@ -29,6 +29,10 @@ eta <- drop(X \%*\% c(0.5, -0.5, 0.25))
 event <- ceiling(rexp(n, exp(eta)) * 4) / 4   # with ties
 status <- rbinom(n, 1, 0.7)
 cox <- CoxDeviance$new(event = event, status = status, tie_breaking = "efron")
+# or, the same, with the response as a Surv object
+if (requireNamespace("survival", quietly = TRUE)) {
+  cox <- CoxDeviance$new(survival::Surv(event, status), tie_breaking = "efron")
+}
 
 # deviance, gradient and diagonal of the Hessian
 res <- cox$compute(eta)
@@ -75,7 +79,8 @@ diag(cov(t(draws))) / diag(info_beta)   # near 1
 \if{html}{\out{<a id="method-CoxDeviance-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-CoxDeviance-initialize}{}}}
 \subsection{\code{CoxDeviance$new()}}{
-  Set up the computations for a survival response.
+  Set up the computations for a survival response, given
+as vectors or as a \code{\link[survival:Surv]{survival::Surv()}} object.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{CoxDeviance$new(
@@ -91,7 +96,10 @@ diag(cov(t(draws))) / diag(info_beta)   # near 1
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{event}}{Event (failure or censoring) times.}
+      \item{\code{event}}{Event (failure or censoring) times; or the response as a
+\code{Surv} object, \code{Surv(time, status)} or \code{Surv(start, stop, status)},
+in place of \code{event}, \code{status} and \code{start}. Strata set on it by
+\code{glmnet::stratifySurv()} are used.}
       \item{\code{status}}{Event indicators: 1 for a failure, 0 for censoring.}
       \item{\code{start}}{Start (entry) times, for left-truncated data, or \code{NULL}.}
       \item{\code{strata}}{Stratum labels (integers, a factor or character), or

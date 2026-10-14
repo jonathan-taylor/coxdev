@@ -29,6 +29,10 @@
 #' event <- ceiling(rexp(n, exp(eta)) * 4) / 4   # with ties
 #' status <- rbinom(n, 1, 0.7)
 #' cox <- CoxDeviance$new(event = event, status = status, tie_breaking = "efron")
+#' # or, the same, with the response as a Surv object
+#' if (requireNamespace("survival", quietly = TRUE)) {
+#'   cox <- CoxDeviance$new(survival::Surv(event, status), tie_breaking = "efron")
+#' }
 #'
 #' # deviance, gradient and diagonal of the Hessian
 #' res <- cox$compute(eta)
@@ -50,8 +54,12 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @field tie_breaking The tie-breaking method, `"efron"` or `"breslow"`.
     tie_breaking = NULL,
 
-    #' @description Set up the computations for a survival response.
-    #' @param event Event (failure or censoring) times.
+    #' @description Set up the computations for a survival response, given
+    #'   as vectors or as a [survival::Surv()] object.
+    #' @param event Event (failure or censoring) times; or the response as a
+    #'   `Surv` object, `Surv(time, status)` or `Surv(start, stop, status)`,
+    #'   in place of `event`, `status` and `start`. Strata set on it by
+    #'   `glmnet::stratifySurv()` are used.
     #' @param status Event indicators: 1 for a failure, 0 for censoring.
     #' @param start Start (entry) times, for left-truncated data, or `NULL`.
     #' @param strata Stratum labels (integers, a factor or character), or
@@ -66,6 +74,19 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
                           sample_weight = NULL,
                           tie_breaking = c("efron", "breslow")) {
       self$tie_breaking <- match.arg(tie_breaking)
+      if (inherits(event, "Surv")) {
+        if (!missing(status) || !is.null(start)) {
+          stop("give the response either as a Surv object or as event, status and start, not both")
+        }
+        y <- .from_surv(event)
+        event <- y$event
+        status <- y$status
+        start <- y$start
+        if (!is.null(y$strata)) {
+          if (!is.null(strata)) stop("strata are given both by stratifySurv and by strata")
+          strata <- y$strata
+        }
+      }
       event <- as.numeric(event)
       n <- length(event)
       if (n == 0L) stop("event must have at least one entry")
@@ -253,6 +274,19 @@ print.CoxDevianceResult <- function(x, ...) {
       ", saturated log-likelihood ", format(x$loglik_sat, ...),
       ", ", length(x$linear_predictor), " observations\n", sep = "")
   invisible(x)
+}
+
+# event, status and start (NULL for right-censored data) of a Surv object,
+# and the strata of glmnet::stratifySurv
+.from_surv <- function(y) {
+  type <- attr(y, "type")
+  m <- unclass(y)
+  out <- switch(type,
+    right = list(event = m[, "time"], status = m[, "status"], start = NULL),
+    counting = list(event = m[, "stop"], status = m[, "status"], start = m[, "start"]),
+    stop(sprintf("a Surv object must be right-censored or (start, stop], not %s", type)))
+  out$strata <- attr(y, "strata")
+  out
 }
 
 .check_length <- function(x, n, name) {
