@@ -67,6 +67,15 @@ print(f"Saturated log-likelihood: {result.loglik_sat:.4f}")
 print(f"Gradient norm: {np.linalg.norm(result.gradient):.4f}")
 ```
 
+## Notebooks
+
+`doc/using_coxdev.md` (fitting by Newton's method with the information
+operator, robust standard errors, the baseline hazard and survival curves,
+and what keeping state saves) and `doc/sampling.md` (the methods of
+`sample_score` compared) are [jupytext](https://jupytext.readthedocs.io)
+notebooks, with executed copies in `doc/*.ipynb`. The R package has the
+same two as vignettes.
+
 ## Advanced Usage
 
 ### Left-Truncated Data
