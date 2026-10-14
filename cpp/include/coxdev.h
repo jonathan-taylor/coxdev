@@ -1,3 +1,6 @@
+#ifndef COXDEV_H
+#define COXDEV_H
+
 #include <cstddef>
 #include <limits>
 #include <vector>
@@ -311,3 +314,8 @@ void setup_preprocess(const Eigen::Ref<const Eigen::VectorXd> start,
                       Eigen::VectorXi& _event_map,
                       Eigen::VectorXi& event_order,
                       Eigen::VectorXi& start_order);
+
+// The implementation: header-only, every definition inline
+#include "coxdev_impl.h"
+
+#endif  // COXDEV_H

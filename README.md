@@ -273,6 +273,33 @@ Hessian, products with the information and draws of the score, they give:
   linear predictor as given, so that the cumulative hazard of observation
   `i` at time `t` is `cumulative_hazard(t) * exp(eta_i)`.
 
+### Compiling against coxdev's C++
+
+coxdev's C++ is header-only, like Eigen or pybind11:
+- `cpp/include/coxdev.h` declares the classes, and includes their
+  implementation from `cpp/include/coxdev_impl.h`;
+- every definition is `inline`, so any number of source files can include
+  `coxdev.h`.
+
+The Python package installs both headers, and `coxdev.get_include()` returns
+their directory, as `numpy.get_include()` does. Another package can then
+compile coxdev into its own extension:
+
+1. Add `coxdev` to `[build-system] requires`.
+2. Add `coxdev.get_include()`, and Eigen's headers (not part of coxdev's
+   wheel), to the include path. In meson:
+
+   ```meson
+   coxdev_include = run_command(py, '-c', 'import coxdev; print(coxdev.get_include())',
+                                check : true).stdout().strip()
+   ```
+
+3. `#include <coxdev.h>` where the classes are used.
+
+The code is compiled into the dependent package's own module, so it doesn't
+link against coxdev's. `tests/test_get_include.py` builds a two-file program
+this way.
+
 `cpp/tests` has tests of these against direct computations:
 
 ```bash

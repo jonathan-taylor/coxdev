@@ -28,3 +28,27 @@ except PackageNotFoundError:
 
 from .base import CoxDeviance
 
+
+def get_include():
+    """
+    The directory of coxdev's C++ headers, for packages that compile against
+    coxdev. coxdev is header-only: ``coxdev.h`` declares the classes
+    ``CoxDeviance`` and ``StratifiedCoxDeviance`` and includes their
+    implementation, all inline, from ``coxdev_impl.h``.
+
+    Add this directory, and Eigen's headers, to the include path, and
+    ``#include <coxdev.h>`` in any source files that use the classes. In a
+    meson build::
+
+        coxdev_include = run_command(py, '-c',
+            'import coxdev; print(coxdev.get_include())', check : true).stdout().strip()
+
+    with ``coxdev`` in ``[build-system] requires``.
+
+    Returns
+    -------
+    str
+        The path of the directory.
+    """
+    import os
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'include')
