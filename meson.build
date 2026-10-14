@@ -28,6 +28,13 @@ py.install_sources(
   subdir: 'coxdev'
 )
 
+# The C++ headers, implementation included, for packages that compile
+# against coxdev: see coxdev.get_include()
+py.install_sources(
+  ['cpp/include/coxdev.h', 'cpp/include/coxdev_impl.h'],
+  subdir: 'coxdev/include'
+)
+
 # Extension module
 py.extension_module('coxc',
   ['cpp/src/coxdev.cpp', 'python/coxdev_py.cpp'],
