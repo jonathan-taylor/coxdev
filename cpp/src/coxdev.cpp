@@ -398,7 +398,10 @@ std::vector<int> lexsort(const Eigen::VectorXi & a,  // is_start
     if (d[i] != d[j]) return d[i] < d[j];
     if (c[i] != c[j]) return c[i] < c[j];
     if (b[i] != b[j]) return b[i] < b[j];
-    return a[i] < a[j];
+    if (a[i] != a[j]) return a[i] < a[j];
+    // a total order, so that the order of ties (and with it the draws of
+    // sample_score) does not depend on the standard library's std::sort
+    return i < j;
   };
   
   std::sort(idx.begin(), idx.end(), comparator);
