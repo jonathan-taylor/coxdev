@@ -13,7 +13,6 @@ from scipy.sparse import issparse
 from scipy.sparse.linalg import LinearOperator
 
 import numpy as np
-from joblib import hash as _hash
 
 from .coxc import CoxDeviance as _CoxDeviance
 from .coxc import StratifiedCoxDeviance as _StratifiedCoxDeviance
@@ -38,8 +37,8 @@ class CoxDevianceResult(object):
         Gradient of the deviance with respect to the linear predictor.
     diag_hessian : Optional[np.ndarray]
         Diagonal of the Hessian matrix.
-    __hash_args__ : str
-        Hash string for caching results.
+    __hash_args__ : str, optional
+        Unused; kept for compatibility.
     """
 
     linear_predictor: np.ndarray
@@ -48,7 +47,7 @@ class CoxDevianceResult(object):
     deviance: float
     gradient: Optional[np.ndarray]
     diag_hessian: Optional[np.ndarray]
-    __hash_args__: str
+    __hash_args__: Optional[str] = None
 
 
 @dataclass
@@ -173,9 +172,12 @@ class CoxDeviance(object):
         self._strata = strata
         
         self._reconstruct_coxc(sample_weight)
-        self._weights_hash = _hash(sample_weight)
 
     def _reconstruct_coxc(self, sample_weight):
+        # copies of the weights and of the last linear predictor, against which
+        # each call is compared: equal arrays reuse the object and its result
+        self._weight = np.array(sample_weight, float)
+        self._last_linear_predictor = None
         if self._strata is None:
             self._coxc = _CoxDeviance(self._raw_start, 
                                       self._raw_event, 
@@ -256,6 +258,10 @@ class CoxDeviance(object):
                  sample_weight=None):
         """
         Compute Cox model deviance and related quantities.
+
+        The object is rebuilt, sorting the data again, if ``sample_weight``
+        differs from the weights of the last call, and the result is reused if
+        ``linear_predictor`` is also that of the last call.
         """
         if sample_weight is None:
             sample_weight = np.ones_like(linear_predictor, float)
@@ -264,24 +270,21 @@ class CoxDeviance(object):
 
         linear_predictor = np.asarray(linear_predictor).astype(float)
             
-        cur_weight_hash = _hash(sample_weight)
-        if getattr(self, "_weights_hash", None) != cur_weight_hash:
+        if not np.array_equal(sample_weight, self._weight):
             self._reconstruct_coxc(sample_weight)
-            self._weights_hash = cur_weight_hash
 
-        cur_hash = _hash([linear_predictor, sample_weight])
-
-        if not hasattr(self, "_result") or getattr(self._result, "__hash_args__", None) != cur_hash:
+        if (self._last_linear_predictor is None or
+            not np.array_equal(linear_predictor, self._last_linear_predictor)):
             deviance = self._coxc.compute_deviance(linear_predictor, sample_weight)
-            
+            self._last_linear_predictor = linear_predictor.copy()
+
             # These are now references to internal Eigen buffers
             self._result = CoxDevianceResult(linear_predictor=self._coxc.linear_predictor,
                                              sample_weight=self._coxc.sample_weight,
                                              loglik_sat=self._coxc.loglik_sat,
                                              deviance=deviance,
                                              gradient=self._coxc.gradient.copy(),
-                                             diag_hessian=self._coxc.diag_hessian.copy(),
-                                             __hash_args__=cur_hash)
+                                             diag_hessian=self._coxc.diag_hessian.copy())
             
         return self._result
 
