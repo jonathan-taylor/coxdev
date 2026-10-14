@@ -103,13 +103,15 @@ public:
     // each risk set, with Efron's weights for ties if efron).
     Eigen::VectorXd wild_score(const Eigen::VectorXd& multipliers);
 
-    // The score residuals of the design X (n x p, native order) at the linear
-    // predictor and weights of the last compute_deviance: row i is U_i, the
-    // contribution of subject i to the score X^T (-gradient / 2), centered
-    // within each risk set (with Efron's weights for ties if efron), so that
-    // the rows sum to the score and sum_i G_i U_i = X^T wild_score(G). Their
-    // crossproduct is the middle of the robust (sandwich) variance.
-    Eigen::MatrixXd score_residuals(const Eigen::MatrixXd& X) const;
+    // The score residuals of one covariate x (n-vector, native order) at the
+    // linear predictor and weights of the last compute_deviance: entry i is
+    // the contribution of subject i to the score x^T (-gradient / 2), centered
+    // within each risk set (with Efron's weights for ties if efron). They are
+    // linear in x, u = L x, and wild_score is the adjoint: G^T L x =
+    // x^T wild_score(G), so they sum to the score. Applied to each column of a
+    // design X they give the n x p score residuals U, whose crossproduct is
+    // the middle of the robust (sandwich) variance.
+    Eigen::VectorXd score_residuals(const Eigen::VectorXd& x) const;
 
     // The baseline hazard at the last compute_deviance; see BaselineHazard.
     BaselineHazard baseline_hazard() const;
@@ -182,7 +184,7 @@ public:
                                    int n_draws,
                                    std::uint64_t seed);
     Eigen::VectorXd wild_score(const Eigen::VectorXd& multipliers);
-    Eigen::MatrixXd score_residuals(const Eigen::MatrixXd& X) const;
+    Eigen::VectorXd score_residuals(const Eigen::VectorXd& x) const;
     // within each stratum, labelled by its value of strata
     BaselineHazard baseline_hazard() const;
 
