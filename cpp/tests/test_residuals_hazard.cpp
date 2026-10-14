@@ -116,7 +116,9 @@ template <class Cox>
 void check_model(Cox& cox, const Data& d, bool efron, bool stratified, const std::string& name) {
   int n = d.event.size();
   cox.compute_deviance(d.eta, d.weight);
-  Eigen::MatrixXd U = cox.score_residuals(d.X);
+  // the residuals of the design, a column at a time
+  Eigen::MatrixXd U(n, d.X.cols());
+  for (Eigen::Index j = 0; j < d.X.cols(); ++j) U.col(j) = cox.score_residuals(Eigen::VectorXd(d.X.col(j)));
   BaselineHazard H = cox.baseline_hazard();
 
   // the residuals sum to the score, and sum_i G_i U_i = X^T wild_score(G)
