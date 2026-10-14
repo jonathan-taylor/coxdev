@@ -989,19 +989,21 @@ Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   return out;
 }
 
-Eigen::MatrixXd CoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
+Eigen::VectorXd CoxDeviance::score_residuals(const Eigen::VectorXd& x) const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
     ERROR_MSG("score_residuals: call compute_deviance first");
   }
-  if (X.rows() != n) {
-    ERROR_MSG("score_residuals: X must have one row per observation");
+  if (x.size() != n) {
+    ERROR_MSG("score_residuals: x must have one entry per observation");
   }
   CoxContext ctx = get_context();
 
-  // the risk sums of w exp(eta), with Efron's weights if efron
-  Eigen::VectorXd S(n), event_cumsum(n + 1), start_cumsum(n + 1);
+  // the risk sums of w exp(eta) and of w exp(eta) x, with Efron's weights if efron
+  Eigen::VectorXd S(n), SX(n), event_cumsum(n + 1), start_cumsum(n + 1);
   sum_over_risk_set(exp_w_buffer, ctx, S, event_cumsum, start_cumsum);
+  Eigen::VectorXd ex = exp_w_buffer.array() * x.array();
+  sum_over_risk_set(ex, ctx, SX, event_cumsum, start_cumsum);
 
   // in event order: weights, exp(eta) w, the score in eta (-gradient / 2)
   Eigen::VectorXd w_ev(n), M_ev(n), e_ev(n);
@@ -1015,41 +1017,33 @@ Eigen::MatrixXd CoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
   Eigen::VectorXd Cw(n + 1);
   forward_cumsum(status_w, Cw);
 
-  // the failure terms t (as in wild_score), with their average weight wbar
-  std::vector<bool> term(n, false);
-  Eigen::VectorXd wbar = Eigen::VectorXd::Zero(n);
+  // For the failure terms t (as in wild_score), with their average weight
+  // wbar_t and xbar_t the mean of x over the risk set of t (with weights
+  // w exp(eta), and Efron's for ties):
+  //   u_i = x_i M_i - (w_i delta_i / d) sum_{t at i's time} xbar_t
+  //         + e_i sum_{t containing i} wbar_t xbar_t / S_t.
+  Eigen::VectorXd xbar = Eigen::VectorXd::Zero(n), c = Eigen::VectorXd::Zero(n);
   for (int t = 0; t < n; ++t) {
     if (ctx.status(t) == 1 && w_ev(t) > 0 && S(t) > 0) {
       int f = ctx.first(t), l = ctx.last(t);
-      term[t] = true;
-      wbar(t) = (Cw(l + 1) - Cw(f)) / (l + 1 - f);
+      double wbar = (Cw(l + 1) - Cw(f)) / (l + 1 - f);
+      xbar(t) = SX(t) / S(t);
+      c(t) = wbar * xbar(t) / S(t);
     }
   }
+  Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
+  Eigen::VectorXd Cx(n + 1);
+  forward_cumsum(xbar, Cx);
 
-  // For each column x, with xbar_t the mean of x over the risk set of term t
-  // (with weights w exp(eta), and Efron's for ties):
-  //   U_i = x_i M_i - (w_i delta_i / d) sum_{t at i's time} xbar_t
-  //         + e_i sum_{t containing i} wbar_t xbar_t / S_t.
-  Eigen::MatrixXd out(n, X.cols());
-  Eigen::VectorXd ex(n), SX(n), xbar(n), c(n), Cx(n + 1);
-  for (Eigen::Index j = 0; j < X.cols(); ++j) {
-    ex = exp_w_buffer.array() * X.col(j).array();
-    sum_over_risk_set(ex, ctx, SX, event_cumsum, start_cumsum);
-    for (int t = 0; t < n; ++t) {
-      xbar(t) = term[t] ? SX(t) / S(t) : 0.0;
-      c(t) = term[t] ? wbar(t) * xbar(t) / S(t) : 0.0;
+  Eigen::VectorXd out(n);
+  for (int i = 0; i < n; ++i) {
+    int k = event_order(i);
+    double own = 0.0;
+    if (status_w(i) > 0) {
+      int f = ctx.first(i), l = ctx.last(i);
+      own = status_w(i) * (Cx(l + 1) - Cx(f)) / (l + 1 - f);
     }
-    Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
-    forward_cumsum(xbar, Cx);
-    for (int i = 0; i < n; ++i) {
-      int k = event_order(i);
-      double own = 0.0;
-      if (status_w(i) > 0) {
-        int f = ctx.first(i), l = ctx.last(i);
-        own = status_w(i) * (Cx(l + 1) - Cx(f)) / (l + 1 - f);
-      }
-      out(k, j) = X(k, j) * M_ev(i) - own + e_ev(i) * T(i);
-    }
+    out(k) = x(k) * M_ev(i) - own + e_ev(i) * T(i);
   }
   return out;
 }
@@ -1344,18 +1338,18 @@ Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& multipl
   return out;
 }
 
-Eigen::MatrixXd StratifiedCoxDeviance::score_residuals(const Eigen::MatrixXd& X) const {
+Eigen::VectorXd StratifiedCoxDeviance::score_residuals(const Eigen::VectorXd& x) const {
   int n = linear_predictor.size();
-  if (X.rows() != n) {
-    ERROR_MSG("score_residuals: X must have one row per observation");
+  if (x.size() != n) {
+    ERROR_MSG("score_residuals: x must have one entry per observation");
   }
-  Eigen::MatrixXd out = Eigen::MatrixXd::Zero(n, X.cols());
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
   for (size_t s = 0; s < unique_strata.size(); ++s) {
     const auto& indices = stratum_indices[s];
-    Eigen::MatrixXd Xs(indices.size(), X.cols());
-    for (size_t j = 0; j < indices.size(); ++j) Xs.row(j) = X.row(indices[j]);
-    Eigen::MatrixXd U = cox_devs[s]->score_residuals(Xs);
-    for (size_t j = 0; j < indices.size(); ++j) out.row(indices[j]) = U.row(j);
+    Eigen::VectorXd xs(indices.size());
+    for (size_t j = 0; j < indices.size(); ++j) xs(j) = x(indices[j]);
+    Eigen::VectorXd u = cox_devs[s]->score_residuals(xs);
+    for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = u(j);
   }
   return out;
 }

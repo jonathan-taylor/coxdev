@@ -351,11 +351,13 @@ The Python package (and the R package in `R/coxdev`) wrap the C++ classes
 `compute_deviance(eta, weights)`, besides the gradient, the diagonal of the
 Hessian, products with the information and draws of the score, they give:
 
-- `score_residuals(X)`: for a design `X`, the `n x p` matrix of score
-  residuals `U_i`, each observation's contribution to the score
-  `X^T (-gradient / 2)`, centered within each risk set (with Efron's
-  weights for ties if `efron`). The rows sum to the score, `sum_i G_i U_i`
-  is `X^T wild_score(G)`, and `U^T U` is the middle of the robust
+- `score_residuals(x)`: for one covariate `x` (an n-vector), the n-vector
+  of score residuals, each observation's contribution to the score
+  `x^T (-gradient / 2)`, centered within each risk set (with Efron's
+  weights for ties if `efron`). They are linear in `x`, with `wild_score`
+  the adjoint: `G^T score_residuals(x)` is `x^T wild_score(G)`. The C++
+  never sees a design: applied to each column of `X` they give the `n x p`
+  matrix `U`, whose crossproduct `U^T U` is the middle of the robust
   (sandwich) variance (Lin and Wei, 1989).
 - `baseline_hazard()`: the estimate of the baseline hazard, Breslow's
   (1972) or, with Efron's ties, Efron's (1977), at each distinct failure
