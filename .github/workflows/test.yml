@@ -36,7 +36,7 @@ jobs:
     - name: Install coxdev
       run: |
         pip install --upgrade pip
-        pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas joblib
+        pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas
         pip install .
 
     - name: Verify installed source

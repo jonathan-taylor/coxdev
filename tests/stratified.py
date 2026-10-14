@@ -14,7 +14,6 @@ from scipy.sparse.linalg import LinearOperator
 
 from coxdev.base import CoxDeviance, CoxDevianceResult, CoxInformation
 
-from joblib import hash as _hash
 
 @dataclass
 class CoxDevianceTest(object):
@@ -141,7 +140,7 @@ class CoxDevianceTest(object):
         
         # Initialize result cache
         self._result = None
-        self._last_hash = None
+        self._last_args = None
 
     def __call__(self,
                  linear_predictor,
@@ -169,8 +168,9 @@ class CoxDevianceTest(object):
         linear_predictor = np.asarray(linear_predictor)
         
         # Check if we need to recompute
-        cur_hash = _hash([linear_predictor, sample_weight])
-        if self._last_hash != cur_hash:
+        if (self._last_args is None or
+            not all(np.array_equal(a, b) for a, b in zip(self._last_args,
+                                                         [linear_predictor, sample_weight]))):
             
             # Initialize accumulators
             total_deviance = 0.0
@@ -203,11 +203,10 @@ class CoxDevianceTest(object):
                 loglik_sat=total_loglik_sat,
                 deviance=total_deviance,
                 gradient=total_gradient,
-                diag_hessian=total_diag_hessian,
-                __hash_args__=cur_hash
+                diag_hessian=total_diag_hessian
             )
             
-            self._last_hash = cur_hash
+            self._last_args = [linear_predictor.copy(), sample_weight.copy()]
         
         return self._result
 
