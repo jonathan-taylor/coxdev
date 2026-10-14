@@ -1,7 +1,8 @@
 """
 The R package (R/coxdev) against the Python package: both run the same C++
-code, so the deviance, its derivatives, the information and the draws of the
-score (with the same seed) agree to rounding.
+code, so the deviance, its derivatives, the information, the score residuals,
+the baseline hazard and the draws of the score (with the same seed) agree to
+rounding.
 
 Needs rpy2 and the R package installed (R CMD INSTALL R/coxdev); skipped
 otherwise, unless COXDEV_REQUIRE_R is set (as in CI), when they fail.
@@ -90,6 +91,18 @@ class RCox:
                                            seed=str(seed))
         return _to_numpy(out)
 
+    def score_residuals(self, eta, X, w=None):
+        return _to_numpy(self._method('score_residuals')(_to_R(self.ro, eta), _to_R(self.ro, X),
+                                                         _to_R(self.ro, w)))
+
+    def baseline_hazard(self, eta, w=None):
+        H = self._method('baseline_hazard')(_to_R(self.ro, eta), _to_R(self.ro, w))
+        get = lambda k: _to_numpy(H.rx2(k))
+        out = {k: get(k) for k in ['time', 'hazard', 'cumulative_hazard']}
+        if 'stratum' in list(H.names):
+            out['stratum'] = get('stratum')
+        return out
+
     def wild_score(self, eta, G, w=None):
         return _to_numpy(self._method('wild_score')(_to_R(self.ro, eta), _to_R(self.ro, G),
                                                     _to_R(self.ro, w)))
@@ -143,6 +156,15 @@ def test_deviance_and_information(R, tie_breaking, start, ties, weights, stratif
     G = rng.standard_normal(n)
     np.testing.assert_allclose(r.wild_score(eta, G, w), py.wild_score(eta, G, sample_weight=w),
                                rtol=1e-12, atol=1e-13)
+
+    np.testing.assert_allclose(r.score_residuals(eta, X, w), py.score_residuals(eta, X, sample_weight=w),
+                               rtol=1e-12, atol=1e-13)
+    H_r = r.baseline_hazard(eta, w)
+    H_py = py.baseline_hazard(eta, sample_weight=w)
+    for k in ['time', 'hazard', 'cumulative_hazard']:
+        np.testing.assert_allclose(H_r[k], getattr(H_py, k), rtol=1e-12)
+    if stratified:
+        np.testing.assert_array_equal(H_r['stratum'], H_py.stratum)
 
 
 @pytest.mark.parametrize('method', ['multinomial', 'bernoulli', 'fisher', 'wild'])

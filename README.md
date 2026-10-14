@@ -114,6 +114,8 @@ w <- cox$wild_score(eta, G)
 | `coxdev.information(eta, sample_weight)` (a `LinearOperator`) | `cox$information(eta, sample_weight)` (a `CoxInformation`, with `%*%`, `$multiply()`, `$diagonal()`, `$to_dense()`, `dim()`) |
 | `coxdev.sample_score(eta, sample_weight, method, n_draws, seed)` | `cox$sample_score(eta, sample_weight, method, n_draws, seed)` |
 | `coxdev.wild_score(eta, multipliers, sample_weight)` | `cox$wild_score(eta, multipliers, sample_weight)` |
+| `coxdev.score_residuals(eta, X, sample_weight)` | `cox$score_residuals(eta, X, sample_weight)` |
+| `coxdev.baseline_hazard(eta, sample_weight)` (a `BaselineHazard`) | `cox$baseline_hazard(eta, sample_weight)` (a data frame, with stratum labels as given) |
 
 The same `seed` gives the same draws from R and Python. In R, a seed is a
 whole number up to `2^53`, or a string of digits for any seed below

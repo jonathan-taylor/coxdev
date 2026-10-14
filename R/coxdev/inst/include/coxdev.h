@@ -30,6 +30,21 @@ namespace py = pybind11;
 #define ERROR_MSG(x) throw std::runtime_error(x)
 #endif
 
+// The Breslow (or, with Efron's ties, Efron's) estimate of the baseline
+// hazard at the linear predictor of the last compute_deviance: one entry per
+// distinct failure time with positive weight, in increasing time within each
+// stratum. hazard is the increment at that time and cumulative_hazard its
+// running sum within the stratum, both for the linear predictor as given
+// (not centered): the cumulative hazard of subject i at time t is
+// cumulative_hazard(t) * exp(linear_predictor(i)). stratum is the stratum
+// label (0 without strata).
+struct BaselineHazard {
+    Eigen::VectorXd time;
+    Eigen::VectorXd hazard;
+    Eigen::VectorXd cumulative_hazard;
+    Eigen::VectorXi stratum;
+};
+
 struct CoxContext {
     Eigen::Ref<const Eigen::VectorXi> event_order;
     Eigen::Ref<const Eigen::VectorXi> start_order;
@@ -87,6 +102,17 @@ public:
     // X^T r = sum_i G_i U_i, U_i the score residual of subject i (centered in
     // each risk set, with Efron's weights for ties if efron).
     Eigen::VectorXd wild_score(const Eigen::VectorXd& multipliers);
+
+    // The score residuals of the design X (n x p, native order) at the linear
+    // predictor and weights of the last compute_deviance: row i is U_i, the
+    // contribution of subject i to the score X^T (-gradient / 2), centered
+    // within each risk set (with Efron's weights for ties if efron), so that
+    // the rows sum to the score and sum_i G_i U_i = X^T wild_score(G). Their
+    // crossproduct is the middle of the robust (sandwich) variance.
+    Eigen::MatrixXd score_residuals(const Eigen::MatrixXd& X) const;
+
+    // The baseline hazard at the last compute_deviance; see BaselineHazard.
+    BaselineHazard baseline_hazard() const;
 
     // Getters for buffers (for result construction or debugging)
     const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
@@ -156,6 +182,9 @@ public:
                                    int n_draws,
                                    std::uint64_t seed);
     Eigen::VectorXd wild_score(const Eigen::VectorXd& multipliers);
+    Eigen::MatrixXd score_residuals(const Eigen::MatrixXd& X) const;
+    // within each stratum, labelled by its value of strata
+    BaselineHazard baseline_hazard() const;
 
     const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
     const Eigen::VectorXd& get_diag_hessian() const { return diag_hessian_buffer; }

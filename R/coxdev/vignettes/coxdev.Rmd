@@ -80,6 +80,39 @@ rbind(coxdev = b, coxph = coef(fit))
 rbind(coxdev = sqrt(diag(solve(info))), coxph = sqrt(diag(vcov(fit))))
 ```
 
+## Robust standard errors and the baseline hazard
+
+The score residuals of the design give the robust (sandwich) variance,
+`solve(I) %*% crossprod(U) %*% solve(I)`:
+
+```{r}
+eta_hat <- drop(X %*% b)
+U <- cox$score_residuals(eta_hat, X)
+info_hat <- crossprod(X, cox$information(eta_hat) %*% X)
+robust <- solve(info_hat, t(solve(info_hat, crossprod(U))))
+fit_robust <- coxph(y ~ X, ties = "efron", id = seq_len(n), robust = TRUE)
+rbind(coxdev = sqrt(diag(robust)), coxph = sqrt(diag(vcov(fit_robust))))
+```
+
+`baseline_hazard()` gives Efron's estimate of the cumulative baseline
+hazard (Breslow's with `tie_breaking = "breslow"`), the
+`basehaz(fit, centered = FALSE)` of `coxph`. The survival curve of a subject
+with covariates `x0` is `exp(-cumulative_hazard * exp(sum(x0 * b)))`:
+
+```{r, fig.alt = "Estimated survival curves for x1 = -1, 0 and 1, with x2 = x3 = 0."}
+H <- cox$baseline_hazard(eta_hat)
+head(H)
+bh <- basehaz(fit, centered = FALSE)
+all.equal(H$cumulative_hazard, bh$hazard[match(H$time, bh$time)])
+
+plot(NULL, xlim = c(0, max(H$time)), ylim = c(0, 1), xlab = "time", ylab = "survival")
+for (x1 in c(-1, 0, 1)) {
+  surv <- exp(-H$cumulative_hazard * exp(b[1] * x1))
+  lines(c(0, H$time), c(1, surv), type = "s", lty = x1 + 2)
+}
+legend("topright", paste("x1 =", c(-1, 0, 1)), lty = 1:3, bty = "n")
+```
+
 ## What keeping state saves
 
 Creating a `CoxDeviance` sorts the data, once. Each `compute()` after that

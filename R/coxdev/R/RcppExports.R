@@ -25,3 +25,11 @@
     .Call(`_coxdev_cox_wild_score`, ptr, multipliers)
 }
 
+.cox_score_residuals <- function(ptr, X) {
+    .Call(`_coxdev_cox_score_residuals`, ptr, X)
+}
+
+.cox_baseline_hazard <- function(ptr) {
+    .Call(`_coxdev_cox_baseline_hazard`, ptr)
+}
+
