@@ -20,7 +20,6 @@ classifiers = [
     "Topic :: Scientific/Engineering"
 ]
 dependencies = [
-    "joblib",
     "numpy",
     "scipy",
 ]
@@ -30,8 +29,7 @@ maintainers = [
 
 [project.optional-dependencies]
 test = ['pytest',
-        'pandas',
-        "joblib"]
+        'pandas']
 dev = [
     "pytest",
     "scipy",
