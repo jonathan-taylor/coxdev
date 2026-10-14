@@ -162,10 +162,69 @@ The library is optimized for performance:
 
 ## Testing
 
-Run the test suite:
+Most of the tests compare `coxdev` with R's `survival` and `glmnet`
+packages, through [rpy2](https://rpy2.github.io/). If rpy2, R or those
+packages are missing, those tests are **skipped** and the run still
+passes, so check the summary for skipped tests.
+
+### Running the full test suite in a fresh environment
+
+1. Install R (4.x), and in it `survival` and `glmnet` 5.0 or later (the
+   tests use `glmnet::coxnet.deviance` and `glmnet:::coxgrad` with
+   `cox.ties`):
+
+   ```bash
+   Rscript -e 'install.packages(c("survival", "glmnet"), repos = "https://cloud.r-project.org")'
+   Rscript -e 'packageVersion("glmnet")'   # 5.0 or later
+   ```
+
+2. Clone the repository with its Eigen submodule, and make a new virtual
+   environment:
+
+   ```bash
+   git clone --recurse-submodules https://github.com/jonathan-taylor/coxdev.git
+   cd coxdev
+   python -m venv .venv
+   source .venv/bin/activate          # on Windows: .venv\Scripts\activate
+   python -m pip install --upgrade pip
+   ```
+
+   (In an existing clone without the submodule, run
+   `git submodule update --init --recursive`.)
+
+3. Build and install `coxdev` (this needs a C++17 compiler), with the test
+   dependencies and rpy2:
+
+   ```bash
+   pip install ".[test]" rpy2
+   ```
+
+4. Check that rpy2 finds R and the two packages:
+
+   ```bash
+   python -c "from rpy2.robjects.packages import importr; importr('survival'); importr('glmnet'); print('R is ready')"
+   ```
+
+   - If rpy2 first prints `Error importing in API mode ... Trying to import
+     in ABI mode`, its compiled interface was built for another version of
+     R. ABI mode works; `export RPY2_CFFI_MODE=ABI` skips the attempt and
+     the message.
+   - If rpy2 cannot find R, set `R_HOME`: `export R_HOME=$(R RHOME)`.
+
+5. From the top of the repository, run the tests, reporting any skipped:
+
+   ```bash
+   python -m pytest tests -rs
+   ```
+
+   It takes a couple of minutes, and should end with every test passed and
+   none skipped.
+
+For a quick check, `--test-size N` runs a random sample of `N` of the
+(many) parametrized cases in each of the large comparison files:
+
 ```bash
-pip install .[test]
-python -m pytest tests/
+python -m pytest tests -rs --test-size 50
 ```
 
 ## Contributing

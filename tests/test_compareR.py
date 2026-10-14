@@ -35,7 +35,8 @@ def get_glmnet_result(event,
                       eta,
                       weight,
                       Rinfo,
-                      time=False):
+                      time=False,
+                      ties='breslow'):
 
     event = np.asarray(event)
     status = np.asarray(status)
@@ -56,26 +57,33 @@ def get_glmnet_result(event,
         rpy.r('eta = as.numeric(eta)')
         rpy.r('weight = as.numeric(weight)')
 
+        rpy.r.assign('ties', ties)
+        # glmnet needs start times >= 0 and stop times > 0; the partial
+        # likelihood depends on the times only through their order, so shift
+        # them all by the same integer
+        low = event.min() if start is None else min(event.min(), np.min(start))
+        shift = 0 if low > 0 else np.ceil(1 - low)
+        rpy.r.assign('event', event + shift)
         if start is not None:
-            start = np.asarray(start)
+            start = np.asarray(start) + shift
             rpy.r.assign('start', start)
             rpy.r('y = Surv(start, event, status)')
-            rpy.r('D_R = glmnet:::coxnet.deviance3(pred=eta, y=y, weight=weight, std.weights=FALSE)')
-            rpy.r('G_R = glmnet:::coxgrad3(eta, y, weight, std.weights=FALSE, diag.hessian=TRUE)')
-            rpy.r("H_R = attr(G_R, 'diag_hessian')")
         else:
             rpy.r('y = Surv(event, status)')
-            rpy.r('D_R = glmnet:::coxnet.deviance2(pred=eta, y=y, weight=weight, std.weights=FALSE)')
-            rpy.r('G_R = glmnet:::coxgrad2(eta, y, weight, std.weights=FALSE, diag.hessian=TRUE)')
-            rpy.r("H_R = attr(G_R, 'diag_hessian')")
+        # glmnet >= 5.0 (built on coxdev): coxnet.deviance and coxgrad take
+        # (start, stop] data and Efron or Breslow ties
+        rpy.r('D_R = glmnet::coxnet.deviance(pred=eta, y=y, weights=weight, std.weights=FALSE, cox.ties=ties)')
+        rpy.r('G_R = glmnet:::coxgrad(eta, y, weight, std.weights=FALSE, diag.hessian=TRUE, cox.ties=ties)')
+        rpy.r("H_R = attr(G_R, 'diag_hessian')")
 
         D_R = rpy.r('D_R')
         G_R = rpy.r('G_R')
         H_R = rpy.r('H_R')
 
-    # -2 for deviance instead of loglik
+    # -2 for the gradient of the deviance instead of the loglik; glmnet's
+    # diag_hessian is already on the scale of coxdev's
 
-    return D_R, -2 * G_R, -2 * H_R
+    return D_R, -2 * G_R, H_R
 
 
 def get_coxph(event,
@@ -272,7 +280,9 @@ def test_simple(Rinfo,
 @pytest.mark.parametrize('tie_types', all_combos)
 @pytest.mark.parametrize('sample_weight', [np.ones, sample_weights])
 @pytest.mark.parametrize('have_start_times', [True, False])
+@pytest.mark.parametrize('tie_breaking', ['breslow', 'efron'])
 def test_glmnet(tie_types,
+                tie_breaking,
                 sample_weight,
                 have_start_times,
                 Rinfo,
@@ -297,12 +307,13 @@ def test_glmnet(tie_types,
                                       start,
                                       eta,
                                       weight,
-                                      Rinfo=Rinfo)
+                                      Rinfo=Rinfo,
+                                      ties=tie_breaking)
 
     coxdev = CoxDeviance(event=data['event'],
                          start=start,
                          status=data['status'],
-                         tie_breaking='breslow')
+                         tie_breaking=tie_breaking)
     C = coxdev(eta,
                weight)
 
@@ -312,7 +323,11 @@ def test_glmnet(tie_types,
 
     assert (delta_D < tol)    
     assert (delta_G < tol)
-    assert (delta_H < tol)
+    # With Efron's ties, the diag_hessian of coxdev and of glmnet are not the
+    # diagonal of the Hessian at tied failures (and differ from each other):
+    # compare it only for Breslow's
+    if tie_breaking == 'breslow':
+        assert (delta_H < tol)
     
 
 @pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
