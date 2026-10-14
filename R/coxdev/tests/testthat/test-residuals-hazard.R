@@ -105,3 +105,19 @@ test_that("the baseline hazard is for the linear predictor as given", {
                H$cumulative_hazard * exp(-1.5), tolerance = 1e-12)
   expect_true(all(diff(H$time) > 0))
 })
+
+test_that("a sparse X gives the residuals of the dense X", {
+  skip_if_not_installed("Matrix")
+  set.seed(34)
+  d <- cox_data(n = 120, start = TRUE)
+  w <- stats::runif(length(d$event), 0.5, 2)
+  eta <- drop(d$X %*% c(0.3, -0.2, 0.1))
+  X <- d$X * (abs(d$X) > 1)
+  X[, 2] <- 0
+  colnames(X) <- c("a", "b", "c")
+  cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start, sample_weight = w)
+  U <- cox$score_residuals(eta, X, sample_weight = w)
+  expect_equal(cox$score_residuals(eta, Matrix::Matrix(X, sparse = TRUE), sample_weight = w), U,
+               tolerance = 1e-14)
+  expect_equal(unname(U[, 2]), rep(0, nrow(X)), tolerance = 1e-14)
+})

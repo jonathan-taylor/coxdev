@@ -217,24 +217,36 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #'   `crossprod(U)` is the middle of the robust (sandwich) variance. They
     #'   are `sample_weight` times `residuals(fit, type = "score")` of a
     #'   `survival::coxph` fit, which are per unit weight.
+    #'
+    #'   The residuals are built a column at a time, each in O(n). `U` is
+    #'   dense even for a sparse `X`, since the risk-set means spread each
+    #'   covariate over the subjects at risk. For draws `crossprod(U, G)` (a
+    #'   wild bootstrap) there is no need to form `U`:
+    #'   `crossprod(X, wild_score(eta, G))` is the same, in one O(n) call.
     #' @param linear_predictor,sample_weight As for `compute()`.
-    #' @param X The design: a matrix with one row per observation, or a
-    #'   vector.
-    #' @return A matrix like `X` (a vector for a vector `X`).
+    #' @param X The design: a matrix with one row per observation, a sparse
+    #'   `Matrix` (made dense a column at a time), or a vector.
+    #' @return A dense matrix with the dimnames of `X` (a vector for a
+    #'   vector `X`).
     score_residuals = function(linear_predictor, X, sample_weight = NULL) {
+      sparse_X <- inherits(X, "Matrix")
       vector_X <- is.null(dim(X))
-      X <- if (vector_X) matrix(as.numeric(X), ncol = 1L) else .as_double_matrix(X)
+      if (vector_X) {
+        X <- matrix(as.numeric(X), ncol = 1L)
+      } else if (!sparse_X) {
+        X <- .as_double_matrix(X)
+      }
       if (nrow(X) != private$n_obs) {
         stop(sprintf("X must have %d rows (one per observation), not %d",
                      private$n_obs, nrow(X)))
       }
       private$prepare(linear_predictor, sample_weight)
       # the C++ takes one covariate at a time
-      U <- X
-      for (j in seq_len(ncol(X))) U[, j] <- .cox_score_residuals(private$ptr, X[, j])
-      if (vector_X) return(drop(U))
-      dimnames(U) <- dimnames(X)
-      U
+      U <- matrix(0, nrow(X), ncol(X), dimnames = dimnames(X))
+      for (j in seq_len(ncol(X))) {
+        U[, j] <- .cox_score_residuals(private$ptr, as.numeric(X[, j]))
+      }
+      if (vector_X) drop(U) else U
     },
 
     #' @description The estimate of the baseline hazard at a linear

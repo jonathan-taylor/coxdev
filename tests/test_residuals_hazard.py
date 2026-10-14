@@ -6,6 +6,7 @@ survival package (residuals(type='score') and basehaz).
 
 import numpy as np
 import pytest
+import scipy.sparse as sp
 
 from coxdev import CoxDeviance, BaselineHazard
 
@@ -65,6 +66,20 @@ def test_score_residuals(tie_breaking, start, weights):
     np.testing.assert_allclose(G @ U, X.T @ cox.wild_score(eta, G, sample_weight=w), atol=1e-10)
     # a vector design gives a vector
     np.testing.assert_allclose(cox.score_residuals(eta, X[:, 0], sample_weight=w), U[:, 0])
+
+
+@pytest.mark.parametrize('fmt', ['csc', 'csr', 'coo'])
+def test_score_residuals_sparse(fmt):
+    """A sparse X gives the residuals of the dense X; a column with no
+    nonzeros at all gives zeros."""
+    X, event, status, entry, w, eta = _setting(True, 'unequal')
+    X = np.where(np.abs(X) > 1, X, 0)
+    X[:, 1] = 0
+    cox = CoxDeviance(event=event, status=status, start=entry, sample_weight=w)
+    U = cox.score_residuals(eta, X, sample_weight=w)
+    U_sp = cox.score_residuals(eta, getattr(sp, f'{fmt}_matrix')(X), sample_weight=w)
+    np.testing.assert_allclose(U_sp, U, atol=1e-14)
+    np.testing.assert_allclose(U[:, 1], 0, atol=1e-14)
 
 
 def test_score_residuals_stratified():

@@ -272,6 +272,12 @@ score, \code{drop(G \%*\% U)} is \code{crossprod(X, wild_score(eta, G))}, and
 \code{crossprod(U)} is the middle of the robust (sandwich) variance. They
 are \code{sample_weight} times \code{residuals(fit, type = "score")} of a
 \code{survival::coxph} fit, which are per unit weight.
+
+The residuals are built a column at a time, each in O(n). \code{U} is
+dense even for a sparse \code{X}, since the risk-set means spread each
+covariate over the subjects at risk. For draws \code{crossprod(U, G)} (a
+wild bootstrap) there is no need to form \code{U}:
+\code{crossprod(X, wild_score(eta, G))} is the same, in one O(n) call.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{CoxDeviance$score_residuals(linear_predictor, X, sample_weight = NULL)}
@@ -281,13 +287,14 @@ are \code{sample_weight} times \code{residuals(fit, type = "score")} of a
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
-      \item{\code{X}}{The design: a matrix with one row per observation, or a
-vector.}
+      \item{\code{X}}{The design: a matrix with one row per observation, a sparse
+\code{Matrix} (made dense a column at a time), or a vector.}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    A matrix like \code{X} (a vector for a vector \code{X}).
+    A dense matrix with the dimnames of \code{X} (a vector for a
+vector \code{X}).
   }
 }
 
