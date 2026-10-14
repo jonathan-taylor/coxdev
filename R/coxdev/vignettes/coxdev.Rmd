@@ -75,11 +75,18 @@ iter
 b
 ```
 
-These are the estimates of `coxph`, with the same standard errors:
+These are the estimates of `coxph` from `survival`, with the same standard
+errors, and of `glmnet` with no penalty, `lambda = 0`:
 
 ```{r}
 fit <- coxph(y ~ X, ties = "efron")
-rbind(coxdev = b, coxph = coef(fit))
+estimates <- rbind(coxdev = b, coxph = coef(fit))
+if (requireNamespace("glmnet", quietly = TRUE) &&
+    utils::packageVersion("glmnet") >= "5.0") {
+  fit_glmnet <- glmnet::glmnet(X, y, family = "cox", lambda = 0, cox.ties = "efron")
+  estimates <- rbind(estimates, glmnet = drop(as.matrix(coef(fit_glmnet))))
+}
+estimates
 rbind(coxdev = sqrt(diag(solve(info))), coxph = sqrt(diag(vcov(fit))))
 ```
 

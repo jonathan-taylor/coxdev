@@ -45,11 +45,18 @@ cox <- CoxDeviance$new(y, tie_breaking = "efron")
 cox
 ```
 
-We sample at the estimate of the coefficients, from `coxph`:
+We sample at the estimate of the coefficients, from `glmnet` with no
+penalty, `lambda = 0`, or from `coxph` when `glmnet` is not installed:
 
 ```{r}
-fit <- coxph(y ~ X, ties = "efron")
-b <- coef(fit)
+if (requireNamespace("glmnet", quietly = TRUE) &&
+    utils::packageVersion("glmnet") >= "5.0") {
+  fit <- glmnet::glmnet(X, y, family = "cox", lambda = 0, cox.ties = "efron")
+  b <- drop(as.matrix(coef(fit)))
+} else {
+  b <- coef(coxph(y ~ X, ties = "efron"))
+}
+b
 ```
 
 ## The methods
