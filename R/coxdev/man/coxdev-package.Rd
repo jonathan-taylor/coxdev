@@ -2,12 +2,34 @@
 % Please edit documentation in R/coxdev-package.R
 \docType{package}
 \name{coxdev-package}
+\alias{coxdev}
 \alias{coxdev-package}
-\title{R Interface to coxdev C++ routines}
+\title{coxdev: Cox model deviance, gradient, information and score sampling}
 \description{
-This package provides R functions to cox model C++ code.
+Fast computation of the deviance of the Cox proportional
+hazards model, its gradient and the diagonal of its Hessian with respect
+to the linear predictor, its information as a matrix-free linear operator,
+and draws of the score, with Efron's or Breslow's ties, start times,
+strata and sample weights. Start with \link{CoxDeviance}; the same C++ code
+runs the Python package \code{coxdev}.
+}
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/jonathan-taylor/coxdev}
+  \item Report bugs at \url{https://github.com/jonathan-taylor/coxdev/issues}
+}
+
 }
 \author{
-Jonathan Taylor, Trevor Hastie, and Balasubramanian Narasimhan
+\strong{Maintainer}: Balasubramanian Narasimhan \email{naras@stanford.edu}
+
+Authors:
+\itemize{
+  \item Balasubramanian Narasimhan \email{naras@stanford.edu}
+  \item Jonathan Taylor \email{jtaylo@stanford.edu}
+  \item Trevor Hastie
 }
-\keyword{package}
+
+}
+\keyword{internal}

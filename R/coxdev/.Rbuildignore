@@ -1,1 +1,8 @@
 ^LICENSE\.md$
+^tools$
+^GEMINI\.md$
+^src/\.venv$
+\.bak$
+^.*\.o$
+^src/.*\.so$
+^src/.*\.dll$

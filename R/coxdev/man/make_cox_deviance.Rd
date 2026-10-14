@@ -2,7 +2,7 @@
 % Please edit documentation in R/coxdev.R
 \name{make_cox_deviance}
 \alias{make_cox_deviance}
-\title{Make cox deviance object}
+\title{Make a Cox deviance object (superseded)}
 \usage{
 make_cox_deviance(
   event,
@@ -13,44 +13,34 @@ make_cox_deviance(
 )
 }
 \arguments{
-\item{event}{the event vector of times}
+\item{event}{The event times.}
 
-\item{start}{the start vector, if start/stop. Use \code{NA} for just
-right censored data}
+\item{start}{The start times, or \code{NA} for right-censored data only.}
 
-\item{status}{the status vector indicating event or censoring}
+\item{status}{The event indicators: 1 for a failure, 0 for censoring.}
 
-\item{tie_breaking}{default 'efron'}
+\item{tie_breaking}{\code{"efron"} (the default) or \code{"breslow"}.}
 
-\item{weight}{the sample weight the vector of sample weights,
-default all ones}
+\item{weight}{The sample weights, default all one.}
 }
 \value{
-a list of two functions named \code{coxdev} and \code{information}
-each of which takes a linear predictor as argument, along with
-weights
+A list of two functions: \code{coxdev(linear_predictor, sample_weight = NULL)}, giving the result of \code{CoxDeviance$compute()},
+and \code{information(linear_predictor, sample_weight = NULL)}, giving a
+function that multiplies a vector or matrix by the information,
+returning a matrix.
 }
 \description{
-Make cox deviance object
+Superseded by \link{CoxDeviance}, which this wraps; kept for
+code written for earlier versions of the package.
 }
 \examples{
 set.seed(10101)
 nobs <- 100; nvars <- 10
-nzc <- nvars \%/\% 3
 x <- matrix(rnorm(nobs * nvars), nobs, nvars)
-beta <- rnorm(nzc)
-fx <- x[, seq(nzc)] \%*\% beta / 3
-hx <- exp(fx)
-ty <- rexp(nobs,hx)
-tcens <- rbinom(n = nobs, prob = 0.3, size = 1)
-cox_deviance <- make_cox_deviance(event = ty,
-                                  status = tcens,
-                                  weight = rep(1.0, length(ty)),
-                                  tie_breaking = 'efron')
-result  <- cox_deviance$coxdev(linear_predictor = fx)
-str(result)
-tx  <- t(x)
+fx <- drop(x[, 1:3] \%*\% rnorm(3)) / 3
+cox_deviance <- make_cox_deviance(event = rexp(nobs, exp(fx)),
+                                  status = rbinom(nobs, 1, 0.7))
+result <- cox_deviance$coxdev(linear_predictor = fx)
 h <- cox_deviance$information(fx)
-I <- tx \%*\% h(x)  ## I should be symmetric
-cov  <- solve(I)
+I <- crossprod(x, h(x))
 }

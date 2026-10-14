@@ -1,82 +1,43 @@
-context("Check against glmnet package")
-tol  <- 1e-10
+# Comparisons with glmnet (>= 5.0): the deviance, its gradient and the
+# diagonal of its Hessian with respect to the linear predictor.
 
-get_glmnet_result <- function(event,
-                              status,
-                              start,
-                              eta,
-                              weight) {
-  event <- as.numeric(event)
-  status <- as.numeric(status)
-  weight <- as.numeric(weight)
-  eta <- as.numeric(eta)
-  if (length(start) == length(status)) {
-    y <- survival::Surv(start, event, status)
-    D_R <- glmnet:::coxnet.deviance3(pred=eta, y=y, weight=weight, std.weights=FALSE)
-    G_R <- glmnet:::coxgrad3(eta, y, weight, std.weights=FALSE, diag.hessian=TRUE)
-    H_R <- attr(G_R, 'diag_hessian')
-  } else {
-    y <- Surv(event, status)
-    D_R <- glmnet:::coxnet.deviance2(pred=eta, y=y, weight=weight, std.weights=FALSE)
-    G_R <- glmnet:::coxgrad2(eta, y, weight, std.weights=FALSE, diag.hessian=TRUE)
-    H_R <- attr(G_R, 'diag_hessian')
-  }
-  list(D = D_R, G = as.numeric(-2 * G_R), H = -2 * H_R)
-}
+skip_if_not_installed("survival")
+skip_if_not_installed("glmnet", minimum_version = "5.0")
 
-
-check_glmnet <- function(tie_types,
-                        sample_weight,
-                        have_start_times,
-                        nrep=5,
-                        size=5,
-                        tol=1e-10) {
-
-  data <- simulate_df(tie_types,
-                      nrep,
-                      size)
-
-  n <- nrow(data)
-  eta <- rnorm(n)
-  weight <- sample_weight(n)
-  if (have_start_times) {
-    start <- data$start
-  } else {
-    start <- NA
-  }
-  glmnet_result <- get_glmnet_result(data$event,
-                                     data$status,
-                                     start,
-                                     eta,
-                                     weight)
-  D_glmnet  <- glmnet_result$D
-  G_glmnet <- glmnet_result$G
-  H_glmnet <- glmnet_result$H
-
-  cox_deviance <- make_cox_deviance(event = data$event, start = start, status = data$status,
-                                    weight = weight, tie_breaking = 'breslow')
-  C <- cox_deviance$coxdev(eta, weight)
-
-  expect_true(all_close(D_glmnet, C$deviance),
-              info = "Deviance mismatch")
-  expect_true(rel_diff_norm(G_glmnet, C$gradient) < tol,
-              info = "Gradient mismatch")
-  expect_true(rel_diff_norm(H_glmnet, C$diag_hessian) < tol,
-              info = "Covariance mismatch")
-  ## stopifnot(all_close(D_glmnet, C$deviance))
-  ## stopifnot(rel_diff_norm(G_glmnet, C$gradient) < tol)
-  ## stopifnot(rel_diff_norm(H_glmnet, C$diag_hessian) < tol)
-}
-
-for (tie_type in all_combos) {
-  for (sample_weight in list(just_ones, sample_weights)) {
-    for (have_start_time in c(TRUE, FALSE)) {
-      check_glmnet(tie_type,
-                   sample_weight,
-                   have_start_time,
-                   nrep=5,
-                   size=5,
-                   tol=1e-10)
+test_that("deviance, gradient and diag_hessian agree with glmnet", {
+  set.seed(3)
+  for (combo in all_combos[sample(length(all_combos), 25)]) {
+    for (tie_breaking in c("efron", "breslow")) {
+      for (weights in list(just_ones, sample_weights)) {
+        for (have_start in c(TRUE, FALSE)) {
+          data <- simulate_df(combo, nrep = 3, size = 5)
+          n <- nrow(data)
+          eta <- stats::rnorm(n)
+          weight <- weights(n)
+          # glmnet needs start times >= 0 and stop times > 0; the partial
+          # likelihood depends on the times only through their order
+          low <- min(data$event, if (have_start) data$start)
+          shift <- if (low > 0) 0 else ceiling(1 - low)
+          y <- if (have_start) survival::Surv(data$start + shift, data$event + shift, data$status)
+               else survival::Surv(data$event + shift, data$status)
+          D_R <- glmnet::coxnet.deviance(pred = eta, y = y, weights = weight,
+                                         std.weights = FALSE, cox.ties = tie_breaking)
+          G_R <- glmnet:::coxgrad(eta, y, weight, std.weights = FALSE,
+                                  diag.hessian = TRUE, cox.ties = tie_breaking)
+          cox <- CoxDeviance$new(event = data$event, status = data$status,
+                                 start = if (have_start) data$start,
+                                 tie_breaking = tie_breaking)
+          C <- cox$compute(eta, weight)
+          expect_equal(C$deviance, D_R, tolerance = 1e-10)
+          expect_lt(rel_diff(C$gradient, -2 * as.numeric(G_R)), 1e-10)
+          # glmnet's diag_hessian is on the scale of coxdev's; with Efron's
+          # ties neither is the diagonal of the Hessian at tied failures (and
+          # they differ), so compare it only for Breslow's
+          if (tie_breaking == "breslow") {
+            expect_lt(rel_diff(C$diag_hessian, attr(G_R, "diag_hessian")), 1e-10)
+          }
+        }
+      }
     }
   }
-}
+})

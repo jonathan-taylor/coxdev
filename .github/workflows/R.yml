@@ -1,0 +1,63 @@
+# Check the R package, and test it against the Python package
+
+name: R package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Check the C++ copies in the R package are current
+      run: |
+        diff cpp/include/coxdev.h R/coxdev/inst/include/coxdev.h
+        diff cpp/src/coxdev.cpp R/coxdev/src/coxdev.cpp
+
+    - uses: r-lib/actions/setup-r@v2
+      with:
+        use-public-rspm: true
+
+    - uses: r-lib/actions/setup-r-dependencies@v2
+      with:
+        working-directory: R/coxdev
+        extra-packages: any::rcmdcheck
+        needs: check
+
+    - uses: r-lib/actions/check-r-package@v2
+      with:
+        working-directory: R/coxdev
+        args: 'c("--no-manual", "--as-cran")'
+        error-on: '"warning"'
+
+    - name: Install the R package
+      run: R CMD INSTALL R/coxdev
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install the Python package and rpy2
+      run: |
+        pip install --upgrade pip
+        pip install . pytest rpy2
+
+    - name: Test the R package against the Python package
+      env:
+        COXDEV_REQUIRE_R: 1
+      run: |
+        mkdir empty_dir
+        cd empty_dir
+        python -m pytest ../tests/test_R_package.py -rs
