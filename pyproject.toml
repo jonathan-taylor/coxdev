@@ -44,7 +44,8 @@ doc = [
     "jupyter-book",
     "pandas",
     "matplotlib",
-    "rpy2"
+    "rpy2",
+    "glmstar>=0.2.0"
 ]
 
 [build-system]
