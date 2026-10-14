@@ -146,6 +146,11 @@ PYBIND11_MODULE(coxc, m) {
       .def("sample_score", &CoxDeviance::sample_score,
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &CoxDeviance::wild_score, py::arg("multipliers"))
+      .def("score_residuals", &CoxDeviance::score_residuals, py::arg("X"))
+      .def("baseline_hazard", [](const CoxDeviance &self) {
+          BaselineHazard h = self.baseline_hazard();
+          return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
+      })
       .def_property_readonly("gradient", &CoxDeviance::get_gradient, py::return_value_policy::reference_internal)
       .def_property_readonly("diag_hessian", &CoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)
       .def_property_readonly("linear_predictor", &CoxDeviance::get_linear_predictor, py::return_value_policy::reference_internal)
@@ -173,6 +178,11 @@ PYBIND11_MODULE(coxc, m) {
       .def("sample_score", &StratifiedCoxDeviance::sample_score,
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &StratifiedCoxDeviance::wild_score, py::arg("multipliers"))
+      .def("score_residuals", &StratifiedCoxDeviance::score_residuals, py::arg("X"))
+      .def("baseline_hazard", [](const StratifiedCoxDeviance &self) {
+          BaselineHazard h = self.baseline_hazard();
+          return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
+      })
       .def_property_readonly("gradient", &StratifiedCoxDeviance::get_gradient, py::return_value_policy::reference_internal)
       .def_property_readonly("diag_hessian", &StratifiedCoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)
       .def_property_readonly("linear_predictor", &StratifiedCoxDeviance::get_linear_predictor, py::return_value_policy::reference_internal)
