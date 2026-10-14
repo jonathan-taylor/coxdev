@@ -29,6 +29,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from coxdev import CoxDeviance
+from glmnet.cox import CoxFamily, CoxNetIRLS
+from glmnet.glmnet import GLMNetControl
 ```
 
 ## A survival response
@@ -71,6 +73,20 @@ for iteration in range(1, 11):
     if np.max(np.abs(step)) < 1e-10:
         break
 iteration, b
+```
+
+These are the estimates of `CoxNetIRLS` from `glmstar`, the Python glmnet,
+fit with no penalty:
+
+```{code-cell} ipython3
+y = pd.DataFrame({'start': start, 'stop': stop, 'status': status})
+coxnet = CoxNetIRLS(family=CoxFamily(tie_breaking='efron', event_id='stop',
+                                     status_id='status', start_id='start'),
+                    lambda_values=np.array([0.]),
+                    control=GLMNetControl(thresh=1e-14, epsnr=1e-12))
+with np.errstate(invalid='ignore'):  # glmstar 0.1.3 divides 0 by 0 at lambda = 0
+    fit = coxnet.fit(X, y)
+pd.DataFrame({'coxdev': b, 'CoxNetIRLS': fit.coefs_[0]}, index=['x1', 'x2', 'x3'])
 ```
 
 At the estimate the score is zero, and the inverse of the information gives

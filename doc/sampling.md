@@ -26,6 +26,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde, norm
 from coxdev import CoxDeviance
+from glmnet.cox import CoxFamily, CoxNetIRLS
+from glmnet.glmnet import GLMNetControl
 ```
 
 ## A survival response
@@ -47,14 +49,18 @@ start = np.floor(rng.uniform(0, 0.5, n) * stop * 8) / 8
 cox = CoxDeviance(event=stop, status=status, start=start, tie_breaking='efron')
 ```
 
-We sample at the estimate of the coefficients, by Newton's method:
+We sample at the estimate of the coefficients, from `CoxNetIRLS` in
+`glmstar`, the Python glmnet, with no penalty:
 
 ```{code-cell} ipython3
-b = np.zeros(p)
-for _ in range(10):
-    eta = X @ b
-    step = np.linalg.solve(X.T @ (cox.information(eta) @ X), X.T @ (-cox(eta).gradient / 2))
-    b = b + step
+y = pd.DataFrame({'start': start, 'stop': stop, 'status': status})
+coxnet = CoxNetIRLS(family=CoxFamily(tie_breaking='efron', event_id='stop',
+                                     status_id='status', start_id='start'),
+                    lambda_values=np.array([0.]),
+                    control=GLMNetControl(thresh=1e-14, epsnr=1e-12))
+with np.errstate(invalid='ignore'):  # glmstar 0.1.3 divides 0 by 0 at lambda = 0
+    fit = coxnet.fit(X, y)
+b = fit.coefs_[0]
 b
 ```
 
