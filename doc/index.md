@@ -63,7 +63,10 @@ quantities that come cheaply from the same sorted data:
   `survival::basehaz` gives for a `coxph` fit with `ties = "efron"`, and the
   tests check it against that.
 
-[Using coxdev](using_coxdev.md) shows these in a worked example.
+[Using coxdev](using_coxdev.md) shows these in a worked example, and
+[Using coxdev from R](r_using_coxdev.md) does the same with the R package,
+which has the same interface: `CoxDeviance$new(...)` in place of
+`CoxDeviance(...)`.
 
 ## Installation
 
@@ -85,3 +88,12 @@ env EIGEN_LIBRARY_PATH=/path/to/eigen pip install .
 The notebooks here also use pandas, matplotlib and
 [glmstar](https://pypi.org/project/glmstar/):
 `pip install pandas matplotlib "glmstar>=0.2.0"`.
+
+The R package is in `R/coxdev`. From a clone:
+
+```bash
+R CMD INSTALL R/coxdev
+```
+
+Its pages here also use survival and, if installed, glmnet (>= 5.0). They
+run on the R kernel for Jupyter, from the IRkernel package.

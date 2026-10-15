@@ -107,7 +107,6 @@ The multinomial draws have the Breslow information as covariance, and the
 Fisher draws a smaller one, the information of the exact likelihood. The
 Bernoulli draws are biased: at these ties, `d p` often exceeds 1, so the
 cap `min(1, d p)` gives too few failures to the subjects most at risk.
-```
 
 The wild draws estimate the sandwich, `crossprod(U)` for the score
 residuals `U` of the design, the middle of the robust variance
