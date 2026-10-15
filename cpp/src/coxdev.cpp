@@ -1093,6 +1093,71 @@ BaselineHazard CoxDeviance::baseline_hazard() const {
   return out;
 }
 
+Eigen::VectorXd CoxDeviance::schoenfeld_residuals(const Eigen::VectorXd& x) const {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    ERROR_MSG("schoenfeld_residuals: call compute_deviance first");
+  }
+  if (x.size() != n) {
+    ERROR_MSG("schoenfeld_residuals: x must have one entry per observation");
+  }
+  CoxContext ctx = get_context();
+  const Eigen::VectorXd& S = risk_sum_buffers[0];
+  const Eigen::VectorXd& w_ev = event_reorder_buffers[1];
+
+  // xbar_t, the mean of x over the risk set of each failure term t (with
+  // Efron's weights if efron), as in score_residuals
+  Eigen::VectorXd SX(n), event_cumsum(n + 1), start_cumsum(n + 1);
+  Eigen::VectorXd ex = exp_w_buffer.array() * x.array();
+  sum_over_risk_set(ex, ctx, SX, event_cumsum, start_cumsum);
+  Eigen::VectorXd xbar = Eigen::VectorXd::Zero(n);
+  for (int t = 0; t < n; ++t) {
+    if (failure_term(ctx, w_ev, S, t)) xbar(t) = SX(t) / S(t);
+  }
+  Eigen::VectorXd Cx(n + 1);
+  forward_cumsum(xbar, Cx);
+
+  // each failure less the average of xbar over the failures tied with it
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
+  for (int i = 0; i < n; ++i) {
+    if (failure_term(ctx, w_ev, S, i)) {
+      int f = ctx.first(i), l = ctx.last(i);
+      int k = event_order(i);
+      out(k) = x(k) - (Cx(l + 1) - Cx(f)) / (l + 1 - f);
+    }
+  }
+  return out;
+}
+
+Eigen::VectorXd CoxDeviance::expected_events() const {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    ERROR_MSG("expected_events: call compute_deviance first");
+  }
+  CoxContext ctx = get_context();
+  const Eigen::VectorXd& S = risk_sum_buffers[0];
+  const Eigen::VectorXd& w_ev = event_reorder_buffers[1];
+
+  // the hazard increment of each failure term t is wbar_t / S_t (see
+  // baseline_hazard); summed over the terms whose risk set contains i, with
+  // Efron's weights for i's own failure time
+  Eigen::VectorXd c = Eigen::VectorXd::Zero(n);
+  for (int t = 0; t < n; ++t) {
+    if (failure_term(ctx, w_ev, S, t)) c(t) = w_avg_buffer(t) / S(t);
+  }
+  Eigen::VectorXd T = risk_set_accumulate(ctx, c, ctx.efron);
+
+  // S is a risk sum of w exp(eta - mean(eta)), so exp(eta - mean(eta)) T is
+  // the expected number of events for eta as given
+  double center = linear_predictor.mean();
+  Eigen::VectorXd out(n);
+  for (int i = 0; i < n; ++i) {
+    int k = event_order(i);
+    out(k) = std::exp(linear_predictor(k) - center) * T(i);
+  }
+  return out;
+}
+
 Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
                                             int n_draws,
                                             std::uint64_t seed) {
@@ -1346,6 +1411,33 @@ Eigen::VectorXd StratifiedCoxDeviance::score_residuals(const Eigen::VectorXd& x)
     for (size_t j = 0; j < indices.size(); ++j) xs(j) = x(indices[j]);
     Eigen::VectorXd u = cox_devs[s]->score_residuals(xs);
     for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = u(j);
+  }
+  return out;
+}
+
+Eigen::VectorXd StratifiedCoxDeviance::schoenfeld_residuals(const Eigen::VectorXd& x) const {
+  int n = linear_predictor.size();
+  if (x.size() != n) {
+    ERROR_MSG("schoenfeld_residuals: x must have one entry per observation");
+  }
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    const auto& indices = stratum_indices[s];
+    Eigen::VectorXd xs(indices.size());
+    for (size_t j = 0; j < indices.size(); ++j) xs(j) = x(indices[j]);
+    Eigen::VectorXd r = cox_devs[s]->schoenfeld_residuals(xs);
+    for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = r(j);
+  }
+  return out;
+}
+
+Eigen::VectorXd StratifiedCoxDeviance::expected_events() const {
+  int n = linear_predictor.size();
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    const auto& indices = stratum_indices[s];
+    Eigen::VectorXd e = cox_devs[s]->expected_events();
+    for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = e(j);
   }
   return out;
 }

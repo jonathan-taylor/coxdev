@@ -450,6 +450,62 @@ class CoxDeviance(object):
         np.ndarray
             ``(n, p)``, or ``(n,)`` for a one-dimensional ``X``.
         """
+        return self._by_column(self._coxc.score_residuals,
+                               linear_predictor, X, sample_weight)
+
+    def schoenfeld_residuals(self,
+                             linear_predictor,
+                             X,
+                             sample_weight=None):
+        """
+        The Schoenfeld residuals of a design ``X`` at ``linear_predictor``.
+
+        Row ``i``, for an observation that fails (with positive weight), is
+        ``x_i - xbar``, with ``xbar`` the mean of the covariates over its
+        risk set with weights ``w exp(eta)``. With ``tie_breaking='efron'``,
+        ``xbar`` is the average over the failures tied with ``i`` of their
+        Efron means, as in R's ``survival``. The other rows are zero.
+        Weighted by the sample weights, the rows sum to the score:
+        ``sample_weight @ R`` is ``X.T @ (-gradient / 2)``.
+
+        ``residuals(fit, type = "schoenfeld")`` of a ``coxph`` fit in R has
+        the rows of the failures only, in order of failure time:
+        ``R[status == 1]`` here, in native order.
+
+        Plotted against time, they check the proportional hazards
+        assumption (Grambsch and Therneau, 1994).
+
+        The residuals are built a column at a time, each in ``O(n)``.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        X : np.ndarray or scipy.sparse matrix
+            The design, one row per observation; a sparse ``X`` is made
+            dense a column at a time.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n, p)``, or ``(n,)`` for a one-dimensional ``X``.
+
+        References
+        ----------
+        Schoenfeld, D. (1982). Partial residuals for the proportional hazards
+        regression model. *Biometrika*, 69(1), 239-241.
+
+        Grambsch, P. M. and Therneau, T. M. (1994). Proportional hazards
+        tests and diagnostics based on weighted residuals. *Biometrika*,
+        81(3), 515-526.
+        """
+        return self._by_column(self._coxc.schoenfeld_residuals,
+                               linear_predictor, X, sample_weight)
+
+    def _by_column(self, residuals, linear_predictor, X, sample_weight):
+        # the C++ takes one covariate at a time
         if issparse(X):
             X2 = X.tocsc()
             one_dim = False
@@ -462,11 +518,77 @@ class CoxDeviance(object):
         if X2.shape[0] != np.asarray(linear_predictor).shape[0]:
             raise ValueError('X must have one row per observation')
         self(linear_predictor, sample_weight)
-        # the C++ takes one covariate at a time
         U = np.empty(X2.shape)
         for j in range(X2.shape[1]):
-            U[:, j] = self._coxc.score_residuals(column(j))
+            U[:, j] = residuals(column(j))
         return U[:, 0] if one_dim else U
+
+    def expected_events(self,
+                        linear_predictor,
+                        sample_weight=None):
+        """
+        The expected number of events of each observation at
+        ``linear_predictor``: ``exp(linear_predictor[i])`` times the increase
+        of the baseline cumulative hazard (see ``baseline_hazard``) over
+        ``(start[i], event[i]]``. With ``tie_breaking='efron'``, a failure
+        gets Efron's share of the hazard at its own failure time.
+
+        This is ``predict(fit, type = "expected")`` of a ``coxph`` fit in R:
+        ``status - expected_events`` is the martingale residual (Barlow and
+        Prentice, 1988; Therneau, Grambsch and Fleming, 1990).
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n,)``, in native order.
+
+        References
+        ----------
+        Barlow, W. E. and Prentice, R. L. (1988). Residuals for relative risk
+        regression. *Biometrika*, 75(1), 65-74.
+
+        Therneau, T. M., Grambsch, P. M. and Fleming, T. R. (1990).
+        Martingale-based residuals for survival models. *Biometrika*, 77(1),
+        147-160.
+        """
+        self(linear_predictor, sample_weight)
+        return np.asarray(self._coxc.expected_events())
+
+    def survival_at_exit(self,
+                         linear_predictor,
+                         sample_weight=None):
+        """
+        The expected survival probability of each observation at its exit:
+        the probability of surviving to ``event[i]``, given survival to
+        ``start[i]`` (to 0 without start times), at ``linear_predictor``.
+        It is ``exp(-expected_events)``, R's
+        ``predict(fit, type = "survival")`` for a ``coxph`` fit.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n,)``, in native order.
+
+        References
+        ----------
+        Therneau, T. M. and Grambsch, P. M. (2000). *Modeling Survival Data:
+        Extending the Cox Model*, Chapter 4. Springer, New York.
+        """
+        return np.exp(-self.expected_events(linear_predictor, sample_weight))
 
     def baseline_hazard(self,
                         linear_predictor,
