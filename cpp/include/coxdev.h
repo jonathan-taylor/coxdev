@@ -116,6 +116,38 @@ public:
     // The baseline hazard at the last compute_deviance; see BaselineHazard.
     BaselineHazard baseline_hazard() const;
 
+    // The Schoenfeld residuals of one covariate x (n-vector, native order) at
+    // the last compute_deviance: for a failure i with positive weight, x_i
+    // minus the mean of x over its risk set, with weights w exp(eta); with
+    // Efron's ties, the mean is the average over the tied failures of their
+    // Efron means, as in survival (Schoenfeld, 1982, Biometrika 69, 239-241;
+    // Grambsch and Therneau, 1994, Biometrika 81, 515-526). 0 for the other
+    // observations. Weighted by
+    // w, they sum to the score x^T (-gradient / 2). Applied to each column
+    // of a design X they give the Schoenfeld residuals of X.
+    Eigen::VectorXd schoenfeld_residuals(const Eigen::VectorXd& x) const;
+
+    // The risk-set variance of one covariate z (n-vector, native order) at
+    // the last compute_deviance: for a failure i with positive weight, the
+    // variance of z over its risk set with weights w exp(eta), the V_z of the
+    // scaled Schoenfeld residuals (Grambsch and Therneau, 1994, Biometrika
+    // 81, 515-526); with Efron's ties, the average over the tied failures of
+    // their Efron variances, as for schoenfeld_residuals. 0 for the other
+    // observations. Weighted by w, they sum to the information z^T I z.
+    // Covariances of two covariates follow by polarization:
+    // (V(y + z) - V(y - z)) / 4.
+    Eigen::VectorXd risk_set_variance(const Eigen::VectorXd& z) const;
+
+    // The expected number of events of each observation (native order) at
+    // the last compute_deviance: exp(eta_i) times the increase of the
+    // baseline cumulative hazard over (start_i, event_i], where with Efron's
+    // ties a failure counts at its own failure time with Efron's weights.
+    // As survival's predict(type = "expected"): status - expected events is
+    // the martingale residual (Therneau, Grambsch and Fleming, 1990,
+    // Biometrika 77, 147-160), and exp(-expected events) the probability of
+    // surviving to event_i, given survival to start_i.
+    Eigen::VectorXd expected_events() const;
+
     // Getters for buffers (for result construction or debugging)
     const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
     const Eigen::VectorXd& get_diag_hessian() const { return diag_hessian_buffer; }
@@ -187,6 +219,9 @@ public:
     Eigen::VectorXd score_residuals(const Eigen::VectorXd& x) const;
     // within each stratum, labelled by its value of strata
     BaselineHazard baseline_hazard() const;
+    Eigen::VectorXd schoenfeld_residuals(const Eigen::VectorXd& x) const;
+    Eigen::VectorXd risk_set_variance(const Eigen::VectorXd& z) const;
+    Eigen::VectorXd expected_events() const;
 
     const Eigen::VectorXd& get_gradient() const { return grad_buffer; }
     const Eigen::VectorXd& get_diag_hessian() const { return diag_hessian_buffer; }

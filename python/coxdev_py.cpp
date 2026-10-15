@@ -147,6 +147,9 @@ PYBIND11_MODULE(coxc, m) {
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &CoxDeviance::wild_score, py::arg("multipliers"))
       .def("score_residuals", &CoxDeviance::score_residuals, py::arg("x"))
+      .def("schoenfeld_residuals", &CoxDeviance::schoenfeld_residuals, py::arg("x"))
+      .def("risk_set_variance", &CoxDeviance::risk_set_variance, py::arg("z"))
+      .def("expected_events", &CoxDeviance::expected_events)
       .def("baseline_hazard", [](const CoxDeviance &self) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
@@ -179,6 +182,9 @@ PYBIND11_MODULE(coxc, m) {
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &StratifiedCoxDeviance::wild_score, py::arg("multipliers"))
       .def("score_residuals", &StratifiedCoxDeviance::score_residuals, py::arg("x"))
+      .def("schoenfeld_residuals", &StratifiedCoxDeviance::schoenfeld_residuals, py::arg("x"))
+      .def("risk_set_variance", &StratifiedCoxDeviance::risk_set_variance, py::arg("z"))
+      .def("expected_events", &StratifiedCoxDeviance::expected_events)
       .def("baseline_hazard", [](const StratifiedCoxDeviance &self) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
