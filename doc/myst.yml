@@ -7,7 +7,10 @@ project:
     - name: Trevor Hastie
     - name: Balasubramanian Narasimhan
   github: https://github.com/jonathan-taylor/coxdev
+  # the API reference (Sphinx autodoc) is built separately into api/ ;
+  # see doc/api/conf.py and .github/workflows/docs.yml
   exclude:
+    - api/**
     - '*.ipynb'
     - final.md
     - hessian.md
@@ -23,11 +26,18 @@ project:
       children:
         - file: r_using_coxdev.md
         - file: r_sampling.md
+    - title: Examples
+      children:
+        - file: examples/penalized_fits.md
+        - file: examples/proportional_hazards.md
+        - file: examples/residuals.md
     - title: Computations
       children:
         - file: notes_no_ties.md
         - file: notes_ties.md
         - file: notes_hessian.md
+    - title: API Reference
+      url: https://jonathan-taylor.github.io/coxdev/api/
 
 site:
   options:

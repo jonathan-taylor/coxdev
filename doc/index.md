@@ -80,6 +80,12 @@ quantities that come cheaply from the same sorted data:
 
 The README lists the references.
 
+The [Examples](examples/penalized_fits.md) fit penalized models with
+general-purpose solvers, check proportional hazards with the Schoenfeld
+residuals, and check a model with martingale and Cox–Snell residuals. The
+[API reference](https://jonathan-taylor.github.io/coxdev/api/) documents
+every method.
+
 [Using coxdev](using_coxdev.md) shows these in a worked example, and
 [Using coxdev from R](r_using_coxdev.md) does the same with the R package,
 which has the same interface: `CoxDeviance$new(...)` in place of
