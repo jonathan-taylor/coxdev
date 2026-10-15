@@ -19,6 +19,10 @@ project:
       children:
         - file: using_coxdev.md
         - file: sampling.md
+    - title: Using coxdev from R
+      children:
+        - file: r_using_coxdev.md
+        - file: r_sampling.md
     - title: Computations
       children:
         - file: notes_no_ties.md

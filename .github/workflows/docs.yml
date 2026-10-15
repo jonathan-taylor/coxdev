@@ -60,6 +60,19 @@ jobs:
           pip install .
           pip install "jupyter-book>=2" ipykernel
 
+      # The R pages run on the R kernel for Jupyter (IRkernel), with the
+      # R package from R/coxdev: no rpy2
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install the R package and the R kernel
+        run: |
+          Rscript -e 'install.packages(c("R6", "Rcpp", "RcppEigen", "survival", "Matrix", "glmnet", "IRkernel"))'
+          Rscript -e 'IRkernel::installspec()'
+          R CMD INSTALL R/coxdev
+          jupyter kernelspec list
+
       - name: Build HTML
         run: |
           cd doc
