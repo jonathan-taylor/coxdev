@@ -605,6 +605,8 @@ CoxDeviance::CoxDeviance(const Eigen::VectorXd& start,
     have_start_times = (start.array() > -std::numeric_limits<double>::infinity()).any();
     sample_weight = weight;
     raw_start = start;
+    raw_event = event;
+    raw_status = status;
 }
 
 double CoxDeviance::compute_deviance(const Eigen::VectorXd& eta,
@@ -1523,6 +1525,144 @@ BaselineHazard StratifiedCoxDeviance::baseline_hazard() const {
     out.cumulative_hazard.segment(k, ms) = parts[s].cumulative_hazard;
     out.stratum.segment(k, ms).setConstant(unique_strata[s]);
     k += ms;
+  }
+  return out;
+}
+
+// Harrell's concordance index; see coxdev.h for the definition and the
+// references. Ported from glmstar (src/concordance.cpp), for one predictor.
+
+namespace {
+
+// prefix sums of weights indexed 0, ..., n - 1, under additions, in O(log n)
+// (Fenwick, 1994)
+class FenwickSum {
+public:
+  explicit FenwickSum(std::size_t n) : tree(n + 1, 0.0) {}
+  void add(std::size_t i, double w) {
+    for (++i; i < tree.size(); i += i & (~i + 1)) tree[i] += w;
+  }
+  // the sum of the weights of the indices < i
+  double prefix(std::size_t i) const {
+    double s = 0.0;
+    for (; i > 0; i -= i & (~i + 1)) s += tree[i];
+    return s;
+  }
+private:
+  std::vector<double> tree;
+};
+
+}  // namespace
+
+Concordance concordance(const Eigen::VectorXd& pred,
+                        const Eigen::VectorXd& start,
+                        const Eigen::VectorXd& event,
+                        const Eigen::VectorXi& status,
+                        const Eigen::VectorXd& weight) {
+  const int m = pred.size();
+  if (start.size() != m || event.size() != m || status.size() != m || weight.size() != m) {
+    ERROR_MSG("concordance: pred, start, event, status and weight must have the same length");
+  }
+  Concordance out{0.0, 0.0};
+  if (m == 0) return out;
+
+  std::vector<int> by_stop(m), by_start(m), order(m);
+  std::iota(by_stop.begin(), by_stop.end(), 0);
+  std::iota(by_start.begin(), by_start.end(), 0);
+  std::sort(by_stop.begin(), by_stop.end(),
+            [&](int a, int b) { return event(a) > event(b); });
+  std::sort(by_start.begin(), by_start.end(),
+            [&](int a, int b) { return start(a) > start(b); });
+
+  // dense ranks of pred, ties sharing a rank
+  std::iota(order.begin(), order.end(), 0);
+  std::sort(order.begin(), order.end(),
+            [&](int a, int b) { return pred(a) < pred(b); });
+  std::vector<std::size_t> rank(m);
+  std::size_t r = 0;
+  for (int k = 0; k < m; ++k) {
+    if (k > 0 && pred(order[k]) > pred(order[k - 1])) ++r;
+    rank[order[k]] = r;
+  }
+
+  // the subjects in decreasing time; the tree holds the weights of those
+  // at risk at the current time
+  FenwickSum tree(r + 1);
+  double total = 0.0;
+  int p_stop = 0, p_start = 0;
+  while (p_stop < m) {
+    // up to the next failure time, everyone with a later stop time
+    while (p_stop < m && !status(by_stop[p_stop])) {
+      int j = by_stop[p_stop++];
+      tree.add(rank[j], weight(j));
+      total += weight(j);
+    }
+    if (p_stop == m) break;
+    const double t = event(by_stop[p_stop]);
+
+    // those stopping at t: censored ones are at risk, failures are compared
+    int group_end = p_stop;
+    while (group_end < m && event(by_stop[group_end]) == t) {
+      int j = by_stop[group_end++];
+      if (!status(j)) {
+        tree.add(rank[j], weight(j));
+        total += weight(j);
+      }
+    }
+    // those whose interval starts at or after t are not at risk at t
+    while (p_start < m && start(by_start[p_start]) >= t) {
+      int j = by_start[p_start++];
+      tree.add(rank[j], -weight(j));
+      total -= weight(j);
+    }
+    for (int k = p_stop; k < group_end; ++k) {
+      int i = by_stop[k];
+      if (!status(i)) continue;
+      double less = tree.prefix(rank[i]);
+      double equal = tree.prefix(rank[i] + 1) - less;
+      out.numerator += weight(i) * (less + 0.5 * equal);
+      out.denominator += weight(i) * total;
+    }
+    // the failures at t are at risk at earlier times
+    for (int k = p_stop; k < group_end; ++k) {
+      int i = by_stop[k];
+      if (status(i)) {
+        tree.add(rank[i], weight(i));
+        total += weight(i);
+      }
+    }
+    p_stop = group_end;
+  }
+  return out;
+}
+
+Concordance CoxDeviance::concordance(const Eigen::VectorXd& pred,
+                                     const Eigen::VectorXd& weight) const {
+  if (pred.size() != raw_event.size() || weight.size() != raw_event.size()) {
+    ERROR_MSG("concordance: pred and weight must have one entry per observation");
+  }
+  return ::concordance(pred, raw_start, raw_event, raw_status, weight);
+}
+
+Concordance StratifiedCoxDeviance::concordance(const Eigen::VectorXd& pred,
+                                               const Eigen::VectorXd& weight) const {
+  int n = pred.size();
+  int total = 0;
+  for (const auto& indices : stratum_indices) total += indices.size();
+  if (n != total || weight.size() != n) {
+    ERROR_MSG("concordance: pred and weight must have one entry per observation");
+  }
+  Concordance out{0.0, 0.0};
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    const auto& indices = stratum_indices[s];
+    Eigen::VectorXd ps(indices.size()), ws(indices.size());
+    for (size_t j = 0; j < indices.size(); ++j) {
+      ps(j) = pred(indices[j]);
+      ws(j) = weight(indices[j]);
+    }
+    Concordance c = cox_devs[s]->concordance(ps, ws);
+    out.numerator += c.numerator;
+    out.denominator += c.denominator;
   }
   return out;
 }

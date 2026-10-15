@@ -233,3 +233,34 @@ test_that("risk-set variances agree with survival's coxph.detail", {
     }
   }
 })
+
+test_that("the C-index agrees with survival's concordance", {
+  set.seed(38)
+  for (start in c(FALSE, TRUE)) {
+    for (stratified in c(FALSE, TRUE)) {
+      d <- cox_data(n = 150, start = start)
+      n <- length(d$event)
+      w <- stats::runif(n, 0.2, 3)
+      pred <- round(stats::rnorm(n), 1)
+      stratum <- if (stratified) sample(1:3, n, replace = TRUE) else NULL
+      cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start,
+                             strata = stratum)
+      y <- if (is.null(d$start)) survival::Surv(d$event, d$status)
+           else survival::Surv(d$start, d$event, d$status)
+      C_R <- if (stratified) {
+        survival::concordance(y ~ I(-pred) + survival::strata(stratum), weights = w,
+                              timefix = FALSE)$concordance
+      } else {
+        survival::concordance(y ~ I(-pred), weights = w, timefix = FALSE)$concordance
+      }
+      expect_equal(cox$c_index(pred, sample_weight = w), unname(C_R), tolerance = 1e-12)
+    }
+  }
+  # columns, a reversed predictor, a constant one
+  P <- cbind(a = pred, b = -pred, c = 0)
+  C <- cox$c_index(P, sample_weight = w)
+  expect_equal(names(C), c("a", "b", "c"))
+  expect_equal(unname(C[1] + C[2]), 1)
+  expect_equal(unname(C[3]), 0.5)
+  expect_error(cox$c_index(pred[-1]), "rows")
+})

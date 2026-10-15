@@ -319,6 +319,75 @@ class CoxDeviance(object):
             
         return self._result
 
+    def c_index(self,
+                linear_predictor,
+                sample_weight=None):
+        """
+        Harrell's concordance index (C-index) of a linear predictor.
+
+        For each failure ``i`` at time ``t``, every ``j`` at risk at ``t``
+        (``start[j] < t <= event[j]``) is compared with ``i``, except the
+        other failures at ``t``. The pair has weight ``w_i w_j``, and is
+        concordant if ``linear_predictor[i] > linear_predictor[j]``, a higher
+        risk failing first; tied predictions count half. The C-index is the
+        weighted fraction of concordant pairs: 1/2 for a predictor unrelated
+        to survival, 1 for one that orders the failures perfectly. With
+        strata, only pairs within a stratum are compared.
+
+        This is R's ``survival::concordance(y ~ -linear_predictor, weights =
+        w)`` (with ``+ strata(...)`` for strata) and, without strata,
+        ``glmnet::Cindex``. It is computed in ``O(n log n)`` per column, by
+        the algorithm of the ``survival`` package's concordance vignette
+        (Therneau and Atkinson): subjects in decreasing time, with the
+        weights of the risk set in a Fenwick tree (Fenwick, 1994) over the
+        ranks of the predictor. It does not need the deviance to be computed.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor (a risk score), ``(n,)``, or ``(n, k)`` for
+            ``k`` predictors, such as those along a path.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        float or np.ndarray
+            The C-index, one per column of a two-dimensional
+            ``linear_predictor``; NaN if no pair is comparable.
+
+        References
+        ----------
+        Harrell, F. E., Califf, R. M., Pryor, D. B., Lee, K. L. and Rosati,
+        R. A. (1982). Evaluating the yield of medical tests. *JAMA*, 247(18),
+        2543-2546.
+
+        Harrell, F. E., Lee, K. L. and Mark, D. B. (1996). Multivariable
+        prognostic models: issues in developing models, evaluating
+        assumptions and adequacy, and measuring and reducing errors.
+        *Statistics in Medicine*, 15(4), 361-387.
+
+        Therneau, T. M. and Atkinson, E. J. The concordance statistic.
+        Vignette of the R package ``survival``.
+
+        Fenwick, P. M. (1994). A new data structure for cumulative frequency
+        tables. *Software: Practice and Experience*, 24(3), 327-336.
+        """
+        pred = np.asarray(linear_predictor, float)
+        one_dim = pred.ndim == 1
+        pred = pred.reshape((pred.shape[0], -1))
+        n = self._raw_event.shape[0]
+        if pred.shape[0] != n:
+            raise ValueError('linear_predictor must have one row per observation')
+        if sample_weight is None:
+            sample_weight = np.ones(n)
+        sample_weight = np.asarray(sample_weight, float)
+        values = np.empty(pred.shape[1])
+        for j in range(pred.shape[1]):
+            num, den = self._coxc.concordance(np.ascontiguousarray(pred[:, j]), sample_weight)
+            values[j] = num / den if den > 0 else np.nan
+        return values[0] if one_dim else values
+
     def information(self,
                     linear_predictor,
                     sample_weight=None):

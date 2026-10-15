@@ -41,6 +41,10 @@
     .Call(`_coxdev_cox_expected_events`, ptr)
 }
 
+.cox_concordance <- function(ptr, pred, weight) {
+    .Call(`_coxdev_cox_concordance`, ptr, pred, weight)
+}
+
 .cox_baseline_hazard <- function(ptr) {
     .Call(`_coxdev_cox_baseline_hazard`, ptr)
 }

@@ -55,9 +55,21 @@ regression. \emph{Biometrika}, 75(1), 65--74.
 Breslow, N. E. (1972). Discussion of Professor Cox's paper. \emph{Journal of
 the Royal Statistical Society, Series B}, 34(2), 216--217.
 
+Fenwick, P. M. (1994). A new data structure for cumulative frequency
+tables. \emph{Software: Practice and Experience}, 24(3), 327--336.
+
 Grambsch, P. M. and Therneau, T. M. (1994). Proportional hazards tests
 and diagnostics based on weighted residuals. \emph{Biometrika}, 81(3),
 515--526.
+
+Harrell, F. E., Califf, R. M., Pryor, D. B., Lee, K. L. and Rosati, R. A.
+(1982). Evaluating the yield of medical tests. \emph{JAMA}, 247(18),
+2543--2546.
+
+Harrell, F. E., Lee, K. L. and Mark, D. B. (1996). Multivariable
+prognostic models: issues in developing models, evaluating assumptions
+and adequacy, and measuring and reducing errors. \emph{Statistics in
+Medicine}, 15(4), 361--387.
 
 Lin, D. Y. and Wei, L. J. (1989). The robust inference for the Cox
 proportional hazards model. \emph{Journal of the American Statistical
@@ -65,6 +77,9 @@ Association}, 84(408), 1074--1078.
 
 Schoenfeld, D. (1982). Partial residuals for the proportional hazards
 regression model. \emph{Biometrika}, 69(1), 239--241.
+
+Therneau, T. M. and Atkinson, E. J. The concordance statistic. Vignette
+of the R package survival, \code{vignette("concordance", package = "survival")}.
 
 Therneau, T. M. and Grambsch, P. M. (2000). \emph{Modeling Survival Data:
 Extending the Cox Model}. Springer, New York.
@@ -94,6 +109,7 @@ Martingale-based residuals for survival models. \emph{Biometrika}, 77(1),
   \itemize{
     \item \href{#method-CoxDeviance-initialize}{\code{CoxDeviance$new()}}
     \item \href{#method-CoxDeviance-compute}{\code{CoxDeviance$compute()}}
+    \item \href{#method-CoxDeviance-c_index}{\code{CoxDeviance$c_index()}}
     \item \href{#method-CoxDeviance-information}{\code{CoxDeviance$information()}}
     \item \href{#method-CoxDeviance-sample_score}{\code{CoxDeviance$sample_score()}}
     \item \href{#method-CoxDeviance-wild_score}{\code{CoxDeviance$wild_score()}}
@@ -167,6 +183,45 @@ of the Python class).
 \code{sample_weight}, \code{loglik_sat} (the saturated log-likelihood), the
 \code{deviance}, its \code{gradient} with respect to the linear predictor and
 the diagonal \code{diag_hessian} of its Hessian.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-c_index"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-c_index}{}}}
+\subsection{\code{CoxDeviance$c_index()}}{
+  Harrell's concordance index (C-index) of a linear
+predictor. For each failure \code{i} at time \code{t}, every \code{j} at risk at \code{t}
+(\verb{start[j] < t <= event[j]}) is compared with \code{i}, except the other
+failures at \code{t}. The pair has weight \code{w_i * w_j}, and is concordant
+if \code{linear_predictor[i] > linear_predictor[j]}, a higher risk
+failing first; tied predictions count half. With strata, only pairs
+within a stratum are compared.
+
+This is \code{survival::concordance(y ~ -linear_predictor, weights = w)}
+(with \code{+ strata(...)} for strata) and, without strata,
+\code{glmnet::Cindex} (Harrell et al., 1982; Harrell, Lee and Mark, 1996).
+It is computed in O(n log n) per column, by the algorithm of the
+survival package's concordance vignette (Therneau and Atkinson), with
+the weights of the risk set in a Fenwick tree (Fenwick, 1994). It
+does not need \code{compute()}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$c_index(linear_predictor, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor}}{The linear predictor (a risk score): a vector,
+or a matrix with one column per predictor.}
+      \item{\code{sample_weight}}{As for \code{compute()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    The C-index, one per column of a matrix; \code{NaN} if no pair is
+comparable.
   }
 }
 

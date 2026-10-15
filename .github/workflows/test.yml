@@ -32,6 +32,8 @@ jobs:
       run: |
         c++ -std=c++17 -O2 -Wall -Ieigen -Icpp/include cpp/src/coxdev.cpp cpp/tests/test_residuals_hazard.cpp -o test_residuals_hazard
         ./test_residuals_hazard
+        c++ -std=c++17 -O2 -Wall -Ieigen -Icpp/include cpp/src/coxdev.cpp cpp/tests/test_concordance.cpp -o test_concordance
+        ./test_concordance
 
     - name: Install coxdev
       run: |

@@ -70,6 +70,9 @@ quantities that come cheaply from the same sorted data:
 - **`risk_set_variance`**: for each failure, the variance of a covariate
   over its risk set, the $V_z$ by which Grambsch and Therneau (1994) scale
   the Schoenfeld residuals.
+- **`c_index`**: Harrell's concordance index of a linear predictor
+  (Harrell et al., 1982), in $O(n \log n)$: R's `survival::concordance`
+  and `glmnet::Cindex`.
 - **`expected_events`** and **`survival_at_exit`**: the expected number of
   events of each observation over its time at risk, $e^{\eta_i}$ times the
   increase of the baseline cumulative hazard, and the expected survival

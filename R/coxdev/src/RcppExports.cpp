@@ -137,6 +137,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cox_concordance
+Eigen::VectorXd cox_concordance(SEXP ptr, const Eigen::VectorXd& pred, const Eigen::VectorXd& weight);
+RcppExport SEXP _coxdev_cox_concordance(SEXP ptrSEXP, SEXP predSEXP, SEXP weightSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::VectorXd& >::type pred(predSEXP);
+    Rcpp::traits::input_parameter< const Eigen::VectorXd& >::type weight(weightSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_concordance(ptr, pred, weight));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cox_baseline_hazard
 List cox_baseline_hazard(SEXP ptr);
 RcppExport SEXP _coxdev_cox_baseline_hazard(SEXP ptrSEXP) {
@@ -160,6 +173,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_cox_schoenfeld_residuals", (DL_FUNC) &_coxdev_cox_schoenfeld_residuals, 2},
     {"_coxdev_cox_risk_set_variance", (DL_FUNC) &_coxdev_cox_risk_set_variance, 2},
     {"_coxdev_cox_expected_events", (DL_FUNC) &_coxdev_cox_expected_events, 1},
+    {"_coxdev_cox_concordance", (DL_FUNC) &_coxdev_cox_concordance, 3},
     {"_coxdev_cox_baseline_hazard", (DL_FUNC) &_coxdev_cox_baseline_hazard, 1},
     {NULL, NULL, 0}
 };
