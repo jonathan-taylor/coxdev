@@ -90,6 +90,29 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cox_score_residuals
+Eigen::VectorXd cox_score_residuals(SEXP ptr, const Eigen::VectorXd& x);
+RcppExport SEXP _coxdev_cox_score_residuals(SEXP ptrSEXP, SEXP xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::VectorXd& >::type x(xSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_score_residuals(ptr, x));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cox_baseline_hazard
+List cox_baseline_hazard(SEXP ptr);
+RcppExport SEXP _coxdev_cox_baseline_hazard(SEXP ptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_baseline_hazard(ptr));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_cox_new", (DL_FUNC) &_coxdev_cox_new, 6},
@@ -98,6 +121,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_cox_information_matmat", (DL_FUNC) &_coxdev_cox_information_matmat, 2},
     {"_coxdev_cox_sample_score", (DL_FUNC) &_coxdev_cox_sample_score, 4},
     {"_coxdev_cox_wild_score", (DL_FUNC) &_coxdev_cox_wild_score, 2},
+    {"_coxdev_cox_score_residuals", (DL_FUNC) &_coxdev_cox_score_residuals, 2},
+    {"_coxdev_cox_baseline_hazard", (DL_FUNC) &_coxdev_cox_baseline_hazard, 1},
     {NULL, NULL, 0}
 };
 

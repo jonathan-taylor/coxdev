@@ -15,7 +15,8 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6, fig.height
 predictor, by one of four methods, and `CoxDeviance$wild_score()` gives the
 wild draw for multipliers of your choosing. This vignette compares the
 methods on data with heavy ties. For the basics of `CoxDeviance`, see
-`vignette("coxdev", package = "coxdev")`.
+`vignette("coxdev", package = "coxdev")`. The Python package has the same
+notebook, `doc/sampling.md`.
 
 ```{r}
 library(coxdev)
@@ -44,11 +45,18 @@ cox <- CoxDeviance$new(y, tie_breaking = "efron")
 cox
 ```
 
-We sample at the estimate of the coefficients, from `coxph`:
+We sample at the estimate of the coefficients, from `glmnet` with no
+penalty, `lambda = 0`, or from `coxph` when `glmnet` is not installed:
 
 ```{r}
-fit <- coxph(y ~ X, ties = "efron")
-b <- coef(fit)
+if (requireNamespace("glmnet", quietly = TRUE) &&
+    utils::packageVersion("glmnet") >= "5.0") {
+  fit <- glmnet::glmnet(X, y, family = "cox", lambda = 0, cox.ties = "efron")
+  b <- drop(as.matrix(coef(fit)))
+} else {
+  b <- coef(coxph(y ~ X, ties = "efron"))
+}
+b
 ```
 
 ## The methods
@@ -101,14 +109,17 @@ Bernoulli draws are biased: at these ties, `d p` often exceeds 1, so the
 cap `min(1, d p)` gives too few failures to the subjects most at risk.
 ```
 
-The wild draws estimate the sandwich, the middle of `coxph`'s robust
-variance `solve(I) %*% S %*% solve(I)`:
+The wild draws estimate the sandwich, `crossprod(U)` for the score
+residuals `U` of the design, the middle of the robust variance
+`solve(I) %*% crossprod(U) %*% solve(I)` of `coxph(robust = TRUE)`:
 
 ```{r}
+U <- cox$score_residuals(eta_hat, X)
+sandwich <- crossprod(U)
 fit_robust <- coxph(y ~ X, ties = "efron", id = seq_len(n), robust = TRUE)
 I_hat <- solve(fit_robust$naive.var)
-sandwich <- I_hat %*% fit_robust$var %*% I_hat
-rbind(wild = diag(cov(t(draws$wild))), coxph = diag(sandwich))
+rbind(wild = diag(cov(t(draws$wild))), sandwich = diag(sandwich),
+      coxph = diag(I_hat %*% fit_robust$var %*% I_hat))
 ```
 
 The distributions of the first coefficient's score:
@@ -128,7 +139,7 @@ legend("topleft", c(methods, "N(0, Breslow info.)"), cex = 0.8,
 ## Choosing the multipliers
 
 `wild_score()` gives the wild draw for multipliers you choose: the sum over
-observations of the multiplier times the score residual. With multipliers
+observations of the multiplier times the score residual, `G %*% U`. With multipliers
 all one it is the score itself. Other multipliers give other wild
 bootstraps, here Rademacher signs in place of normals:
 

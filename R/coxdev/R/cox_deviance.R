@@ -101,7 +101,11 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
         start <- as.numeric(.check_length(start, n, "start"))
         if (anyNA(start)) stop("start must not have missing values")
       }
-      if (!is.null(strata)) strata <- .as_strata(.check_length(strata, n, "strata"))
+      if (!is.null(strata)) {
+        strata <- .as_strata(.check_length(strata, n, "strata"))
+        private$strata_labels <- attr(strata, "labels")
+        attr(strata, "labels") <- NULL
+      }
       private$n_obs <- n
       private$data <- list(start = start,
                            event = event,
@@ -202,6 +206,74 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
       .cox_wild_score(private$ptr, multipliers)
     },
 
+    #' @description The score residuals of a design at a linear predictor.
+    #'
+    #'   Row `i` is `U_i`, the contribution of observation `i` to the score
+    #'   of the coefficients, `crossprod(X, -gradient / 2)`: the sum over the
+    #'   failure times of `(w_i 1{i fails} / d - wbar p_i) (x_i - xbar)`,
+    #'   centered within each risk set, with Efron's weights for ties if
+    #'   `tie_breaking = "efron"` (Lin and Wei, 1989). The rows sum to the
+    #'   score, `drop(G %*% U)` is `crossprod(X, wild_score(eta, G))`, and
+    #'   `crossprod(U)` is the middle of the robust (sandwich) variance. They
+    #'   are `sample_weight` times `residuals(fit, type = "score")` of a
+    #'   `survival::coxph` fit, which are per unit weight.
+    #'
+    #'   The residuals are built a column at a time, each in O(n). `U` is
+    #'   dense even for a sparse `X`, since the risk-set means spread each
+    #'   covariate over the subjects at risk. For draws `crossprod(U, G)` (a
+    #'   wild bootstrap) there is no need to form `U`:
+    #'   `crossprod(X, wild_score(eta, G))` is the same, in one O(n) call.
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @param X The design: a matrix with one row per observation, a sparse
+    #'   `Matrix` (made dense a column at a time), or a vector.
+    #' @return A dense matrix with the dimnames of `X` (a vector for a
+    #'   vector `X`).
+    score_residuals = function(linear_predictor, X, sample_weight = NULL) {
+      sparse_X <- inherits(X, "Matrix")
+      vector_X <- is.null(dim(X))
+      if (vector_X) {
+        X <- matrix(as.numeric(X), ncol = 1L)
+      } else if (!sparse_X) {
+        X <- .as_double_matrix(X)
+      }
+      if (nrow(X) != private$n_obs) {
+        stop(sprintf("X must have %d rows (one per observation), not %d",
+                     private$n_obs, nrow(X)))
+      }
+      private$prepare(linear_predictor, sample_weight)
+      # the C++ takes one covariate at a time
+      U <- matrix(0, nrow(X), ncol(X), dimnames = dimnames(X))
+      for (j in seq_len(ncol(X))) {
+        U[, j] <- .cox_score_residuals(private$ptr, as.numeric(X[, j]))
+      }
+      if (vector_X) drop(U) else U
+    },
+
+    #' @description The estimate of the baseline hazard at a linear
+    #'   predictor: Breslow's, or with `tie_breaking = "efron"` Efron's,
+    #'   which spreads the tied failures at a time over Efron's shrinking risk
+    #'   sets. It is the `survival::basehaz(fit, centered = FALSE)` of a
+    #'   `coxph` fit, at the failure times.
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @return A data frame with one row per distinct failure time (of
+    #'   positive weight), in increasing time within each stratum: the
+    #'   `time`, the `hazard` (the increment of the cumulative hazard there)
+    #'   and the `cumulative_hazard`, for the linear predictor as given, and
+    #'   with strata the `stratum`. The cumulative hazard of observation `i`
+    #'   at time `t` is the `cumulative_hazard` at the last failure time
+    #'   `<= t` (in its stratum) times `exp(linear_predictor[i])`.
+    baseline_hazard = function(linear_predictor, sample_weight = NULL) {
+      private$prepare(linear_predictor, sample_weight)
+      h <- .cox_baseline_hazard(private$ptr)
+      out <- data.frame(time = h$time, hazard = h$hazard,
+                        cumulative_hazard = h$cumulative_hazard)
+      if (self$stratified) {
+        labels <- private$strata_labels
+        out$stratum <- if (is.null(labels)) h$stratum else factor(labels[h$stratum], levels = labels)
+      }
+      out
+    },
+
     #' @description Print a summary.
     #' @param ... Ignored.
     print = function(...) {
@@ -225,6 +297,7 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
   private = list(
     n_obs = NULL,
     data = NULL,
+    strata_labels = NULL,   # the levels of strata given as labels, else NULL
     weight = NULL,     # the weights the C++ object was made with
     ptr = NULL,
     result = NULL,     # the last result: the state of the C++ object
@@ -307,14 +380,17 @@ print.CoxDevianceResult <- function(x, ...) {
 }
 
 # integer codes of the strata; integer labels are kept, so that the strata
-# (and the draws of sample_score) are those of the Python package
+# (and the draws of sample_score) are those of the Python package. Other
+# labels are coded by factor(), and their levels kept as the "labels"
+# attribute.
 .as_strata <- function(strata) {
   if (anyNA(strata)) stop("strata must not have missing values")
   if (is.numeric(strata) && !is.factor(strata) &&
       all(strata == round(strata)) && all(abs(strata) < .Machine$integer.max)) {
     return(as.integer(strata))
   }
-  as.integer(factor(strata))
+  f <- factor(strata)
+  structure(as.integer(f), labels = levels(f))
 }
 
 .as_count <- function(n_draws) {

@@ -133,3 +133,19 @@ Eigen::VectorXd cox_wild_score(SEXP ptr, const Eigen::VectorXd& multipliers) {
   CoxModel* model = get_computed(ptr);
   return model->apply([&](auto& cox) { return cox.wild_score(multipliers); });
 }
+
+// [[Rcpp::export(.cox_score_residuals)]]
+Eigen::VectorXd cox_score_residuals(SEXP ptr, const Eigen::VectorXd& x) {
+  CoxModel* model = get_computed(ptr);
+  return model->apply([&](auto& cox) { return cox.score_residuals(x); });
+}
+
+// [[Rcpp::export(.cox_baseline_hazard)]]
+List cox_baseline_hazard(SEXP ptr) {
+  CoxModel* model = get_computed(ptr);
+  BaselineHazard h = model->apply([&](auto& cox) { return cox.baseline_hazard(); });
+  return List::create(_["time"] = h.time,
+                      _["hazard"] = h.hazard,
+                      _["cumulative_hazard"] = h.cumulative_hazard,
+                      _["stratum"] = h.stratum);
+}

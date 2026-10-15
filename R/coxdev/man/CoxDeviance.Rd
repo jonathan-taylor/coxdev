@@ -72,6 +72,8 @@ diag(cov(t(draws))) / diag(info_beta)   # near 1
     \item \href{#method-CoxDeviance-information}{\code{CoxDeviance$information()}}
     \item \href{#method-CoxDeviance-sample_score}{\code{CoxDeviance$sample_score()}}
     \item \href{#method-CoxDeviance-wild_score}{\code{CoxDeviance$wild_score()}}
+    \item \href{#method-CoxDeviance-score_residuals}{\code{CoxDeviance$score_residuals()}}
+    \item \href{#method-CoxDeviance-baseline_hazard}{\code{CoxDeviance$baseline_hazard()}}
     \item \href{#method-CoxDeviance-print}{\code{CoxDeviance$print()}}
   }
 }
@@ -252,6 +254,79 @@ score \code{-gradient / 2}.
   }
   \subsection{Returns}{
     A vector of length \code{n}.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-score_residuals"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-score_residuals}{}}}
+\subsection{\code{CoxDeviance$score_residuals()}}{
+  The score residuals of a design at a linear predictor.
+
+Row \code{i} is \code{U_i}, the contribution of observation \code{i} to the score
+of the coefficients, \code{crossprod(X, -gradient / 2)}: the sum over the
+failure times of \verb{(w_i 1\{i fails\} / d - wbar p_i) (x_i - xbar)},
+centered within each risk set, with Efron's weights for ties if
+\code{tie_breaking = "efron"} (Lin and Wei, 1989). The rows sum to the
+score, \code{drop(G \%*\% U)} is \code{crossprod(X, wild_score(eta, G))}, and
+\code{crossprod(U)} is the middle of the robust (sandwich) variance. They
+are \code{sample_weight} times \code{residuals(fit, type = "score")} of a
+\code{survival::coxph} fit, which are per unit weight.
+
+The residuals are built a column at a time, each in O(n). \code{U} is
+dense even for a sparse \code{X}, since the risk-set means spread each
+covariate over the subjects at risk. For draws \code{crossprod(U, G)} (a
+wild bootstrap) there is no need to form \code{U}:
+\code{crossprod(X, wild_score(eta, G))} is the same, in one O(n) call.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$score_residuals(linear_predictor, X, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+      \item{\code{X}}{The design: a matrix with one row per observation, a sparse
+\code{Matrix} (made dense a column at a time), or a vector.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A dense matrix with the dimnames of \code{X} (a vector for a
+vector \code{X}).
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-baseline_hazard"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-baseline_hazard}{}}}
+\subsection{\code{CoxDeviance$baseline_hazard()}}{
+  The estimate of the baseline hazard at a linear
+predictor: Breslow's, or with \code{tie_breaking = "efron"} Efron's,
+which spreads the tied failures at a time over Efron's shrinking risk
+sets. It is the \code{survival::basehaz(fit, centered = FALSE)} of a
+\code{coxph} fit, at the failure times.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$baseline_hazard(linear_predictor, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A data frame with one row per distinct failure time (of
+positive weight), in increasing time within each stratum: the
+\code{time}, the \code{hazard} (the increment of the cumulative hazard there)
+and the \code{cumulative_hazard}, for the linear predictor as given, and
+with strata the \code{stratum}. The cumulative hazard of observation \code{i}
+at time \code{t} is the \code{cumulative_hazard} at the last failure time
+\verb{<= t} (in its stratum) times \code{exp(linear_predictor[i])}.
   }
 }
 
