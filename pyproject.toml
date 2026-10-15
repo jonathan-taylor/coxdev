@@ -45,7 +45,10 @@ doc = [
     "pandas",
     "matplotlib",
     "rpy2",
-    "glmstar>=0.2.0"
+    "glmstar>=0.2.0",
+    # API reference (doc/api, Sphinx autodoc)
+    "sphinx",
+    "sphinx-book-theme"
 ]
 
 [build-system]

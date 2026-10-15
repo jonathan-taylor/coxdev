@@ -257,11 +257,30 @@ class CoxDeviance(object):
                  linear_predictor,
                  sample_weight=None):
         """
-        Compute Cox model deviance and related quantities.
+        The deviance, its gradient and the diagonal of its Hessian at a
+        linear predictor.
+
+        The deviance is ``2 * (loglik_sat - loglik)``, with ``loglik`` the
+        (weighted) log partial likelihood, and the derivatives are with
+        respect to ``linear_predictor``: for a design ``X``, the score of
+        the coefficients is ``X.T @ (-gradient / 2)``.
 
         The object is rebuilt, sorting the data again, if ``sample_weight``
         differs from the weights of the last call, and the result is reused if
         ``linear_predictor`` is also that of the last call.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, one entry per observation.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        CoxDevianceResult
+            With ``deviance``, ``gradient``, ``diag_hessian`` and
+            ``loglik_sat``.
         """
         if sample_weight is None:
             sample_weight = np.ones_like(linear_predictor, float)
@@ -292,7 +311,25 @@ class CoxDeviance(object):
                     linear_predictor,
                     sample_weight=None):
         """
-        Compute the information matrix (negative Hessian) as a linear operator.
+        The information at a linear predictor: half the Hessian of the
+        deviance, the negative Hessian of the log partial likelihood, as a
+        matrix-free ``scipy.sparse.linalg.LinearOperator``.
+
+        A product ``I @ v`` costs about as much as a gradient, ``O(n)``, and
+        ``X.T @ (I @ X)`` is the information of the coefficients of a design
+        ``X``.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, one entry per observation.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        CoxInformation
+            An ``(n, n)`` linear operator.
         """
         result = self(linear_predictor,
                       sample_weight)
@@ -670,7 +707,13 @@ class CoxDeviance(object):
 @dataclass
 class CoxInformation(LinearOperator):
     """
-    Linear operator representing the Cox model information matrix.
+    The information of a Cox model at a linear predictor, as a matrix-free
+    ``(n, n)`` linear operator, from :meth:`CoxDeviance.information`.
+
+    ``I @ v`` (or ``I.matvec(v)``) and ``I @ V`` for a matrix ``V`` give
+    products with the information, each column in ``O(n)``. It is
+    symmetric, so ``I.T`` is ``I``. The matrix is never formed: as a dense
+    array it would take ``8 n**2`` bytes.
     """
 
     coxdev: CoxDeviance

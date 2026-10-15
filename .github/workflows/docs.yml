@@ -58,7 +58,7 @@ jobs:
           pip install meson-python ninja meson pybind11 setuptools_scm
           pip install "glmstar>=0.2.0" pandas matplotlib
           pip install .
-          pip install "jupyter-book>=2" ipykernel
+          pip install "jupyter-book>=2" ipykernel sphinx sphinx-book-theme
 
       # The R pages run on the R kernel for Jupyter (IRkernel), with the
       # R package from R/coxdev: no rpy2
@@ -77,6 +77,12 @@ jobs:
         run: |
           cd doc
           jupyter-book build --html --execute
+
+      # The API reference: Sphinx autodoc, into api/ next to the book
+      - name: Build API reference
+        run: |
+          sphinx-build -b html doc/api doc/_build/html/api
+          test -f doc/_build/html/api/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
