@@ -158,6 +158,17 @@ Eigen::VectorXd cox_expected_events(SEXP ptr) {
   return model->apply([&](auto& cox) { return cox.expected_events(); });
 }
 
+// Harrell's C-index as c(numerator, denominator): needs no compute
+// [[Rcpp::export(.cox_concordance)]]
+Eigen::VectorXd cox_concordance(SEXP ptr, const Eigen::VectorXd& pred,
+                                const Eigen::VectorXd& weight) {
+  CoxModel* model = get_model(ptr);
+  Concordance c = model->apply([&](auto& cox) { return cox.concordance(pred, weight); });
+  Eigen::VectorXd out(2);
+  out << c.numerator, c.denominator;
+  return out;
+}
+
 // [[Rcpp::export(.cox_baseline_hazard)]]
 List cox_baseline_hazard(SEXP ptr) {
   CoxModel* model = get_computed(ptr);

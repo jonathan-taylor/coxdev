@@ -341,6 +341,43 @@ failure time), `predict(fit, type = "expected")`, `residuals(fit, type =
   Martingale-based residuals for survival models. *Biometrika*, 77(1),
   147–160.
 
+### The C-index
+
+```python
+C = coxdev.c_index(eta)          # Harrell's concordance index
+```
+
+Harrell's concordance index (Harrell et al., 1982; Harrell, Lee and Mark,
+1996): for each failure `i` at time `t`, every `j` at risk at `t` is
+compared with it, except the other failures at `t`; the pair has weight
+`w_i * w_j`, is concordant if `eta[i] > eta[j]`, and counts half if they
+are tied. With strata, only pairs within a stratum are compared. It is R's
+`survival::concordance(y ~ -eta, weights = w)` and, without strata,
+`glmnet::Cindex`. A two-dimensional `eta` gives one C-index per column.
+
+It takes `O(n log n)`, by the algorithm of the `survival` package's
+concordance vignette (Therneau and Atkinson): the subjects in decreasing
+time, with the weights of the risk set in a Fenwick tree (Fenwick, 1994)
+over the ranks of the predictor, counting the ordered pairs as Knight
+(1966) does for Kendall's tau.
+
+#### References
+
+- Fenwick, P. M. (1994). A new data structure for cumulative frequency
+  tables. *Software: Practice and Experience*, 24(3), 327–336.
+- Harrell, F. E., Califf, R. M., Pryor, D. B., Lee, K. L. and Rosati, R. A.
+  (1982). Evaluating the yield of medical tests. *JAMA*, 247(18),
+  2543–2546.
+- Harrell, F. E., Lee, K. L. and Mark, D. B. (1996). Multivariable
+  prognostic models: issues in developing models, evaluating assumptions
+  and adequacy, and measuring and reducing errors. *Statistics in
+  Medicine*, 15(4), 361–387.
+- Knight, W. R. (1966). A computer method for calculating Kendall's tau
+  with ungrouped data. *Journal of the American Statistical Association*,
+  61(314), 436–439.
+- Therneau, T. M. and Atkinson, E. J. *The concordance statistic*.
+  Vignette of the R package `survival`.
+
 ### Different Tie-Breaking Methods
 
 ```python
@@ -374,6 +411,7 @@ The main class for computing Cox model quantities.
 - **`baseline_hazard(linear_predictor, sample_weight=None)`**: The baseline hazard, a `BaselineHazard` with `time`, `hazard`, `cumulative_hazard` and `stratum`
 - **`schoenfeld_residuals(linear_predictor, X, sample_weight=None)`**: The `(n, p)` Schoenfeld residuals of a design `X`, zero for the observations that do not fail
 - **`risk_set_variance(linear_predictor, Z, sample_weight=None)`**: The `(n, p)` risk-set variances of the columns of `Z` at each failure, zero for the observations that do not fail
+- **`c_index(linear_predictor, sample_weight=None)`**: Harrell's concordance index (C-index) of a linear predictor, or one per column
 - **`expected_events(linear_predictor, sample_weight=None)`**: The expected number of events of each observation over `(start, event]`
 - **`survival_at_exit(linear_predictor, sample_weight=None)`**: The expected survival probability of each observation at its exit, `exp(-expected_events)`
 

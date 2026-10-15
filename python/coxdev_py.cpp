@@ -150,6 +150,11 @@ PYBIND11_MODULE(coxc, m) {
       .def("schoenfeld_residuals", &CoxDeviance::schoenfeld_residuals, py::arg("x"))
       .def("risk_set_variance", &CoxDeviance::risk_set_variance, py::arg("z"))
       .def("expected_events", &CoxDeviance::expected_events)
+      .def("concordance", [](const CoxDeviance &self, const Eigen::VectorXd& pred,
+                             const Eigen::VectorXd& weight) {
+          Concordance c = self.concordance(pred, weight);
+          return py::make_tuple(c.numerator, c.denominator);
+      }, py::arg("pred"), py::arg("weight"))
       .def("baseline_hazard", [](const CoxDeviance &self) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
@@ -185,6 +190,11 @@ PYBIND11_MODULE(coxc, m) {
       .def("schoenfeld_residuals", &StratifiedCoxDeviance::schoenfeld_residuals, py::arg("x"))
       .def("risk_set_variance", &StratifiedCoxDeviance::risk_set_variance, py::arg("z"))
       .def("expected_events", &StratifiedCoxDeviance::expected_events)
+      .def("concordance", [](const StratifiedCoxDeviance &self, const Eigen::VectorXd& pred,
+                             const Eigen::VectorXd& weight) {
+          Concordance c = self.concordance(pred, weight);
+          return py::make_tuple(c.numerator, c.denominator);
+      }, py::arg("pred"), py::arg("weight"))
       .def("baseline_hazard", [](const StratifiedCoxDeviance &self) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);

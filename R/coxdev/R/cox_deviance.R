@@ -28,9 +28,21 @@
 #' Breslow, N. E. (1972). Discussion of Professor Cox's paper. *Journal of
 #' the Royal Statistical Society, Series B*, 34(2), 216--217.
 #'
+#' Fenwick, P. M. (1994). A new data structure for cumulative frequency
+#' tables. *Software: Practice and Experience*, 24(3), 327--336.
+#'
 #' Grambsch, P. M. and Therneau, T. M. (1994). Proportional hazards tests
 #' and diagnostics based on weighted residuals. *Biometrika*, 81(3),
 #' 515--526.
+#'
+#' Harrell, F. E., Califf, R. M., Pryor, D. B., Lee, K. L. and Rosati, R. A.
+#' (1982). Evaluating the yield of medical tests. *JAMA*, 247(18),
+#' 2543--2546.
+#'
+#' Harrell, F. E., Lee, K. L. and Mark, D. B. (1996). Multivariable
+#' prognostic models: issues in developing models, evaluating assumptions
+#' and adequacy, and measuring and reducing errors. *Statistics in
+#' Medicine*, 15(4), 361--387.
 #'
 #' Lin, D. Y. and Wei, L. J. (1989). The robust inference for the Cox
 #' proportional hazards model. *Journal of the American Statistical
@@ -38,6 +50,9 @@
 #'
 #' Schoenfeld, D. (1982). Partial residuals for the proportional hazards
 #' regression model. *Biometrika*, 69(1), 239--241.
+#'
+#' Therneau, T. M. and Atkinson, E. J. The concordance statistic. Vignette
+#' of the R package survival, `vignette("concordance", package = "survival")`.
 #'
 #' Therneau, T. M. and Grambsch, P. M. (2000). *Modeling Survival Data:
 #' Extending the Cox Model*. Springer, New York.
@@ -149,6 +164,41 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #'   the diagonal `diag_hessian` of its Hessian.
     compute = function(linear_predictor, sample_weight = NULL) {
       private$prepare(linear_predictor, sample_weight)
+    },
+
+    #' @description Harrell's concordance index (C-index) of a linear
+    #'   predictor. For each failure `i` at time `t`, every `j` at risk at `t`
+    #'   (`start[j] < t <= event[j]`) is compared with `i`, except the other
+    #'   failures at `t`. The pair has weight `w_i * w_j`, and is concordant
+    #'   if `linear_predictor[i] > linear_predictor[j]`, a higher risk
+    #'   failing first; tied predictions count half. With strata, only pairs
+    #'   within a stratum are compared.
+    #'
+    #'   This is `survival::concordance(y ~ -linear_predictor, weights = w)`
+    #'   (with `+ strata(...)` for strata) and, without strata,
+    #'   `glmnet::Cindex` (Harrell et al., 1982; Harrell, Lee and Mark, 1996).
+    #'   It is computed in O(n log n) per column, by the algorithm of the
+    #'   survival package's concordance vignette (Therneau and Atkinson), with
+    #'   the weights of the risk set in a Fenwick tree (Fenwick, 1994). It
+    #'   does not need `compute()`.
+    #' @param linear_predictor The linear predictor (a risk score): a vector,
+    #'   or a matrix with one column per predictor.
+    #' @param sample_weight As for `compute()`.
+    #' @return The C-index, one per column of a matrix; `NaN` if no pair is
+    #'   comparable.
+    c_index = function(linear_predictor, sample_weight = NULL) {
+      pred <- as.matrix(linear_predictor)
+      if (nrow(pred) != private$n_obs) {
+        stop(sprintf("linear_predictor must have %d rows (one per observation), not %d",
+                     private$n_obs, nrow(pred)))
+      }
+      sample_weight <- .as_weight(sample_weight, private$n_obs)
+      if (!.cox_valid(private$ptr)) private$rebuild(private$weight)
+      values <- apply(pred, 2, function(p) {
+        out <- .cox_concordance(private$ptr, as.numeric(p), sample_weight)
+        if (out[2] > 0) out[1] / out[2] else NaN
+      })
+      if (is.null(dim(linear_predictor))) unname(values) else values
     },
 
     #' @description The information at a linear predictor: half the Hessian of

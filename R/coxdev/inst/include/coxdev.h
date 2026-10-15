@@ -45,6 +45,17 @@ struct BaselineHazard {
     Eigen::VectorXi stratum;
 };
 
+// Harrell's concordance index (C-index) as a ratio: numerator / denominator,
+// NaN when no pair is comparable (denominator 0). See concordance below.
+struct Concordance {
+    double numerator;
+    double denominator;
+    double value() const {
+        return denominator > 0 ? numerator / denominator
+                               : std::numeric_limits<double>::quiet_NaN();
+    }
+};
+
 struct CoxContext {
     Eigen::Ref<const Eigen::VectorXi> event_order;
     Eigen::Ref<const Eigen::VectorXi> start_order;
@@ -116,6 +127,13 @@ public:
     // The baseline hazard at the last compute_deviance; see BaselineHazard.
     BaselineHazard baseline_hazard() const;
 
+    // Harrell's concordance index of a predictor pred (n-vector, native
+    // order; a higher pred means a higher risk) for these data, with
+    // weights weight; see the free function concordance. Does not need
+    // compute_deviance.
+    Concordance concordance(const Eigen::VectorXd& pred,
+                            const Eigen::VectorXd& weight) const;
+
     // The Schoenfeld residuals of one covariate x (n-vector, native order) at
     // the last compute_deviance: for a failure i with positive weight, x_i
     // minus the mean of x over its risk set, with weights w exp(eta); with
@@ -171,6 +189,8 @@ private:
     // Preprocessing results
     Eigen::VectorXd _start, _event, _scaling;
     Eigen::VectorXd raw_start;    // start times in native order
+    Eigen::VectorXd raw_event;    // event times in native order
+    Eigen::VectorXi raw_status;   // status in native order
     Eigen::VectorXi _status, _first, _last, _start_map, _event_map;
     Eigen::VectorXi event_order, start_order;
     
@@ -219,6 +239,10 @@ public:
     Eigen::VectorXd score_residuals(const Eigen::VectorXd& x) const;
     // within each stratum, labelled by its value of strata
     BaselineHazard baseline_hazard() const;
+    // comparing only pairs within a stratum: the sums of the strata's
+    // numerators and denominators
+    Concordance concordance(const Eigen::VectorXd& pred,
+                            const Eigen::VectorXd& weight) const;
     Eigen::VectorXd schoenfeld_residuals(const Eigen::VectorXd& x) const;
     Eigen::VectorXd risk_set_variance(const Eigen::VectorXd& z) const;
     Eigen::VectorXd expected_events() const;
@@ -244,6 +268,25 @@ private:
     Eigen::VectorXd sample_weight;
     double loglik_sat;
 };
+
+// Harrell's concordance index (Harrell et al., 1982, JAMA 247, 2543-2546;
+// Harrell, Lee and Mark, 1996, Statistics in Medicine 15, 361-387) of a
+// predictor pred for (start, event] data, all n-vectors in the same order.
+// For each failure i at time t, every j at risk at t (start_j < t <= event_j)
+// is compared with i, except the other failures at t: the pair counts with
+// weight w_i w_j, as concordant (1) if pred_i > pred_j and half if they are
+// tied. This is R's survival::concordance(y ~ -pred, weights = w) and
+// glmnet::Cindex. O(n log n), by the algorithm of the survival package's
+// concordance vignette (Therneau and Atkinson): subjects are taken in
+// decreasing time, with the weights of the risk set kept in a Fenwick
+// (binary indexed) tree over the ranks of pred (Fenwick, 1994, Software:
+// Practice and Experience 24, 327-336), counting pairs in order as Knight
+// (1966, JASA 61, 436-439) does for Kendall's tau.
+Concordance concordance(const Eigen::VectorXd& pred,
+                        const Eigen::VectorXd& start,
+                        const Eigen::VectorXd& event,
+                        const Eigen::VectorXi& status,
+                        const Eigen::VectorXd& weight);
 
 // Standalone function declarations
 void forward_cumsum(const Eigen::Ref<const Eigen::VectorXd> sequence,
