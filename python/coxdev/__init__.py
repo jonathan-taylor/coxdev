@@ -26,5 +26,5 @@ except PackageNotFoundError:
     except (ImportError, LookupError):
         __version__ = "unknown"
 
-from .base import CoxDeviance
+from .base import CoxDeviance, BaselineHazard
 

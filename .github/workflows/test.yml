@@ -28,10 +28,15 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Test the C++ code
+      run: |
+        c++ -std=c++17 -O2 -Wall -Ieigen -Icpp/include cpp/src/coxdev.cpp cpp/tests/test_residuals_hazard.cpp -o test_residuals_hazard
+        ./test_residuals_hazard
+
     - name: Install coxdev
       run: |
         pip install --upgrade pip
-        pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas joblib
+        pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas glmstar
         pip install .
 
     - name: Verify installed source
@@ -43,6 +48,13 @@ jobs:
       run: |
         cd /tmp
         python -c "import coxdev; print(f'Location: {coxdev.__file__}'); import os; print(f'Contents: {os.listdir(os.path.dirname(coxdev.__file__))}')"
+
+    - name: Run the notebooks in doc
+      run: |
+        pip install jupytext nbconvert ipykernel matplotlib pandas
+        for nb in using_coxdev sampling; do
+          jupytext --to ipynb --execute doc/$nb.md --output "$RUNNER_TEMP/$nb.ipynb"
+        done
 
     - name: Test coxdev
       run: |

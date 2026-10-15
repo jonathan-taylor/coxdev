@@ -252,6 +252,25 @@ The random numbers come from the C++ code, from the bits of
 `std::mt19937_64`, so the same `seed` gives the same draws on every
 platform. With `seed=None`, a fresh seed is drawn.
 
+### Score Residuals and the Baseline Hazard
+
+```python
+# the score residuals of a design: row i is observation i's contribution
+# to the score of the coefficients
+U = coxdev.score_residuals(eta, X)
+I = X.T @ (coxdev.information(eta) @ X)
+robust_cov = np.linalg.solve(I, np.linalg.solve(I, U.T @ U).T)   # the sandwich
+
+# Breslow's (or, with Efron's ties, Efron's) baseline hazard, for eta as given
+H = coxdev.baseline_hazard(eta)
+H.time, H.hazard, H.cumulative_hazard, H.stratum
+```
+
+The cumulative hazard of observation `i` at time `t` is the
+`cumulative_hazard` at the last failure time `<= t` (in its stratum) times
+`exp(eta[i])`. Both agree with R's `survival` (`residuals(fit, type =
+"score")`, which is per unit weight, and `basehaz(fit, centered = FALSE)`).
+
 ### Different Tie-Breaking Methods
 
 ```python
@@ -281,6 +300,8 @@ The main class for computing Cox model quantities.
 - **`information(linear_predictor, sample_weight=None)`**: Get information matrix as linear operator
 - **`sample_score(linear_predictor, sample_weight=None, method='multinomial', n_draws=None, seed=None)`**: Draws of the score, one entry per observation: a vector if `n_draws` is None, else an `(n, n_draws)` array. See [Sampling the Score](#sampling-the-score)
 - **`wild_score(linear_predictor, multipliers, sample_weight=None)`**: The wild draw of the score for given multipliers
+- **`score_residuals(linear_predictor, X, sample_weight=None)`**: The `(n, p)` score residuals of a design `X`
+- **`baseline_hazard(linear_predictor, sample_weight=None)`**: The baseline hazard, a `BaselineHazard` with `time`, `hazard`, `cumulative_hazard` and `stratum`
 
 ### CoxDevianceResult
 
@@ -312,6 +333,34 @@ The library is optimized for performance:
 - Eigen library headers
 - For Python library: Python >= 3.9 + pybind11
 
+
+## C++ API
+
+The Python package (and the R package in `R/coxdev`) wrap the C++ classes
+`CoxDeviance` and `StratifiedCoxDeviance` in `cpp/include/coxdev.h`. After
+`compute_deviance(eta, weights)`, besides the gradient, the diagonal of the
+Hessian, products with the information and draws of the score, they give:
+
+- `score_residuals(x)`: for one covariate `x` (an n-vector), the n-vector
+  of score residuals, each observation's contribution to the score
+  `x^T (-gradient / 2)`, centered within each risk set (with Efron's
+  weights for ties if `efron`). They are linear in `x`, with `wild_score`
+  the adjoint: `G^T score_residuals(x)` is `x^T wild_score(G)`. The C++
+  never sees a design: applied to each column of `X` they give the `n x p`
+  matrix `U`, whose crossproduct `U^T U` is the middle of the robust
+  (sandwich) variance (Lin and Wei, 1989).
+- `baseline_hazard()`: the estimate of the baseline hazard, Breslow's
+  (1972) or, with Efron's ties, Efron's (1977), at each distinct failure
+  time (within each stratum): its increments and cumulative sum, for the
+  linear predictor as given, so that the cumulative hazard of observation
+  `i` at time `t` is `cumulative_hazard(t) * exp(eta_i)`.
+
+`cpp/tests` has tests of these against direct computations:
+
+```bash
+c++ -std=c++17 -O2 -Ieigen -Icpp/include cpp/src/coxdev.cpp cpp/tests/test_residuals_hazard.cpp -o test_residuals_hazard
+./test_residuals_hazard
+```
 
 ## Testing
 
