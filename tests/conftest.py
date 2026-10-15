@@ -1,5 +1,15 @@
+import os
+
 import pytest
 import numpy as np
+
+
+def _skip_R(reason):
+    # with COXDEV_REQUIRE_R set (as in CI), a missing R setup fails the tests
+    # that need it instead of skipping them
+    if os.environ.get('COXDEV_REQUIRE_R'):
+        pytest.fail(reason)
+    pytest.skip(reason)
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -18,11 +28,9 @@ def Rinfo():
         val['rpy'] = rpy
         val['has_rpy2'] = True
     except ImportError:
-        pytest.skip('rpy2 is not importable')
-        val['has_rpy2'] = False
-        return val
-    
-    from rpy2.robjects.packages import importr
+        _skip_R('rpy2 is not importable')
+
+    from rpy2.robjects.packages import importr, PackageNotInstalledError
     from rpy2.robjects import numpy2ri, pandas2ri
     from rpy2.robjects import default_converter
     from rpy2.robjects.vectors import FloatVector, IntVector
@@ -41,10 +49,13 @@ def Rinfo():
     val['np_cv_rules'] = default_converter + numpy2ri.converter + pandas2ri.converter
     np_cv_rules = val['np_cv_rules']
     
-    val['glmnetR'] = importr('glmnet')
+    try:
+        val['glmnetR'] = importr('glmnet')
+        val['survivalR'] = importr('survival')
+    except PackageNotInstalledError as e:
+        _skip_R(f'an R package the tests need is not installed: {e}')
     val['baseR'] = importr('base')
     val['statR'] = importr('stats')
-    val['survivalR'] = importr('survival')
 
     return val
 
