@@ -1129,6 +1129,49 @@ Eigen::VectorXd CoxDeviance::schoenfeld_residuals(const Eigen::VectorXd& x) cons
   return out;
 }
 
+Eigen::VectorXd CoxDeviance::risk_set_variance(const Eigen::VectorXd& z) const {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    ERROR_MSG("risk_set_variance: call compute_deviance first");
+  }
+  if (z.size() != n) {
+    ERROR_MSG("risk_set_variance: z must have one entry per observation");
+  }
+  CoxContext ctx = get_context();
+  const Eigen::VectorXd& S = risk_sum_buffers[0];
+  const Eigen::VectorXd& w_ev = event_reorder_buffers[1];
+
+  // the variance is unchanged by a shift of z: centering it first keeps the
+  // mean of the squares less the square of the mean accurate
+  Eigen::VectorXd zc = z.array() - z.mean();
+  Eigen::VectorXd SZ(n), SZZ(n), event_cumsum(n + 1), start_cumsum(n + 1);
+  Eigen::VectorXd ez = exp_w_buffer.array() * zc.array();
+  sum_over_risk_set(ez, ctx, SZ, event_cumsum, start_cumsum);
+  Eigen::VectorXd ezz = ez.array() * zc.array();
+  sum_over_risk_set(ezz, ctx, SZZ, event_cumsum, start_cumsum);
+
+  // the variance of each failure term t (with Efron's weights if efron),
+  // then its average over the failures tied with i
+  Eigen::VectorXd var = Eigen::VectorXd::Zero(n);
+  for (int t = 0; t < n; ++t) {
+    if (failure_term(ctx, w_ev, S, t)) {
+      double mean = SZ(t) / S(t);
+      var(t) = std::max(SZZ(t) / S(t) - mean * mean, 0.0);
+    }
+  }
+  Eigen::VectorXd Cv(n + 1);
+  forward_cumsum(var, Cv);
+
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
+  for (int i = 0; i < n; ++i) {
+    if (failure_term(ctx, w_ev, S, i)) {
+      int f = ctx.first(i), l = ctx.last(i);
+      out(event_order(i)) = (Cv(l + 1) - Cv(f)) / (l + 1 - f);
+    }
+  }
+  return out;
+}
+
 Eigen::VectorXd CoxDeviance::expected_events() const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
@@ -1427,6 +1470,22 @@ Eigen::VectorXd StratifiedCoxDeviance::schoenfeld_residuals(const Eigen::VectorX
     for (size_t j = 0; j < indices.size(); ++j) xs(j) = x(indices[j]);
     Eigen::VectorXd r = cox_devs[s]->schoenfeld_residuals(xs);
     for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = r(j);
+  }
+  return out;
+}
+
+Eigen::VectorXd StratifiedCoxDeviance::risk_set_variance(const Eigen::VectorXd& z) const {
+  int n = linear_predictor.size();
+  if (z.size() != n) {
+    ERROR_MSG("risk_set_variance: z must have one entry per observation");
+  }
+  Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    const auto& indices = stratum_indices[s];
+    Eigen::VectorXd zs(indices.size());
+    for (size_t j = 0; j < indices.size(); ++j) zs(j) = z(indices[j]);
+    Eigen::VectorXd v = cox_devs[s]->risk_set_variance(zs);
+    for (size_t j = 0; j < indices.size(); ++j) out(indices[j]) = v(j);
   }
   return out;
 }

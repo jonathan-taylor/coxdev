@@ -99,6 +99,7 @@ Martingale-based residuals for survival models. \emph{Biometrika}, 77(1),
     \item \href{#method-CoxDeviance-wild_score}{\code{CoxDeviance$wild_score()}}
     \item \href{#method-CoxDeviance-score_residuals}{\code{CoxDeviance$score_residuals()}}
     \item \href{#method-CoxDeviance-schoenfeld_residuals}{\code{CoxDeviance$schoenfeld_residuals()}}
+    \item \href{#method-CoxDeviance-risk_set_variance}{\code{CoxDeviance$risk_set_variance()}}
     \item \href{#method-CoxDeviance-expected_events}{\code{CoxDeviance$expected_events()}}
     \item \href{#method-CoxDeviance-survival_at_exit}{\code{CoxDeviance$survival_at_exit()}}
     \item \href{#method-CoxDeviance-baseline_hazard}{\code{CoxDeviance$baseline_hazard()}}
@@ -364,6 +365,44 @@ The residuals are built a column at a time, each in O(n).
   \subsection{Returns}{
     A dense matrix with the dimnames of \code{X} (a vector for a
 vector \code{X}), with a row for every observation.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-risk_set_variance"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-risk_set_variance}{}}}
+\subsection{\code{CoxDeviance$risk_set_variance()}}{
+  The risk-set variances of the columns of \code{Z} at a
+linear predictor. Row \code{i}, for an observation that fails (with
+positive weight), is the variance of each covariate over its risk
+set with weights \code{sample_weight * exp(eta)}: the \code{V_z} by which
+Grambsch and Therneau (1994) scale the Schoenfeld residuals,
+\code{beta + r / V_z} for one covariate. With \code{tie_breaking = "efron"}, it
+is the average over the failures tied with \code{i} of their Efron
+variances, as for \code{schoenfeld_residuals()}. The other rows are zero.
+Weighted by \code{sample_weight}, the rows sum to the diagonal of the
+information, \code{diag(crossprod(Z, I \%*\% Z))}.
+
+The covariance of two covariates \code{y} and \code{z} follows by
+polarization, \code{(V(y + z) - V(y - z)) / 4}.
+
+The variances are computed a column at a time, each in O(n).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$risk_set_variance(linear_predictor, Z, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+      \item{\code{Z}}{The covariates, as \code{X} for \code{score_residuals()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A dense matrix with the dimnames of \code{Z} (a vector for a
+vector \code{Z}), with a row for every observation.
   }
 }
 

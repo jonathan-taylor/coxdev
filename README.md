@@ -305,6 +305,14 @@ and Grambsch, 2000, Chapter 6). As for the score residuals, the C++ takes
 one covariate, an n-vector, at a time, and `schoenfeld_residuals` loops
 over the columns of `X`, dense or sparse.
 
+`risk_set_variance(eta, Z)` gives, for each failure, the variance of each
+column of `Z` over its risk set, the `V_z` by which Grambsch and Therneau
+(1994) scale the Schoenfeld residuals: for one covariate, `beta + r / V_z`
+has mean about `beta(t)` at the failure time `t`. Weighted by
+`sample_weight`, the variances sum to the diagonal of the information. The
+covariance of two columns follows by polarization,
+`(V(y + z) - V(y - z)) / 4`.
+
 The expected number of events of observation `i` is `exp(eta[i])` times
 the increase of the baseline cumulative hazard (Breslow, 1972) over
 `(start[i], event[i]]`, with Efron's share at a tied failure time for the
@@ -365,6 +373,7 @@ The main class for computing Cox model quantities.
 - **`score_residuals(linear_predictor, X, sample_weight=None)`**: The `(n, p)` score residuals of a design `X`
 - **`baseline_hazard(linear_predictor, sample_weight=None)`**: The baseline hazard, a `BaselineHazard` with `time`, `hazard`, `cumulative_hazard` and `stratum`
 - **`schoenfeld_residuals(linear_predictor, X, sample_weight=None)`**: The `(n, p)` Schoenfeld residuals of a design `X`, zero for the observations that do not fail
+- **`risk_set_variance(linear_predictor, Z, sample_weight=None)`**: The `(n, p)` risk-set variances of the columns of `Z` at each failure, zero for the observations that do not fail
 - **`expected_events(linear_predictor, sample_weight=None)`**: The expected number of events of each observation over `(start, event]`
 - **`survival_at_exit(linear_predictor, sample_weight=None)`**: The expected survival probability of each observation at its exit, `exp(-expected_events)`
 

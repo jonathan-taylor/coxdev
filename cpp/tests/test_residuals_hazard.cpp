@@ -1,5 +1,5 @@
 // Tests of CoxDeviance::score_residuals, schoenfeld_residuals,
-// baseline_hazard and expected_events (and their stratified versions)
+// risk_set_variance, baseline_hazard and expected_events (and their stratified versions)
 // against direct O(n^2) computations, and of the identities they satisfy
 // with the score and wild_score.
 //
@@ -77,10 +77,11 @@ bool in(const Data& d, int i, int s) { return s < 0 || d.strata(i) == s; }
 // and for i in D the Schoenfeld residual is x_i less the mean over r of xbar_r.
 void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
                std::map<double, double>& hazard, Eigen::MatrixXd& Sch,
-               Eigen::VectorXd& E) {
+               Eigen::VectorXd& E, Eigen::MatrixXd& V) {
   int n = d.event.size(), p = d.X.cols();
   U = Eigen::MatrixXd::Zero(n, p);
   Sch = Eigen::MatrixXd::Zero(n, p);
+  V = Eigen::MatrixXd::Zero(n, p);
   E = Eigen::VectorXd::Zero(n);
   hazard.clear();
   std::set<double> taus;
@@ -101,6 +102,7 @@ void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
     int nd = D.size();
     double wbar = wsum / nd;
     Eigen::RowVectorXd xbar_mean = Eigen::RowVectorXd::Zero(p);
+    Eigen::RowVectorXd var_mean = Eigen::RowVectorXd::Zero(p);
     for (int r = 0; r < nd; ++r) {
       double sc = efron ? double(r) / nd : 0.0;
       Eigen::VectorXd pr = Eigen::VectorXd::Zero(n);
@@ -117,6 +119,8 @@ void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
       pr /= S;
       Eigen::RowVectorXd xbar = pr.transpose() * d.X;
       xbar_mean += xbar / nd;
+      Eigen::RowVectorXd x2bar = pr.transpose() * d.X.array().square().matrix();
+      var_mean += (x2bar.array() - xbar.array().square()).matrix() / nd;
       for (int i = 0; i < n; ++i) {
         double a = -wbar * pr(i);
         for (int k : D) {
@@ -125,7 +129,10 @@ void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
         if (a != 0.0) U.row(i) += a * (d.X.row(i) - xbar);
       }
     }
-    for (int i : D) Sch.row(i) = d.X.row(i) - xbar_mean;
+    for (int i : D) {
+      Sch.row(i) = d.X.row(i) - xbar_mean;
+      V.row(i) = var_mean;
+    }
   }
 }
 
@@ -140,10 +147,11 @@ void check_model(Cox& cox, const Data& d, bool efron, bool stratified, const std
   cox.sample_score("wild", 2, 7);
   // the residuals of the design, a column at a time
   Eigen::MatrixXd U(n, d.X.cols());
-  Eigen::MatrixXd Sch(n, d.X.cols());
+  Eigen::MatrixXd Sch(n, d.X.cols()), V(n, d.X.cols());
   for (Eigen::Index j = 0; j < d.X.cols(); ++j) {
     U.col(j) = cox.score_residuals(Eigen::VectorXd(d.X.col(j)));
     Sch.col(j) = cox.schoenfeld_residuals(Eigen::VectorXd(d.X.col(j)));
+    V.col(j) = cox.risk_set_variance(Eigen::VectorXd(d.X.col(j)));
   }
   BaselineHazard H = cox.baseline_hazard();
   Eigen::VectorXd E = cox.expected_events();
@@ -166,12 +174,14 @@ void check_model(Cox& cox, const Data& d, bool efron, bool stratified, const std
   Eigen::MatrixXd U_ref = Eigen::MatrixXd::Zero(n, d.X.cols()), U_s;
   Eigen::MatrixXd Sch_ref = Eigen::MatrixXd::Zero(n, d.X.cols()), Sch_s;
   Eigen::VectorXd E_ref = Eigen::VectorXd::Zero(n), E_s;
+  Eigen::MatrixXd V_ref = Eigen::MatrixXd::Zero(n, d.X.cols()), V_s;
   std::map<std::pair<int, double>, double> hazard_ref;
   std::set<int> strata;
   for (int i = 0; i < n; ++i) strata.insert(stratified ? d.strata(i) : -1);
   for (int s : strata) {
     std::map<double, double> h;
-    reference(d, efron, s, U_s, h, Sch_s, E_s);
+    reference(d, efron, s, U_s, h, Sch_s, E_s, V_s);
+    V_ref += V_s;
     U_ref += U_s;
     Sch_ref += Sch_s;
     E_ref += E_s;
@@ -180,6 +190,7 @@ void check_model(Cox& cox, const Data& d, bool efron, bool stratified, const std
   check(max_abs(U - U_ref), 1e-9 * (1 + max_abs(U_ref)), name + ": residuals");
   check(max_abs(Sch - Sch_ref), 1e-9 * (1 + max_abs(Sch_ref)), name + ": Schoenfeld residuals");
   check(max_abs(E - E_ref), 1e-9 * (1 + max_abs(E_ref)), name + ": expected events");
+  check(max_abs(V - V_ref), 1e-9 * (1 + max_abs(V_ref)), name + ": risk-set variances");
 
   bool same_size = (int) hazard_ref.size() == H.time.size();
   check(same_size ? 0.0 : 1.0, 0.0, name + ": number of failure times");

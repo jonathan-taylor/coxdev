@@ -504,6 +504,53 @@ class CoxDeviance(object):
         return self._by_column(self._coxc.schoenfeld_residuals,
                                linear_predictor, X, sample_weight)
 
+    def risk_set_variance(self,
+                          linear_predictor,
+                          Z,
+                          sample_weight=None):
+        """
+        The risk-set variances of the columns of ``Z`` at ``linear_predictor``.
+
+        Row ``i``, for an observation that fails (with positive weight), is
+        the variance of each covariate over its risk set, with weights
+        ``w exp(eta)``: the ``V_z`` by which Grambsch and Therneau (1994)
+        scale the Schoenfeld residuals, ``beta + r / V_z`` for one
+        covariate. With ``tie_breaking='efron'``, it is the average over the
+        failures tied with ``i`` of their Efron variances, as for
+        ``schoenfeld_residuals``. The other rows are zero. Weighted by the
+        sample weights, the rows sum to the diagonal of the information:
+        ``sample_weight @ V`` is ``diag(Z.T @ I @ Z)``.
+
+        The covariance of two covariates ``y`` and ``z`` follows by
+        polarization, ``(V(y + z) - V(y - z)) / 4``, which gives the full
+        risk-set covariance matrices a pair of columns at a time.
+
+        The variances are computed a column at a time, each in ``O(n)``.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        Z : np.ndarray or scipy.sparse matrix
+            The covariates, one row per observation; a sparse ``Z`` is made
+            dense a column at a time.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n, p)``, or ``(n,)`` for a one-dimensional ``Z``.
+
+        References
+        ----------
+        Grambsch, P. M. and Therneau, T. M. (1994). Proportional hazards
+        tests and diagnostics based on weighted residuals. *Biometrika*,
+        81(3), 515-526.
+        """
+        return self._by_column(self._coxc.risk_set_variance,
+                               linear_predictor, Z, sample_weight)
+
     def _by_column(self, residuals, linear_predictor, X, sample_weight):
         # the C++ takes one covariate at a time
         if issparse(X):

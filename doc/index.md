@@ -67,6 +67,9 @@ quantities that come cheaply from the same sorted data:
   `survival`. Plotted against time, they check the proportional hazards
   assumption (Grambsch and Therneau, 1994). Like `score_residuals`, they are
   computed one covariate, an $n$-vector, at a time.
+- **`risk_set_variance`**: for each failure, the variance of a covariate
+  over its risk set, the $V_z$ by which Grambsch and Therneau (1994) scale
+  the Schoenfeld residuals.
 - **`expected_events`** and **`survival_at_exit`**: the expected number of
   events of each observation over its time at risk, $e^{\eta_i}$ times the
   increase of the baseline cumulative hazard, and the expected survival

@@ -338,3 +338,67 @@ def test_schoenfeld_expected_against_survival(Rinfo, tie_breaking, start, weight
     np.testing.assert_allclose(R_sch[fail][order], sch_R[order_R], atol=1e-10)
     np.testing.assert_allclose(cox.expected_events(eta, sample_weight=w), expected_R, rtol=1e-10)
     np.testing.assert_allclose(cox.survival_at_exit(eta, sample_weight=w), surv_R, rtol=1e-10)
+
+
+def reference_variance(Z, eta, event, status, entry, weight, efron):
+    """Direct computation: for each failure with positive weight, the
+    variance of z over its risk set with weights w exp(eta); with Efron's
+    ties, the average over r = 0, ..., d - 1 of the variances with the tied
+    failures downweighted by r / d. Zero for the other rows."""
+    start = -np.inf * np.ones(len(event)) if entry is None else entry
+    e = weight * np.exp(eta - eta.max())
+    V = np.zeros_like(Z)
+    for t in np.unique(event[(status == 1) & (weight > 0)]):
+        D = (event == t) & (status == 1) & (weight > 0)
+        R = (event >= t) & (start < t) & (weight > 0)
+        d = D.sum()
+        variances = []
+        for r in range(d):
+            s = r / d if efron else 0.
+            p = e * (R - s * D)
+            p = p / p.sum()
+            variances.append(p @ Z**2 - (p @ Z)**2)
+        V[D] = np.mean(variances, 0)
+    return V
+
+
+@pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+@pytest.mark.parametrize('start', [False, True])
+@pytest.mark.parametrize('weights', ['ones', 'unequal', 'zeros'])
+def test_risk_set_variance(tie_breaking, start, weights):
+    X, event, status, entry, w, eta = _setting(start, weights)
+    Z = X + 5                                  # far from mean zero
+    cox = CoxDeviance(event=event, status=status, start=entry, sample_weight=w,
+                      tie_breaking=tie_breaking)
+    V = cox.risk_set_variance(eta, Z, sample_weight=w)
+    V_ref = reference_variance(Z, eta, event, status, entry, w, tie_breaking == 'efron')
+    np.testing.assert_allclose(V, V_ref, atol=1e-10)
+    assert np.all(V[(status == 0) | (w == 0)] == 0)
+    # weighted, they sum to the diagonal of the information
+    I = Z.T @ (cox.information(eta, w) @ Z)
+    np.testing.assert_allclose(w @ V, np.diag(I), rtol=1e-10)
+    # covariances by polarization: their weighted sum is the information
+    C01 = (cox.risk_set_variance(eta, Z[:, 0] + Z[:, 1], sample_weight=w) -
+           cox.risk_set_variance(eta, Z[:, 0] - Z[:, 1], sample_weight=w)) / 4
+    np.testing.assert_allclose(w @ C01, I[0, 1], rtol=1e-8, atol=1e-10)
+    # a constant has no variance, a shift changes nothing
+    np.testing.assert_allclose(cox.risk_set_variance(eta, np.ones(len(eta)), sample_weight=w),
+                               0, atol=1e-12)
+    np.testing.assert_allclose(cox.risk_set_variance(eta, X[:, 0], sample_weight=w), V[:, 0],
+                               atol=1e-10)
+
+
+def test_risk_set_variance_stratified_sparse():
+    X, event, status, entry, w, eta = _setting(True, 'unequal')
+    n = len(event)
+    strata = np.arange(n) % 3
+    cox = CoxDeviance(event=event, status=status, start=entry, strata=strata, sample_weight=w)
+    V = cox.risk_set_variance(eta, X, sample_weight=w)
+    for s in range(3):
+        k = strata == s
+        single = CoxDeviance(event=event[k], status=status[k], start=entry[k], sample_weight=w[k])
+        np.testing.assert_allclose(V[k], single.risk_set_variance(eta[k], X[k], sample_weight=w[k]),
+                                   atol=1e-12)
+    Xs = np.where(np.abs(X) > 1, X, 0)
+    np.testing.assert_allclose(cox.risk_set_variance(eta, sp.csc_matrix(Xs), sample_weight=w),
+                               cox.risk_set_variance(eta, Xs, sample_weight=w), atol=1e-14)

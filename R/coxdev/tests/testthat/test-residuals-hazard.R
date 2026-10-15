@@ -201,3 +201,35 @@ test_that("Schoenfeld residuals and expected events with strata, sparse X and ze
   expect_equal(cox$schoenfeld_residuals(eta, Matrix::Matrix(X, sparse = TRUE), sample_weight = w),
                cox$schoenfeld_residuals(eta, X, sample_weight = w), tolerance = 1e-14)
 })
+
+test_that("risk-set variances agree with survival's coxph.detail", {
+  set.seed(37)
+  beta <- c(0.3, -0.2, 0.1)
+  for (tie_breaking in c("efron", "breslow")) {
+    for (start in c(FALSE, TRUE)) {
+      d <- cox_data(n = 150, start = start)
+      n <- length(d$event)
+      w <- stats::runif(n, 0.5, 2)
+      eta <- drop(d$X %*% beta)
+      cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start,
+                             sample_weight = w, tie_breaking = tie_breaking)
+      fit <- coxph_at(d, d$X, beta, w, tie_breaking)
+      detail <- survival::coxph.detail(fit)
+      V <- cox$risk_set_variance(eta, d$X, sample_weight = w)
+      expect_true(all(V[d$status == 0, ] == 0))
+      # imat at each failure time is the sum over its failures of w V
+      fail_times <- detail$time
+      for (j in 1:3) {
+        by_time <- tapply((w * V[, j])[d$status == 1], d$event[d$status == 1], sum)
+        expect_equal(as.vector(by_time[as.character(fail_times)]),
+                     unname(detail$imat[j, j, ]), tolerance = 1e-10)
+      }
+      # covariances by polarization
+      C12 <- (cox$risk_set_variance(eta, d$X[, 1] + d$X[, 2], sample_weight = w) -
+              cox$risk_set_variance(eta, d$X[, 1] - d$X[, 2], sample_weight = w)) / 4
+      by_time <- tapply((w * C12)[d$status == 1], d$event[d$status == 1], sum)
+      expect_equal(as.vector(by_time[as.character(fail_times)]), unname(detail$imat[1, 2, ]),
+                   tolerance = 1e-10)
+    }
+  }
+})
