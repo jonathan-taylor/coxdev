@@ -362,6 +362,7 @@ The main class for computing Cox model quantities.
 - **event**: Event times (failure times) for each observation
 - **status**: Event indicators (1 for event occurred, 0 for censored)
 - **start**: Start times for left-truncated data (optional)
+- **strata**: Stratum labels (optional): integers, strings or any sortable values; `baseline_hazard` reports each stratum by its label
 - **tie_breaking**: Method for handling tied event times ('efron' or 'breslow')
 
 #### Methods

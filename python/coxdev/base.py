@@ -97,7 +97,10 @@ class CoxDeviance(object):
     status : np.ndarray
         Event indicators (1 for event occurred, 0 for censored).
     strata : np.ndarray, optional
-        Stratum labels for each observation. If None, computes an unstratified model.
+        Stratum labels for each observation: integers, strings or any other
+        values ``np.unique`` can sort (not NaN). If None, computes an
+        unstratified model. ``baseline_hazard`` reports each stratum by its
+        label.
     start : np.ndarray, optional
         Start times for left-truncated data. If None, assumes no truncation.
     sample_weight : np.ndarray, optional
@@ -157,11 +160,19 @@ class CoxDeviance(object):
         else:
             sample_weight = np.asarray(sample_weight).astype(float)
 
+        # the C++ takes the strata as integer codes 0, 1, ...: the labels, in
+        # sorted order, are kept to report them
+        self._strata_labels = None
         if strata is not None:
             strata = np.asarray(strata)
-            if not np.issubdtype(strata.dtype, np.integer):
-                raise ValueError(f"strata must be integer type, got {strata.dtype}")
-            strata = np.asarray(strata, np.int32)
+            if strata.dtype.kind == 'f' and np.isnan(strata).any():
+                raise ValueError('strata must not contain NaN')
+            try:
+                labels, codes = np.unique(strata, return_inverse=True)
+            except TypeError as e:
+                raise ValueError(f'strata must be labels that can be sorted: {e}')
+            self._strata_labels = labels
+            strata = codes.reshape(strata.shape).astype(np.int32)
 
         if strata is not None and ((status.shape != event.shape) or (strata.shape != event.shape) or (start.shape != event.shape)):
             raise ValueError("status, event, start and strata must have same shape")
@@ -661,10 +672,13 @@ class CoxDeviance(object):
         """
         self(linear_predictor, sample_weight)
         time, hazard, cumulative_hazard, stratum = self._coxc.baseline_hazard()
+        stratum = np.asarray(stratum)
+        if self._strata_labels is not None:
+            stratum = self._strata_labels[stratum]
         return BaselineHazard(time=np.asarray(time),
                               hazard=np.asarray(hazard),
                               cumulative_hazard=np.asarray(cumulative_hazard),
-                              stratum=np.asarray(stratum))
+                              stratum=stratum)
 
 
 @dataclass

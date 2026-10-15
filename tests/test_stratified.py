@@ -247,14 +247,14 @@ def test_stratified_input_validation(survival_data):
             strata=np.array([0, 1], dtype=np.int32)  # Wrong length
         )
     
-    # Test that strata must be convertible to int32
-    strata_float = np.zeros(data['n'], dtype=np.float64)
-    strata_float[0] = 1.3
-    with pytest.raises(ValueError):
+    # strata are labels: NaN is not one
+    strata_nan = np.zeros(data['n'], dtype=np.float64)
+    strata_nan[0] = np.nan
+    with pytest.raises(ValueError, match='NaN'):
         CoxDeviance(
-            event=data['event'], 
-            status=data['status'], 
-            strata=strata_float
+            event=data['event'],
+            status=data['status'],
+            strata=strata_nan
         )
     
     # Test that status must be convertible to int32
@@ -630,3 +630,35 @@ def test_coxdeviance2_matches_stratified_and_coxdeviance(tie_breaking, use_weigh
         assert np.allclose(info_cox @ v, info_strat @ v)
         assert np.allclose(info_cox @ v, info2 @ v)
 
+
+
+@pytest.mark.parametrize('kind', ['str', 'float', 'object', 'shifted int'])
+def test_strata_labels(kind):
+    """Strata given as any labels fit the model of their integer codes, and
+    baseline_hazard reports the labels."""
+    rng = np.random.default_rng(5)
+    n = 120
+    event = np.ceil(rng.exponential(size=n) * 4) / 4
+    status = rng.binomial(1, 0.7, n)
+    eta = rng.standard_normal(n) * 0.5
+    codes = rng.integers(0, 3, n)
+    names = {'str': np.array(['north', 'south', 'west']),
+             'float': np.array([-1.5, 0.25, 7.0]),
+             'object': np.array(['a', 'b', 'c'], dtype=object),
+             'shifted int': np.array([10, 20, 30])}[kind]
+    labels = names[codes]
+
+    by_code = CoxDeviance(event=event, status=status, strata=codes)
+    by_label = CoxDeviance(event=event, status=status, strata=labels)
+    r_code, r_label = by_code(eta), by_label(eta)
+    np.testing.assert_allclose(r_label.deviance, r_code.deviance, rtol=1e-14)
+    np.testing.assert_allclose(r_label.gradient, r_code.gradient, rtol=1e-14, atol=1e-14)
+
+    H_code, H_label = by_code.baseline_hazard(eta), by_label.baseline_hazard(eta)
+    np.testing.assert_array_equal(H_label.stratum, names[H_code.stratum])
+    np.testing.assert_allclose(H_label.cumulative_hazard, H_code.cumulative_hazard, rtol=1e-14)
+    assert set(H_label.stratum) == set(names)
+
+    # a list works too
+    r_list = CoxDeviance(event=event, status=status, strata=list(labels))(eta)
+    np.testing.assert_allclose(r_list.deviance, r_code.deviance, rtol=1e-14)
