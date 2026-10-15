@@ -66,24 +66,19 @@ jobs:
         with:
           use-public-rspm: true
 
+      # The kernel is registered with jupyter directly: IRkernel::installspec()
+      # calls jupyter from R, where it failed with no message
       - name: Install the R package and the R kernel
         run: |
           Rscript -e 'install.packages(c("R6", "Rcpp", "RcppEigen", "survival", "Matrix", "glmnet", "IRkernel"))'
-          Rscript -e 'IRkernel::installspec()'
           R CMD INSTALL R/coxdev
-          jupyter kernelspec list
-
-      # The R pages run on the R kernel for Jupyter (IRkernel), with the
-      # R package from R/coxdev: no rpy2
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          use-public-rspm: true
-
-      - name: Install the R package and the R kernel
-        run: |
-          Rscript -e 'install.packages(c("R6", "Rcpp", "RcppEigen", "survival", "Matrix", "glmnet", "IRkernel"))'
-          Rscript -e 'IRkernel::installspec()'
-          R CMD INSTALL R/coxdev
+          which jupyter
+          jupyter kernelspec --version
+          R_BIN=$(Rscript -e 'cat(file.path(R.home("bin"), "R"))')
+          mkdir -p "$RUNNER_TEMP/ir"
+          printf '{"argv": ["%s", "--slave", "-e", "IRkernel::main()", "--args", "{connection_file}"], "display_name": "R", "language": "R"}\n' "$R_BIN" > "$RUNNER_TEMP/ir/kernel.json"
+          cat "$RUNNER_TEMP/ir/kernel.json"
+          jupyter kernelspec install --user --name ir "$RUNNER_TEMP/ir"
           jupyter kernelspec list
 
       - name: Build HTML
