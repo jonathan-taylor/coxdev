@@ -29,6 +29,14 @@
     .Call(`_coxdev_cox_score_residuals`, ptr, x)
 }
 
+.cox_schoenfeld_residuals <- function(ptr, x) {
+    .Call(`_coxdev_cox_schoenfeld_residuals`, ptr, x)
+}
+
+.cox_expected_events <- function(ptr) {
+    .Call(`_coxdev_cox_expected_events`, ptr)
+}
+
 .cox_baseline_hazard <- function(ptr) {
     .Call(`_coxdev_cox_baseline_hazard`, ptr)
 }

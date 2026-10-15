@@ -48,6 +48,31 @@ sqrt(diag(solve(info_beta)))   # standard errors
 draws <- crossprod(X, cox$sample_score(eta, n_draws = 2000, seed = 1))
 diag(cov(t(draws))) / diag(info_beta)   # near 1
 }
+\references{
+Barlow, W. E. and Prentice, R. L. (1988). Residuals for relative risk
+regression. \emph{Biometrika}, 75(1), 65--74.
+
+Breslow, N. E. (1972). Discussion of Professor Cox's paper. \emph{Journal of
+the Royal Statistical Society, Series B}, 34(2), 216--217.
+
+Grambsch, P. M. and Therneau, T. M. (1994). Proportional hazards tests
+and diagnostics based on weighted residuals. \emph{Biometrika}, 81(3),
+515--526.
+
+Lin, D. Y. and Wei, L. J. (1989). The robust inference for the Cox
+proportional hazards model. \emph{Journal of the American Statistical
+Association}, 84(408), 1074--1078.
+
+Schoenfeld, D. (1982). Partial residuals for the proportional hazards
+regression model. \emph{Biometrika}, 69(1), 239--241.
+
+Therneau, T. M. and Grambsch, P. M. (2000). \emph{Modeling Survival Data:
+Extending the Cox Model}. Springer, New York.
+
+Therneau, T. M., Grambsch, P. M. and Fleming, T. R. (1990).
+Martingale-based residuals for survival models. \emph{Biometrika}, 77(1),
+147--160.
+}
 \section{Public fields}{
   \if{html}{\out{<div class="r6-fields">}}
   \describe{
@@ -73,6 +98,9 @@ diag(cov(t(draws))) / diag(info_beta)   # near 1
     \item \href{#method-CoxDeviance-sample_score}{\code{CoxDeviance$sample_score()}}
     \item \href{#method-CoxDeviance-wild_score}{\code{CoxDeviance$wild_score()}}
     \item \href{#method-CoxDeviance-score_residuals}{\code{CoxDeviance$score_residuals()}}
+    \item \href{#method-CoxDeviance-schoenfeld_residuals}{\code{CoxDeviance$schoenfeld_residuals()}}
+    \item \href{#method-CoxDeviance-expected_events}{\code{CoxDeviance$expected_events()}}
+    \item \href{#method-CoxDeviance-survival_at_exit}{\code{CoxDeviance$survival_at_exit()}}
     \item \href{#method-CoxDeviance-baseline_hazard}{\code{CoxDeviance$baseline_hazard()}}
     \item \href{#method-CoxDeviance-print}{\code{CoxDeviance$print()}}
   }
@@ -295,6 +323,103 @@ wild bootstrap) there is no need to form \code{U}:
   \subsection{Returns}{
     A dense matrix with the dimnames of \code{X} (a vector for a
 vector \code{X}).
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-schoenfeld_residuals"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-schoenfeld_residuals}{}}}
+\subsection{\code{CoxDeviance$schoenfeld_residuals()}}{
+  The Schoenfeld residuals of a design \code{X} at a linear
+predictor. Row \code{i}, for an observation that fails (with positive
+weight), is \code{x_i - xbar}, with \code{xbar} the mean of the covariates
+over its risk set with weights \code{sample_weight * exp(eta)}. With
+\code{tie_breaking = "efron"}, \code{xbar} is the average over the failures
+tied with \code{i} of their Efron means, as in \code{survival}. The other rows
+are zero. Weighted by \code{sample_weight}, the rows sum to the score:
+\code{crossprod(U, sample_weight)} is \code{crossprod(X, -gradient / 2)}.
+
+\code{residuals(fit, type = "schoenfeld")} of a \code{survival::coxph} fit has
+the rows of the failures only, in order of failure time: the rows
+with \code{status == 1} here, in the order of the data.
+
+Introduced by Schoenfeld (1982). Plotted against time, they check
+the proportional hazards assumption (Grambsch and Therneau, 1994;
+\code{survival::cox.zph}).
+
+The residuals are built a column at a time, each in O(n).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$schoenfeld_residuals(linear_predictor, X, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+      \item{\code{X}}{As for \code{score_residuals()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A dense matrix with the dimnames of \code{X} (a vector for a
+vector \code{X}), with a row for every observation.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-expected_events"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-expected_events}{}}}
+\subsection{\code{CoxDeviance$expected_events()}}{
+  The expected number of events of each observation at a
+linear predictor: \code{exp(linear_predictor[i])} times the increase of
+the baseline cumulative hazard (see \code{baseline_hazard()}) over
+\verb{(start[i], event[i]]}. With \code{tie_breaking = "efron"}, a failure gets
+Efron's share of the hazard at its own failure time. This is
+\code{predict(fit, type = "expected")} of a \code{survival::coxph} fit:
+\code{status - expected_events} is the martingale residual (Barlow and
+Prentice, 1988; Therneau, Grambsch and Fleming, 1990).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$expected_events(linear_predictor, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A vector, one entry per observation.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-survival_at_exit"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-survival_at_exit}{}}}
+\subsection{\code{CoxDeviance$survival_at_exit()}}{
+  The expected survival probability of each observation
+at its exit: the probability of surviving to \code{event[i]}, given
+survival to \code{start[i]} (to 0 without start times), at a linear
+predictor. It is \code{exp(-expected_events)}, the
+\code{predict(fit, type = "survival")} of a \code{survival::coxph} fit
+(Therneau and Grambsch, 2000, Chapter 4).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$survival_at_exit(linear_predictor, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A vector, one entry per observation.
   }
 }
 

@@ -62,6 +62,20 @@ quantities that come cheaply from the same sorted data:
   failures, and $\bar{w}$ their mean weight. This is what R's
   `survival::basehaz` gives for a `coxph` fit with `ties = "efron"`, and the
   tests check it against that.
+- **`schoenfeld_residuals`**: for each failure, its covariates less their
+  mean over its risk set (Schoenfeld, 1982), with Efron's ties as in R's
+  `survival`. Plotted against time, they check the proportional hazards
+  assumption (Grambsch and Therneau, 1994). Like `score_residuals`, they are
+  computed one covariate, an $n$-vector, at a time.
+- **`expected_events`** and **`survival_at_exit`**: the expected number of
+  events of each observation over its time at risk, $e^{\eta_i}$ times the
+  increase of the baseline cumulative hazard, and the expected survival
+  probability at exit, $\exp(-\text{expected})$. `status - expected_events`
+  is the martingale residual (Barlow and Prentice, 1988; Therneau, Grambsch
+  and Fleming, 1990). These are `predict(fit, type = "expected")` and
+  `predict(fit, type = "survival")` of a `coxph` fit.
+
+The README lists the references.
 
 [Using coxdev](using_coxdev.md) shows these in a worked example, and
 [Using coxdev from R](r_using_coxdev.md) does the same with the R package,

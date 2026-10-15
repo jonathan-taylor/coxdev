@@ -21,6 +21,31 @@
 #' Results are cached: a second call with the same linear predictor and
 #' weights does no work.
 #'
+#' @references
+#' Barlow, W. E. and Prentice, R. L. (1988). Residuals for relative risk
+#' regression. *Biometrika*, 75(1), 65--74.
+#'
+#' Breslow, N. E. (1972). Discussion of Professor Cox's paper. *Journal of
+#' the Royal Statistical Society, Series B*, 34(2), 216--217.
+#'
+#' Grambsch, P. M. and Therneau, T. M. (1994). Proportional hazards tests
+#' and diagnostics based on weighted residuals. *Biometrika*, 81(3),
+#' 515--526.
+#'
+#' Lin, D. Y. and Wei, L. J. (1989). The robust inference for the Cox
+#' proportional hazards model. *Journal of the American Statistical
+#' Association*, 84(408), 1074--1078.
+#'
+#' Schoenfeld, D. (1982). Partial residuals for the proportional hazards
+#' regression model. *Biometrika*, 69(1), 239--241.
+#'
+#' Therneau, T. M. and Grambsch, P. M. (2000). *Modeling Survival Data:
+#' Extending the Cox Model*. Springer, New York.
+#'
+#' Therneau, T. M., Grambsch, P. M. and Fleming, T. R. (1990).
+#' Martingale-based residuals for survival models. *Biometrika*, 77(1),
+#' 147--160.
+#'
 #' @examples
 #' set.seed(1)
 #' n <- 100
@@ -229,24 +254,60 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @return A dense matrix with the dimnames of `X` (a vector for a
     #'   vector `X`).
     score_residuals = function(linear_predictor, X, sample_weight = NULL) {
-      sparse_X <- inherits(X, "Matrix")
-      vector_X <- is.null(dim(X))
-      if (vector_X) {
-        X <- matrix(as.numeric(X), ncol = 1L)
-      } else if (!sparse_X) {
-        X <- .as_double_matrix(X)
-      }
-      if (nrow(X) != private$n_obs) {
-        stop(sprintf("X must have %d rows (one per observation), not %d",
-                     private$n_obs, nrow(X)))
-      }
+      private$by_column(.cox_score_residuals, linear_predictor, X, sample_weight)
+    },
+
+    #' @description The Schoenfeld residuals of a design `X` at a linear
+    #'   predictor. Row `i`, for an observation that fails (with positive
+    #'   weight), is `x_i - xbar`, with `xbar` the mean of the covariates
+    #'   over its risk set with weights `sample_weight * exp(eta)`. With
+    #'   `tie_breaking = "efron"`, `xbar` is the average over the failures
+    #'   tied with `i` of their Efron means, as in `survival`. The other rows
+    #'   are zero. Weighted by `sample_weight`, the rows sum to the score:
+    #'   `crossprod(U, sample_weight)` is `crossprod(X, -gradient / 2)`.
+    #'
+    #'   `residuals(fit, type = "schoenfeld")` of a `survival::coxph` fit has
+    #'   the rows of the failures only, in order of failure time: the rows
+    #'   with `status == 1` here, in the order of the data.
+    #'
+    #'   Introduced by Schoenfeld (1982). Plotted against time, they check
+    #'   the proportional hazards assumption (Grambsch and Therneau, 1994;
+    #'   `survival::cox.zph`).
+    #'
+    #'   The residuals are built a column at a time, each in O(n).
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @param X As for `score_residuals()`.
+    #' @return A dense matrix with the dimnames of `X` (a vector for a
+    #'   vector `X`), with a row for every observation.
+    schoenfeld_residuals = function(linear_predictor, X, sample_weight = NULL) {
+      private$by_column(.cox_schoenfeld_residuals, linear_predictor, X, sample_weight)
+    },
+
+    #' @description The expected number of events of each observation at a
+    #'   linear predictor: `exp(linear_predictor[i])` times the increase of
+    #'   the baseline cumulative hazard (see `baseline_hazard()`) over
+    #'   `(start[i], event[i]]`. With `tie_breaking = "efron"`, a failure gets
+    #'   Efron's share of the hazard at its own failure time. This is
+    #'   `predict(fit, type = "expected")` of a `survival::coxph` fit:
+    #'   `status - expected_events` is the martingale residual (Barlow and
+    #'   Prentice, 1988; Therneau, Grambsch and Fleming, 1990).
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @return A vector, one entry per observation.
+    expected_events = function(linear_predictor, sample_weight = NULL) {
       private$prepare(linear_predictor, sample_weight)
-      # the C++ takes one covariate at a time
-      U <- matrix(0, nrow(X), ncol(X), dimnames = dimnames(X))
-      for (j in seq_len(ncol(X))) {
-        U[, j] <- .cox_score_residuals(private$ptr, as.numeric(X[, j]))
-      }
-      if (vector_X) drop(U) else U
+      .cox_expected_events(private$ptr)
+    },
+
+    #' @description The expected survival probability of each observation
+    #'   at its exit: the probability of surviving to `event[i]`, given
+    #'   survival to `start[i]` (to 0 without start times), at a linear
+    #'   predictor. It is `exp(-expected_events)`, the
+    #'   `predict(fit, type = "survival")` of a `survival::coxph` fit
+    #'   (Therneau and Grambsch, 2000, Chapter 4).
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @return A vector, one entry per observation.
+    survival_at_exit = function(linear_predictor, sample_weight = NULL) {
+      exp(-self$expected_events(linear_predictor, sample_weight))
     },
 
     #' @description The estimate of the baseline hazard at a linear
@@ -312,6 +373,27 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
 
     # bring the C++ object to (linear_predictor, sample_weight), unless it is
     # there already, and return the result there
+    # residuals(ptr, x), one covariate at a time, for each column of X
+    by_column = function(residuals, linear_predictor, X, sample_weight) {
+      sparse_X <- inherits(X, "Matrix")
+      vector_X <- is.null(dim(X))
+      if (vector_X) {
+        X <- matrix(as.numeric(X), ncol = 1L)
+      } else if (!sparse_X) {
+        X <- .as_double_matrix(X)
+      }
+      if (nrow(X) != private$n_obs) {
+        stop(sprintf("X must have %d rows (one per observation), not %d",
+                     private$n_obs, nrow(X)))
+      }
+      private$prepare(linear_predictor, sample_weight)
+      U <- matrix(0, nrow(X), ncol(X), dimnames = dimnames(X))
+      for (j in seq_len(ncol(X))) {
+        U[, j] <- residuals(private$ptr, as.numeric(X[, j]))
+      }
+      if (vector_X) drop(U) else U
+    },
+
     prepare = function(linear_predictor, sample_weight) {
       n <- private$n_obs
       linear_predictor <- as.numeric(.check_length(linear_predictor, n, "linear_predictor"))

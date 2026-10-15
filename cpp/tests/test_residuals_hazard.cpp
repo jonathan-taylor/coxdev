@@ -1,6 +1,7 @@
-// Tests of CoxDeviance::score_residuals and CoxDeviance::baseline_hazard
-// (and their stratified versions) against direct O(n^2) computations, and of
-// the identities they satisfy with the score and wild_score.
+// Tests of CoxDeviance::score_residuals, schoenfeld_residuals,
+// baseline_hazard and expected_events (and their stratified versions)
+// against direct O(n^2) computations, and of the identities they satisfy
+// with the score and wild_score.
 //
 // Build and run from the top of the repository:
 //   c++ -std=c++17 -O2 -Ieigen -Icpp/include cpp/src/coxdev.cpp \
@@ -9,6 +10,7 @@
 
 #include "coxdev.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -69,11 +71,17 @@ bool in(const Data& d, int i, int s) { return s < 0 || d.strata(i) == s; }
 // and Efron terms r = 0..d-1 with s = r / d (0 for Breslow),
 //   p_r = e (R - s D) / sum(e (R - s D)),  e = w exp(eta),
 //   U_i += (w_i 1{i in D} / d - wbar p_ri) (x_i - xbar_r),
-//   hazard(tau) += wbar / sum(e (R - s D)).
+//   hazard(tau) += wbar / sum(e (R - s D)),
+//   E_i += exp(eta_i) (1 - s 1{i in D}) wbar / sum(e (R - s D)) for every i
+//          at risk at tau, whatever its weight,
+// and for i in D the Schoenfeld residual is x_i less the mean over r of xbar_r.
 void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
-               std::map<double, double>& hazard) {
+               std::map<double, double>& hazard, Eigen::MatrixXd& Sch,
+               Eigen::VectorXd& E) {
   int n = d.event.size(), p = d.X.cols();
   U = Eigen::MatrixXd::Zero(n, p);
+  Sch = Eigen::MatrixXd::Zero(n, p);
+  E = Eigen::VectorXd::Zero(n);
   hazard.clear();
   std::set<double> taus;
   for (int i = 0; i < n; ++i) {
@@ -92,6 +100,7 @@ void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
     }
     int nd = D.size();
     double wbar = wsum / nd;
+    Eigen::RowVectorXd xbar_mean = Eigen::RowVectorXd::Zero(p);
     for (int r = 0; r < nd; ++r) {
       double sc = efron ? double(r) / nd : 0.0;
       Eigen::VectorXd pr = Eigen::VectorXd::Zero(n);
@@ -99,8 +108,15 @@ void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
       for (int i : D) pr(i) -= sc * d.weight(i) * std::exp(d.eta(i));
       double S = pr.sum();
       hazard[tau] += wbar / S;
+      for (int i = 0; i < n; ++i) {
+        if (in(d, i, s) && d.start(i) < tau && tau <= d.event(i)) {
+          bool failed = std::find(D.begin(), D.end(), i) != D.end();
+          E(i) += std::exp(d.eta(i)) * (1.0 - (failed ? sc : 0.0)) * wbar / S;
+        }
+      }
       pr /= S;
       Eigen::RowVectorXd xbar = pr.transpose() * d.X;
+      xbar_mean += xbar / nd;
       for (int i = 0; i < n; ++i) {
         double a = -wbar * pr(i);
         for (int k : D) {
@@ -109,6 +125,7 @@ void reference(const Data& d, bool efron, int s, Eigen::MatrixXd& U,
         if (a != 0.0) U.row(i) += a * (d.X.row(i) - xbar);
       }
     }
+    for (int i : D) Sch.row(i) = d.X.row(i) - xbar_mean;
   }
 }
 
@@ -123,8 +140,13 @@ void check_model(Cox& cox, const Data& d, bool efron, bool stratified, const std
   cox.sample_score("wild", 2, 7);
   // the residuals of the design, a column at a time
   Eigen::MatrixXd U(n, d.X.cols());
-  for (Eigen::Index j = 0; j < d.X.cols(); ++j) U.col(j) = cox.score_residuals(Eigen::VectorXd(d.X.col(j)));
+  Eigen::MatrixXd Sch(n, d.X.cols());
+  for (Eigen::Index j = 0; j < d.X.cols(); ++j) {
+    U.col(j) = cox.score_residuals(Eigen::VectorXd(d.X.col(j)));
+    Sch.col(j) = cox.schoenfeld_residuals(Eigen::VectorXd(d.X.col(j)));
+  }
   BaselineHazard H = cox.baseline_hazard();
+  Eigen::VectorXd E = cox.expected_events();
 
   // the residuals sum to the score, and sum_i G_i U_i = X^T wild_score(G)
   Eigen::VectorXd score = -0.5 * cox.get_gradient();
@@ -136,19 +158,28 @@ void check_model(Cox& cox, const Data& d, bool efron, bool stratified, const std
   for (int i = 0; i < n; ++i) G(i) = norm(rng);
   Eigen::VectorXd XtW = d.X.transpose() * cox.wild_score(G);
   check(max_abs(U.transpose() * G - XtW), 1e-9 * (1 + max_abs(XtW)), name + ": wild_score");
+  // weighted, the Schoenfeld residuals sum to the score
+  check(max_abs(Sch.transpose() * d.weight - XtM), 1e-9 * (1 + max_abs(XtM)),
+        name + ": weighted sum of Schoenfeld residuals");
 
   // against the direct computation, stratum by stratum
   Eigen::MatrixXd U_ref = Eigen::MatrixXd::Zero(n, d.X.cols()), U_s;
+  Eigen::MatrixXd Sch_ref = Eigen::MatrixXd::Zero(n, d.X.cols()), Sch_s;
+  Eigen::VectorXd E_ref = Eigen::VectorXd::Zero(n), E_s;
   std::map<std::pair<int, double>, double> hazard_ref;
   std::set<int> strata;
   for (int i = 0; i < n; ++i) strata.insert(stratified ? d.strata(i) : -1);
   for (int s : strata) {
     std::map<double, double> h;
-    reference(d, efron, s, U_s, h);
+    reference(d, efron, s, U_s, h, Sch_s, E_s);
     U_ref += U_s;
+    Sch_ref += Sch_s;
+    E_ref += E_s;
     for (auto& kv : h) hazard_ref[{stratified ? s : 0, kv.first}] = kv.second;
   }
   check(max_abs(U - U_ref), 1e-9 * (1 + max_abs(U_ref)), name + ": residuals");
+  check(max_abs(Sch - Sch_ref), 1e-9 * (1 + max_abs(Sch_ref)), name + ": Schoenfeld residuals");
+  check(max_abs(E - E_ref), 1e-9 * (1 + max_abs(E_ref)), name + ": expected events");
 
   bool same_size = (int) hazard_ref.size() == H.time.size();
   check(same_size ? 0.0 : 1.0, 0.0, name + ": number of failure times");

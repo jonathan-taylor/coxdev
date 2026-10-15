@@ -281,6 +281,58 @@ The cumulative hazard of observation `i` at time `t` is the
 `exp(eta[i])`. Both agree with R's `survival` (`residuals(fit, type =
 "score")`, which is per unit weight, and `basehaz(fit, centered = FALSE)`).
 
+### Schoenfeld Residuals and Expected Survival at Exit
+
+```python
+# Schoenfeld residuals: for each failure, x_i less the mean of x over its
+# risk set; zero rows for the observations that do not fail
+R = coxdev.schoenfeld_residuals(eta, X)
+
+# the expected number of events of each observation over (start, event],
+# and the probability of surviving to event, given survival to start
+E = coxdev.expected_events(eta)
+S = coxdev.survival_at_exit(eta)          # exp(-E)
+martingale = status - E
+```
+
+The Schoenfeld residual of a failure is its covariates less their mean over
+its risk set, with weights `sample_weight * exp(eta)` (Schoenfeld, 1982).
+With Efron's ties the mean is the average over the tied failures of their
+Efron means, as in R's `survival`. Weighted by `sample_weight`, they sum to
+the score. Plotted against time, or against a function of time, they check
+the proportional hazards assumption (Grambsch and Therneau, 1994; Therneau
+and Grambsch, 2000, Chapter 6). As for the score residuals, the C++ takes
+one covariate, an n-vector, at a time, and `schoenfeld_residuals` loops
+over the columns of `X`, dense or sparse.
+
+The expected number of events of observation `i` is `exp(eta[i])` times
+the increase of the baseline cumulative hazard (Breslow, 1972) over
+`(start[i], event[i]]`, with Efron's share at a tied failure time for the
+failures there. `status - E` is the martingale residual (Barlow and
+Prentice, 1988; Therneau, Grambsch and Fleming, 1990), and `exp(-E)` the
+expected survival probability at exit (Therneau and Grambsch, 2000,
+Chapter 4). These agree with R's `survival`: `residuals(fit, type =
+"schoenfeld")` (which has the rows of the failures only, in order of
+failure time), `predict(fit, type = "expected")`, `residuals(fit, type =
+"martingale")` and `predict(fit, type = "survival")`.
+
+#### References
+
+- Barlow, W. E. and Prentice, R. L. (1988). Residuals for relative risk
+  regression. *Biometrika*, 75(1), 65–74.
+- Breslow, N. E. (1972). Discussion of Professor Cox's paper. *Journal of
+  the Royal Statistical Society, Series B*, 34(2), 216–217.
+- Grambsch, P. M. and Therneau, T. M. (1994). Proportional hazards tests
+  and diagnostics based on weighted residuals. *Biometrika*, 81(3),
+  515–526.
+- Schoenfeld, D. (1982). Partial residuals for the proportional hazards
+  regression model. *Biometrika*, 69(1), 239–241.
+- Therneau, T. M. and Grambsch, P. M. (2000). *Modeling Survival Data:
+  Extending the Cox Model*. Springer, New York.
+- Therneau, T. M., Grambsch, P. M. and Fleming, T. R. (1990).
+  Martingale-based residuals for survival models. *Biometrika*, 77(1),
+  147–160.
+
 ### Different Tie-Breaking Methods
 
 ```python
@@ -312,6 +364,9 @@ The main class for computing Cox model quantities.
 - **`wild_score(linear_predictor, multipliers, sample_weight=None)`**: The wild draw of the score for given multipliers
 - **`score_residuals(linear_predictor, X, sample_weight=None)`**: The `(n, p)` score residuals of a design `X`
 - **`baseline_hazard(linear_predictor, sample_weight=None)`**: The baseline hazard, a `BaselineHazard` with `time`, `hazard`, `cumulative_hazard` and `stratum`
+- **`schoenfeld_residuals(linear_predictor, X, sample_weight=None)`**: The `(n, p)` Schoenfeld residuals of a design `X`, zero for the observations that do not fail
+- **`expected_events(linear_predictor, sample_weight=None)`**: The expected number of events of each observation over `(start, event]`
+- **`survival_at_exit(linear_predictor, sample_weight=None)`**: The expected survival probability of each observation at its exit, `exp(-expected_events)`
 
 ### CoxDevianceResult
 

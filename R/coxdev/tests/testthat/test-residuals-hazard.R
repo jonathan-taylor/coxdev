@@ -1,5 +1,7 @@
-# CoxDeviance$score_residuals and $baseline_hazard: the identities with the
-# score and wild_score, and survival's residuals(type = "score") and basehaz.
+# CoxDeviance$score_residuals, $schoenfeld_residuals, $baseline_hazard and
+# $expected_events: the identities with the score and wild_score, and
+# survival's residuals(type = "score" and "schoenfeld"), basehaz and
+# predict(type = "expected" and "survival").
 
 skip_if_not_installed("survival")
 
@@ -120,4 +122,82 @@ test_that("a sparse X gives the residuals of the dense X", {
   expect_equal(cox$score_residuals(eta, Matrix::Matrix(X, sparse = TRUE), sample_weight = w), U,
                tolerance = 1e-14)
   expect_equal(unname(U[, 2]), rep(0, nrow(X)), tolerance = 1e-14)
+})
+
+test_that("Schoenfeld residuals and expected events agree with survival", {
+  set.seed(35)
+  beta <- c(0.3, -0.2, 0.1)
+  for (tie_breaking in c("efron", "breslow")) {
+    for (start in c(FALSE, TRUE)) {
+      for (weighted in c(FALSE, TRUE)) {
+        d <- cox_data(n = 150, start = start)
+        n <- length(d$event)
+        w <- if (weighted) stats::runif(n, 0.5, 2) else rep(1, n)
+        eta <- drop(d$X %*% beta)
+        cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start,
+                               sample_weight = w, tie_breaking = tie_breaking)
+        fit <- coxph_at(d, d$X, beta, w, tie_breaking)
+
+        # coxph has the rows of the failures, in order of failure time; tied
+        # failures share their mean, so compare sorted within each time
+        R <- cox$schoenfeld_residuals(eta, d$X, sample_weight = w)
+        fail <- d$status == 1
+        R_fail <- R[fail, , drop = FALSE]
+        sch <- as.matrix(stats::residuals(fit, type = "schoenfeld"))
+        mine <- order(d$event[fail], R_fail[, 1])
+        theirs <- order(sort(d$event[fail]), sch[, 1])
+        expect_equal(unname(R_fail[mine, ]), unname(sch[theirs, ]), tolerance = 1e-10)
+        expect_true(all(R[!fail, ] == 0))
+        expect_equal(drop(crossprod(R, w)), drop(crossprod(d$X, -cox$compute(eta, w)$gradient / 2)),
+                     tolerance = 1e-10)
+
+        E <- cox$expected_events(eta, sample_weight = w)
+        expect_equal(E, unname(stats::predict(fit, type = "expected")), tolerance = 1e-10)
+        expect_equal(d$status - E, unname(stats::residuals(fit, type = "martingale")),
+                     tolerance = 1e-10)
+        expect_equal(cox$survival_at_exit(eta, sample_weight = w),
+                     unname(stats::predict(fit, type = "survival")), tolerance = 1e-10)
+      }
+    }
+  }
+})
+
+test_that("Schoenfeld residuals and expected events with strata, sparse X and zero weights", {
+  set.seed(36)
+  beta <- c(0.3, -0.2, 0.1)
+  d <- cox_data(n = 200, start = TRUE)
+  n <- length(d$event)
+  strata <- c("north", "south", "west")[seq_len(n) %% 3 + 1]
+  eta <- drop(d$X %*% beta)
+  cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start, strata = strata)
+  fit <- coxph_at(d, d$X, beta, rep(1, n), "efron", strata = strata)
+  expect_equal(cox$expected_events(eta), unname(stats::predict(fit, type = "expected")),
+               tolerance = 1e-10)
+  R <- cox$schoenfeld_residuals(eta, d$X)
+  for (s in unique(strata)) {
+    k <- strata == s
+    single <- CoxDeviance$new(event = d$event[k], status = d$status[k], start = d$start[k])
+    expect_equal(R[k, ], single$schoenfeld_residuals(eta[k], d$X[k, ]), tolerance = 1e-12)
+  }
+
+  # zero weights: as if those observations were dropped, but for their own
+  # expected events, which are still those of an observation at risk
+  w <- stats::runif(n, 0.5, 2)
+  w[1:15] <- 0
+  cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start, sample_weight = w)
+  keep <- w > 0
+  dropped <- CoxDeviance$new(event = d$event[keep], status = d$status[keep],
+                             start = d$start[keep], sample_weight = w[keep])
+  R <- cox$schoenfeld_residuals(eta, d$X, sample_weight = w)
+  expect_equal(R[keep, ], dropped$schoenfeld_residuals(eta[keep], d$X[keep, ], sample_weight = w[keep]),
+               tolerance = 1e-12)
+  expect_true(all(R[!keep, ] == 0))
+  expect_equal(cox$expected_events(eta, w)[keep],
+               dropped$expected_events(eta[keep], w[keep]), tolerance = 1e-12)
+
+  skip_if_not_installed("Matrix")
+  X <- d$X * (abs(d$X) > 1)
+  colnames(X) <- c("a", "b", "c")
+  expect_equal(cox$schoenfeld_residuals(eta, Matrix::Matrix(X, sparse = TRUE), sample_weight = w),
+               cox$schoenfeld_residuals(eta, X, sample_weight = w), tolerance = 1e-14)
 })

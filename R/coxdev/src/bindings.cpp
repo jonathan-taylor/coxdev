@@ -140,6 +140,18 @@ Eigen::VectorXd cox_score_residuals(SEXP ptr, const Eigen::VectorXd& x) {
   return model->apply([&](auto& cox) { return cox.score_residuals(x); });
 }
 
+// [[Rcpp::export(.cox_schoenfeld_residuals)]]
+Eigen::VectorXd cox_schoenfeld_residuals(SEXP ptr, const Eigen::VectorXd& x) {
+  CoxModel* model = get_computed(ptr);
+  return model->apply([&](auto& cox) { return cox.schoenfeld_residuals(x); });
+}
+
+// [[Rcpp::export(.cox_expected_events)]]
+Eigen::VectorXd cox_expected_events(SEXP ptr) {
+  CoxModel* model = get_computed(ptr);
+  return model->apply([&](auto& cox) { return cox.expected_events(); });
+}
+
 // [[Rcpp::export(.cox_baseline_hazard)]]
 List cox_baseline_hazard(SEXP ptr) {
   CoxModel* model = get_computed(ptr);
