@@ -31,6 +31,8 @@ jobs:
       with:
         use-public-rspm: true
 
+    # the Suggests include survival and glmnet, which the Python tests that
+    # compare with R (through rpy2) need as well
     - uses: r-lib/actions/setup-r-dependencies@v2
       with:
         working-directory: R/coxdev
@@ -54,12 +56,16 @@ jobs:
     - name: Install the Python package and rpy2
       run: |
         pip install --upgrade pip
-        pip install . pytest rpy2
+        pip install . pytest pandas rpy2
 
-    - name: Test the R package against the Python package
+    # every Python test that compares with R through rpy2: survival, glmnet
+    # and the R package. COXDEV_REQUIRE_R makes a missing R setup fail them
+    # instead of skipping them.
+    - name: Test the Python package against R
       env:
         COXDEV_REQUIRE_R: 1
       run: |
         mkdir empty_dir
         cd empty_dir
-        python -m pytest ../tests/test_R_package.py -rs
+        python -m pytest ../tests/test_R_package.py ../tests/test_residuals_hazard.py \
+          ../tests/test_compareR.py ../tests/test_bad.py --test-size=200 -rs
