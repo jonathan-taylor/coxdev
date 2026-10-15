@@ -146,6 +146,12 @@ Eigen::VectorXd cox_schoenfeld_residuals(SEXP ptr, const Eigen::VectorXd& x) {
   return model->apply([&](auto& cox) { return cox.schoenfeld_residuals(x); });
 }
 
+// [[Rcpp::export(.cox_risk_set_variance)]]
+Eigen::VectorXd cox_risk_set_variance(SEXP ptr, const Eigen::VectorXd& z) {
+  CoxModel* model = get_computed(ptr);
+  return model->apply([&](auto& cox) { return cox.risk_set_variance(z); });
+}
+
 // [[Rcpp::export(.cox_expected_events)]]
 Eigen::VectorXd cox_expected_events(SEXP ptr) {
   CoxModel* model = get_computed(ptr);

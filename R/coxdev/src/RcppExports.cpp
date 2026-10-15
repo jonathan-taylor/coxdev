@@ -114,6 +114,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cox_risk_set_variance
+Eigen::VectorXd cox_risk_set_variance(SEXP ptr, const Eigen::VectorXd& z);
+RcppExport SEXP _coxdev_cox_risk_set_variance(SEXP ptrSEXP, SEXP zSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::VectorXd& >::type z(zSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_risk_set_variance(ptr, z));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cox_expected_events
 Eigen::VectorXd cox_expected_events(SEXP ptr);
 RcppExport SEXP _coxdev_cox_expected_events(SEXP ptrSEXP) {
@@ -146,6 +158,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_cox_wild_score", (DL_FUNC) &_coxdev_cox_wild_score, 2},
     {"_coxdev_cox_score_residuals", (DL_FUNC) &_coxdev_cox_score_residuals, 2},
     {"_coxdev_cox_schoenfeld_residuals", (DL_FUNC) &_coxdev_cox_schoenfeld_residuals, 2},
+    {"_coxdev_cox_risk_set_variance", (DL_FUNC) &_coxdev_cox_risk_set_variance, 2},
     {"_coxdev_cox_expected_events", (DL_FUNC) &_coxdev_cox_expected_events, 1},
     {"_coxdev_cox_baseline_hazard", (DL_FUNC) &_coxdev_cox_baseline_hazard, 1},
     {NULL, NULL, 0}

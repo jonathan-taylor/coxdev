@@ -33,6 +33,10 @@
     .Call(`_coxdev_cox_schoenfeld_residuals`, ptr, x)
 }
 
+.cox_risk_set_variance <- function(ptr, z) {
+    .Call(`_coxdev_cox_risk_set_variance`, ptr, z)
+}
+
 .cox_expected_events <- function(ptr) {
     .Call(`_coxdev_cox_expected_events`, ptr)
 }

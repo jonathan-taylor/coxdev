@@ -283,6 +283,29 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
       private$by_column(.cox_schoenfeld_residuals, linear_predictor, X, sample_weight)
     },
 
+    #' @description The risk-set variances of the columns of `Z` at a
+    #'   linear predictor. Row `i`, for an observation that fails (with
+    #'   positive weight), is the variance of each covariate over its risk
+    #'   set with weights `sample_weight * exp(eta)`: the `V_z` by which
+    #'   Grambsch and Therneau (1994) scale the Schoenfeld residuals,
+    #'   `beta + r / V_z` for one covariate. With `tie_breaking = "efron"`, it
+    #'   is the average over the failures tied with `i` of their Efron
+    #'   variances, as for `schoenfeld_residuals()`. The other rows are zero.
+    #'   Weighted by `sample_weight`, the rows sum to the diagonal of the
+    #'   information, `diag(crossprod(Z, I %*% Z))`.
+    #'
+    #'   The covariance of two covariates `y` and `z` follows by
+    #'   polarization, `(V(y + z) - V(y - z)) / 4`.
+    #'
+    #'   The variances are computed a column at a time, each in O(n).
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @param Z The covariates, as `X` for `score_residuals()`.
+    #' @return A dense matrix with the dimnames of `Z` (a vector for a
+    #'   vector `Z`), with a row for every observation.
+    risk_set_variance = function(linear_predictor, Z, sample_weight = NULL) {
+      private$by_column(.cox_risk_set_variance, linear_predictor, Z, sample_weight)
+    },
+
     #' @description The expected number of events of each observation at a
     #'   linear predictor: `exp(linear_predictor[i])` times the increase of
     #'   the baseline cumulative hazard (see `baseline_hazard()`) over
