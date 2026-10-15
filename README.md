@@ -69,6 +69,14 @@ print(f"Gradient norm: {np.linalg.norm(result.gradient):.4f}")
 
 ## Notebooks
 
+The documentation, at <https://jonathan-taylor.github.io/coxdev/>, is a
+[Jupyter Book](https://jupyterbook.org) built from `doc/` by the Docs
+workflow (`.github/workflows/docs.yml`, run by hand from the Actions tab).
+Besides the notebooks below, its Computations chapter derives the score and
+Hessian with ties, start times and weights (from `doc/main.tex`), with
+checks against `coxdev`. To build it locally: `cd doc; jupyter-book build
+--html --execute`.
+
 `doc/using_coxdev.md` (fitting by Newton's method with the information
 operator, robust standard errors, the baseline hazard and survival curves,
 and what keeping state saves) and `doc/sampling.md` (the methods of
