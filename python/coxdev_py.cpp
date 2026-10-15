@@ -143,6 +143,17 @@ PYBIND11_MODULE(coxc, m) {
           self.compute_hessian_matvec(arg, out);
           return out;
       })
+      // the information times each column of arg, in one call
+      .def("compute_hessian_matmat", [](CoxDeviance &self, const Eigen::Ref<const Eigen::MatrixXd>& arg) {
+          Eigen::MatrixXd out(arg.rows(), arg.cols());
+          Eigen::VectorXd col_in(arg.rows()), col_out(arg.rows());
+          for (Eigen::Index j = 0; j < arg.cols(); ++j) {
+              col_in = arg.col(j);
+              self.compute_hessian_matvec(col_in, col_out);
+              out.col(j) = col_out;
+          }
+          return out;
+      })
       .def("sample_score", &CoxDeviance::sample_score,
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &CoxDeviance::wild_score, py::arg("multipliers"))
@@ -176,6 +187,17 @@ PYBIND11_MODULE(coxc, m) {
       .def("compute_hessian_matvec", [](StratifiedCoxDeviance &self, const Eigen::Ref<const Eigen::VectorXd>& arg) {
           Eigen::VectorXd out(arg.size());
           self.compute_hessian_matvec(arg, out);
+          return out;
+      })
+      // the information times each column of arg, in one call
+      .def("compute_hessian_matmat", [](StratifiedCoxDeviance &self, const Eigen::Ref<const Eigen::MatrixXd>& arg) {
+          Eigen::MatrixXd out(arg.rows(), arg.cols());
+          Eigen::VectorXd col_in(arg.rows()), col_out(arg.rows());
+          for (Eigen::Index j = 0; j < arg.cols(); ++j) {
+              col_in = arg.col(j);
+              self.compute_hessian_matvec(col_in, col_out);
+              out.col(j) = col_out;
+          }
           return out;
       })
       .def("sample_score", &StratifiedCoxDeviance::sample_score,

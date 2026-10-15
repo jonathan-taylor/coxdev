@@ -297,9 +297,10 @@ class CoxDeviance(object):
             deviance = self._coxc.compute_deviance(linear_predictor, sample_weight)
             self._last_linear_predictor = linear_predictor.copy()
 
-            # These are now references to internal Eigen buffers
-            self._result = CoxDevianceResult(linear_predictor=self._coxc.linear_predictor,
-                                             sample_weight=self._coxc.sample_weight,
+            # copies, not views of the C++ buffers, which the next call
+            # overwrites
+            self._result = CoxDevianceResult(linear_predictor=self._last_linear_predictor.copy(),
+                                             sample_weight=self._weight.copy(),
                                              loglik_sat=self._coxc.loglik_sat,
                                              deviance=deviance,
                                              gradient=self._coxc.gradient.copy(),
@@ -725,29 +726,32 @@ class CoxInformation(LinearOperator):
         # sets shape and dtype (and, in SciPy >= 1.18, the array namespace used by @)
         LinearOperator.__init__(self, dtype=float, shape=(n, n))
         
+    def _prepare(self):
+        # the C++ object holds the state of its last linear predictor: bring
+        # it back to this one (free if it is still there, the result being
+        # cached), so that products stay right after other calls
+        self.coxdev(self.result.linear_predictor, self.result.sample_weight)
+
     def _matvec(self, arg):
         """
         Compute matrix-vector product with the information matrix.
         """
         # arg is in native order
+        self._prepare()
         arg_arr = np.asarray(arg).reshape(-1).astype(float)
         return self.coxdev._coxc.compute_hessian_matvec(arg_arr)
 
-    def _adjoint(self, arg):
+    def _matmat(self, arg):
         """
-        Compute the adjoint (transpose) matrix-vector product.
-        
-        Since the information matrix is symmetric, this is the same as _matvec.
-        
-        Parameters
-        ----------
-        arg : np.ndarray
-            Vector to multiply with the adjoint matrix.
-            
-        Returns
-        -------
-        np.ndarray
-            Result of the adjoint matrix-vector multiplication.
+        Compute the product with a matrix, all its columns in one C++ call.
         """
-        # it is symmetric
-        return self._matvec(arg)
+        self._prepare()
+        arg_arr = np.asarray(arg, float).reshape((self.shape[0], -1))
+        return self.coxdev._coxc.compute_hessian_matmat(np.asfortranarray(arg_arr))
+
+    # it is symmetric
+    _rmatvec = _matvec
+    _rmatmat = _matmat
+
+    def _adjoint(self):
+        return self
