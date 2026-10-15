@@ -67,15 +67,67 @@ print(f"Saturated log-likelihood: {result.loglik_sat:.4f}")
 print(f"Gradient norm: {np.linalg.norm(result.gradient):.4f}")
 ```
 
-## Notebooks
+## R Package
 
-The documentation, at <https://jonathan-taylor.github.io/coxdev/>, is a
-[Jupyter Book](https://jupyterbook.org) built from `doc/` by the Docs
-workflow (`.github/workflows/docs.yml`, run by hand from the Actions tab).
-Besides the notebooks below, its Computations chapter derives the score and
-Hessian with ties, start times and weights (from `doc/main.tex`), with
-checks against `coxdev`. To build it locally: `cd doc; jupyter-book build
---html --execute`.
+The R package in `R/coxdev` runs the same C++ code, with the interface of
+the Python package. Install it from a clone of the repository:
+
+```bash
+R CMD INSTALL R/coxdev
+```
+
+or with `remotes::install_github("jonathan-taylor/coxdev", subdir = "R/coxdev")`.
+
+```r
+library(coxdev)
+set.seed(1)
+n <- 1000
+X <- matrix(rnorm(n * 3), n, 3)
+eta <- drop(X %*% c(0.5, -0.5, 0.25))
+event <- rexp(n, exp(eta))
+status <- rbinom(n, 1, 0.7)
+
+cox <- CoxDeviance$new(event = event, status = status, tie_breaking = "efron")
+# or with a Surv response: Surv(time, status) or Surv(start, stop, status),
+# with strata from glmnet::stratifySurv() if set
+cox <- CoxDeviance$new(survival::Surv(event, status), tie_breaking = "efron")
+
+res <- cox$compute(eta)          # Python: coxdev(eta)
+res$deviance                     # the objective
+res$gradient                     # its gradient in eta
+res$diag_hessian                 # the diagonal of its Hessian
+
+I <- cox$information(eta)        # a matrix-free operator, never n x n
+I %*% X                          # or I$multiply(X); t(X) %*% I also works
+info_beta <- crossprod(X, I %*% X)
+
+draws <- cox$sample_score(eta, method = "fisher", n_draws = 2000, seed = 1)
+G <- rnorm(n)
+w <- cox$wild_score(eta, G)
+```
+
+| Python | R |
+|---|---|
+| `CoxDeviance(event=, status=, start=, strata=, sample_weight=, tie_breaking=)` | `CoxDeviance$new(event =, status =, start =, strata =, sample_weight =, tie_breaking =)` |
+| | `CoxDeviance$new(Surv(...), strata =, sample_weight =, tie_breaking =)` |
+| `coxdev(eta, sample_weight)` | `cox$compute(eta, sample_weight)` |
+| `coxdev.information(eta, sample_weight)` (a `LinearOperator`) | `cox$information(eta, sample_weight)` (a `CoxInformation`, with `%*%`, `$multiply()`, `$diagonal()`, `$to_dense()`, `dim()`) |
+| `coxdev.sample_score(eta, sample_weight, method, n_draws, seed)` | `cox$sample_score(eta, sample_weight, method, n_draws, seed)` |
+| `coxdev.wild_score(eta, multipliers, sample_weight)` | `cox$wild_score(eta, multipliers, sample_weight)` |
+| `coxdev.score_residuals(eta, X, sample_weight)` | `cox$score_residuals(eta, X, sample_weight)` |
+| `coxdev.baseline_hazard(eta, sample_weight)` (a `BaselineHazard`) | `cox$baseline_hazard(eta, sample_weight)` (a data frame, with stratum labels as given) |
+
+The same `seed` gives the same draws from R and Python. In R, a seed is a
+whole number up to `2^53`, or a string of digits for any seed below
+`2^64`; with `seed = NULL` it is drawn from R's generator, so `set.seed()`
+makes the draws reproducible. Strata may be integers, a factor or
+character. `%*%` with the operator needs R 4.4.0 or later; `$multiply()`
+works on any version.
+
+The C++ sources in `R/coxdev/src` and `R/coxdev/inst/include` are copies of
+those in `cpp/`, so that the R package is self-contained: after editing
+`cpp/`, run `R/coxdev/tools/sync_cpp.sh` (CI checks that the copies agree).
+## Notebooks
 
 `doc/using_coxdev.md` (fitting by Newton's method with the information
 operator, robust standard errors, the baseline hazard and survival curves,
@@ -385,6 +437,19 @@ For a quick check, `--test-size N` runs a random sample of `N` of the
 
 ```bash
 python -m pytest tests -rs --test-size 50
+```
+
+### Testing the R package
+
+The R package has its own tests, against `survival` and `glmnet`, and
+`tests/test_R_package.py` checks that the R and Python packages agree
+(results, information and draws for the same seed). With the R package
+installed (`R CMD INSTALL R/coxdev`, which needs `Rcpp`, `RcppEigen` and
+`R6`, plus `testthat` for its tests):
+
+```bash
+Rscript -e 'testthat::test_local("R/coxdev")'
+python -m pytest tests/test_R_package.py -rs
 ```
 
 ## Contributing
