@@ -81,36 +81,6 @@ class BaselineHazard(object):
 
 
 @dataclass
-class BaselineHazard(object):
-    """
-    The estimate of the baseline hazard of a Cox model.
-
-    One entry per distinct failure time with positive weight, in increasing
-    time within each stratum. The hazard is for the linear predictor as
-    given: the cumulative hazard of observation ``i`` at time ``t`` is the
-    ``cumulative_hazard`` at the last failure time ``<= t`` in its stratum,
-    times ``exp(linear_predictor[i])``.
-
-    Attributes
-    ----------
-    time : np.ndarray
-        The distinct failure times.
-    hazard : np.ndarray
-        The increment of the cumulative hazard at each time.
-    cumulative_hazard : np.ndarray
-        The cumulative hazard, the running sum of ``hazard`` within each
-        stratum.
-    stratum : np.ndarray
-        The stratum label of each entry (0 without strata).
-    """
-
-    time: np.ndarray
-    hazard: np.ndarray
-    cumulative_hazard: np.ndarray
-    stratum: np.ndarray
-
-
-@dataclass
 class CoxDeviance(object):
     """
     Cox Proportional Hazards Model Deviance Calculator.
