@@ -56,3 +56,7 @@ dkms.conf
 
 # C API builds
 cpp/capi/build*/
+
+# Julia
+julia/**/Manifest.toml
+julia/CoxDev.jl/bench/*.bin

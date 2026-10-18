@@ -37,6 +37,14 @@
   unchanged (compared by value), as the Python package does: information
   products after `coxdev_deviance` no longer recompute the deviance (4x
   faster), and `eta` and the weights are compared in place rather than copied.
+- **CoxDev.jl** (`julia/CoxDev.jl`): a Julia package over the C API, with
+  the Python package's API (`CoxDeviance`, `deviance`, `information` as a
+  `LinearMap`, `baseline_hazard`, `concordance`, `score_residuals`,
+  `wild_score`, `sample_score`) and semantics (`weight` defaults to ones;
+  strata by label). Tested against fixtures from the Python package
+  (`tools/make_julia_fixtures.py`): the same values to rounding and the same
+  draws for the same seed. A draft BinaryBuilder recipe for a `coxdev_jll`
+  is in `julia/CoxDev.jl/deps/`.
 
 ### Fixes
 

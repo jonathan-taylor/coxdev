@@ -1,0 +1,21 @@
+name = "CoxDev"
+uuid = "1c52c4dc-6457-454f-ad70-bc928c5d3d59"
+authors = ["Jonathan Taylor <jonathan.taylor@stanford.edu>"]
+version = "0.1.0-DEV"
+
+[deps]
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+LinearMaps = "7a12625a-238d-50fd-b39a-03d52299707e"
+
+[compat]
+JSON = "1"
+LinearMaps = "3"
+julia = "1.9"
+
+[extras]
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["JSON", "LinearAlgebra", "Test"]
