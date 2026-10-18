@@ -58,10 +58,17 @@ struct coxdev_s {
     Eigen::VectorXi status, strata;
     bool stratified;
     bool efron;
+    // the last evaluation: eta and its deviance, reused while eta and the
+    // weights are unchanged (as coxdev's Python CoxDeviance caches its last
+    // call), so that information products do not recompute the deviance
+    Eigen::VectorXd last_eta;
+    double last_deviance = 0.;
+    bool have_last = false;
     std::unique_ptr<CoxDeviance> cox;
     std::unique_ptr<StratifiedCoxDeviance> scox;
 
     void build() {
+        have_last = false;
         if (stratified) {
             scox = std::make_unique<StratifiedCoxDeviance>(start, event, status, strata, weight, efron);
         } else {
@@ -83,15 +90,20 @@ struct coxdev_s {
     // they differ from the handle's (as coxdev's Python CoxDeviance does).
     double evaluate(const double *eta, const double *sample_weight) {
         require(eta != nullptr, "eta must not be NULL");
+        const auto N = static_cast<Eigen::Index>(n);
         if (sample_weight != nullptr) {
-            Eigen::VectorXd sw = vec(sample_weight, n);
+            MapXd sw(sample_weight, N);          // compared in place, copied only if new
             if (sw != weight) {
                 weight = sw;
                 build();
             }
         }
-        Eigen::VectorXd eta_v = vec(eta, n);
-        return visit([&](auto &c) { return c.compute_deviance(eta_v, weight); });
+        MapXd eta_m(eta, N);
+        if (have_last && eta_m == last_eta) return last_deviance;
+        last_eta = eta_m;
+        last_deviance = visit([&](auto &c) { return c.compute_deviance(last_eta, weight); });
+        have_last = true;
+        return last_deviance;
     }
 };
 

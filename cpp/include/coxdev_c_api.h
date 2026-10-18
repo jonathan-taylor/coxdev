@@ -7,6 +7,9 @@
  * ties. The functions that take a linear predictor eta evaluate the model at
  * (eta, sample_weight), as coxdev's Python CoxDeviance does: a sample_weight
  * different from the weights of the handle rebuilds it with the new weights.
+ * The last evaluation is reused while eta and the weights are unchanged
+ * (compared by value), so that, e.g., coxdev_deviance followed by any number
+ * of coxdev_hessian_matvec at the same eta evaluates the model once.
  *
  * Conventions
  * - Every function returns COXDEV_OK (0) or a negative error code; the message

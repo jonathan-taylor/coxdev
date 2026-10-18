@@ -33,6 +33,10 @@
   `cpp/capi/build_local.sh` builds `libcoxdev_c` with CMake; `test_c_api.c`
   checks it from C, and `tests/test_c_api.py` checks every function against
   the Python package (skipped unless the library is built).
+- **The C API reuses its last evaluation** while `eta` and the weights are
+  unchanged (compared by value), as the Python package does: information
+  products after `coxdev_deviance` no longer recompute the deviance (4x
+  faster), and `eta` and the weights are compared in place rather than copied.
 
 ### Fixes
 
