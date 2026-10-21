@@ -1,3 +1,18 @@
+# coxdev (development version)
+
+* More tests, mirroring the Python package's: the residuals, the baseline
+  hazard, the expected events and the risk-set variances against direct
+  computations, with zero weights; the C-index against the count of its
+  definition and `glmnet::Cindex`; strata (a model per stratum, the block
+  diagonal information, labels, strata of unequal sizes against `coxph`);
+  zero weights as dropped observations, for every kind of ties; the
+  caching of results; the problematic case of `tests/test_bad.py`; the
+  moments of the `"fisher"` draws; edge cases (no failures, one failure,
+  everyone failing at once, entries at failure times, strata without
+  failures, extreme linear predictors) and finite differences of the
+  derivatives under every option; and the values of the Python package,
+  draws of `sample_score()` included, for a fixed data set.
+
 # coxdev 0.3.0
 
 The first release of the R package. It runs the C++ library of the Python

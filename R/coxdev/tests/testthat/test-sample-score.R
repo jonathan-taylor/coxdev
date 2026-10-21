@@ -2,27 +2,7 @@
 
 METHODS <- c("multinomial", "bernoulli", "fisher", "wild")
 
-# score residuals by direct computation: U_i = sum over the failure terms t of
-# (w_i 1{i in D_t} / d - wbar p_ti) (x_i - xbar_t), with Efron's weights for ties
-reference_residuals <- function(X, eta, event, status, start, weight, efron) {
-  if (is.null(start)) start <- rep(-Inf, length(event))
-  e <- weight * exp(eta - max(eta))
-  U <- matrix(0, nrow(X), ncol(X))
-  for (t in unique(event[status == 1 & weight > 0])) {
-    D <- event == t & status == 1 & weight > 0
-    R <- event >= t & start < t & weight > 0
-    d <- sum(D)
-    wbar <- mean(weight[D])
-    for (r in seq_len(d) - 1) {
-      s <- if (efron) r / d else 0
-      w_r <- e * (R - s * D)
-      p_r <- w_r / sum(w_r)
-      xbar <- drop(p_r %*% X)
-      U <- U + (weight * D / d - wbar * p_r) * sweep(X, 2, xbar)
-    }
-  }
-  U
-}
+# reference_residuals() is in helper-reference.R
 
 breslow_information <- function(X, eta, event, status, start, weight = NULL) {
   cox <- CoxDeviance$new(event = event, status = status, start = start,
@@ -252,4 +232,53 @@ test_that("seeds are checked", {
   expect_error(cox$sample_score(eta, n_draws = -1), "nonnegative")
   expect_equal(dim(cox$sample_score(eta, n_draws = 0, seed = 1)), c(3L, 0L))
   expect_error(cox$sample_score(eta, method = "wallenius"), "should be one of")
+})
+
+# log elementary symmetric polynomials E_0, ..., E_d of exp(loge)
+log_esp <- function(loge, d) {
+  L <- c(0, rep(-Inf, d))
+  for (v in loge) {
+    a <- L[-1]
+    b <- v + L[-(d + 1)]
+    m <- pmax(a, b)
+    L[-1] <- ifelse(is.finite(m), m + log(exp(a - m) + exp(b - m)), -Inf)
+  }
+  L
+}
+
+# the sum over the failure times of log E_d(exp(eta) over the risk set): the
+# log-normalizer of the exact discrete partial likelihood
+exact_log_normalizer <- function(eta, event, status, start) {
+  total <- 0
+  for (t in unique(event[status == 1])) {
+    d <- sum(event == t & status == 1)
+    risk <- event >= t & (if (is.null(start)) TRUE else start < t)
+    total <- total + log_esp(eta[risk], d)[d + 1]
+  }
+  total
+}
+
+test_that("fisher draws have the moments of the exact likelihood", {
+  # the mean and covariance of X^T r are 0 and the Hessian of the exact
+  # log-normalizer sum_k log E_{d_k}(exp(eta + X t)) at t = 0
+  set.seed(19)
+  for (start in c(FALSE, TRUE)) {
+    d <- cox_data(n = 200, start = start)
+    eta <- eta_of(d)
+    cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start)
+    n_draws <- 20000
+    draws <- crossprod(d$X, cox$sample_score(eta, method = "fisher", n_draws = n_draws, seed = 7))
+    f <- function(t) exact_log_normalizer(eta + drop(d$X %*% t), d$event, d$status, d$start)
+    p <- ncol(d$X)
+    h <- 1e-3
+    I <- diag(p) * h
+    H <- outer(1:p, 1:p, Vectorize(function(i, j) {
+      (f(I[i, ] + I[j, ]) - f(I[i, ] - I[j, ]) - f(-I[i, ] + I[j, ]) + f(-I[i, ] - I[j, ])) / (4 * h^2)
+    }))
+    expect_lt(max(abs(rowMeans(draws))), 4 * max(sqrt(diag(H) / n_draws)))
+    expect_true(all(abs(stats::cov(t(draws)) - H) <= 0.04 * abs(H) + 0.04 * max(diag(H))))
+    # less than the Breslow information when ties are heavy
+    breslow <- breslow_information(d$X, eta, d$event, d$status, d$start)
+    expect_true(all(diag(H) < diag(breslow)))
+  }
 })

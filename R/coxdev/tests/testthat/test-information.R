@@ -1,17 +1,7 @@
 # The information operator: the Hessian of the deviance, symmetric, with the
 # diagonal diag_hessian / 2, and its interface.
 
-make_cox <- function(n = 60, start = TRUE, strata = FALSE, weight = "ones", tie_breaking = "efron") {
-  event <- ceiling(stats::rexp(n) * 3) / 3      # a coarse grid: many ties
-  status <- stats::rbinom(n, 1, 0.7)
-  w <- if (weight == "ones") rep(1, n) else stats::runif(n, 0.5, 2)
-  if (weight == "zeros") w[1:5] <- 0
-  entry <- if (start) floor(stats::runif(n, 0, 0.5) * event * 6) / 6
-  list(cox = CoxDeviance$new(event = event, status = status, start = entry,
-                             strata = if (strata) seq_len(n) %% 2,
-                             sample_weight = w, tie_breaking = tie_breaking),
-       eta = stats::rnorm(n) * 0.3, w = w, event = event, status = status, start = entry)
-}
+# make_cox() is in helper-simulate.R
 
 test_that("diag_hessian is twice the diagonal of the information", {
   set.seed(4)
@@ -117,4 +107,45 @@ test_that("an operator keeps its linear predictor after other computations", {
   fresh <- CoxDeviance$new(event = m$event, status = m$status, start = m$start)
   expect_equal(I2$to_dense(), fresh$information(eta2, w2)$to_dense())
   expect_false(isTRUE(all.equal(I1$to_dense(), I2$to_dense())))
+})
+
+test_that("results and operators are not changed by later calls", {
+  # tests/test_information_operator.py
+  for (strata in c(FALSE, TRUE)) {
+    for (tie_breaking in c("efron", "breslow")) {
+      set.seed(10)
+      d <- cox_data(n = 120, start = TRUE)
+      n <- length(d$event)
+      w <- stats::runif(n, 0.5, 2)
+      cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start, sample_weight = w,
+                             strata = if (strata) seq_len(n) %% 3, tie_breaking = tie_breaking)
+      eta1 <- drop(d$X %*% c(0.3, -0.2, 0.1))
+      eta2 <- drop(d$X %*% c(-0.5, 0.4, 0.2))
+      V <- matrix(stats::rnorm(n * 4), n, 4)
+
+      r1 <- cox$compute(eta1, w)
+      I1 <- cox$information(eta1, w)
+      P1 <- sapply(1:4, function(j) I1$multiply(V[, j]))
+
+      # another linear predictor in between changes neither the result nor I1
+      r2 <- cox$compute(eta2, w)
+      expect_identical(r1$linear_predictor, eta1)
+      expect_identical(r1$sample_weight, w)
+      expect_false(r1$deviance == r2$deviance)
+      expect_equal(I1$multiply(V[, 1]), P1[, 1], tolerance = 1e-12)
+
+      # a matrix in one call is the columns one at a time
+      expect_equal(I1$multiply(V), P1, tolerance = 1e-12)
+      I2 <- cox$information(eta2, w)
+      expect_equal(I2$multiply(V), sapply(1:4, function(j) I2$multiply(V[, j])), tolerance = 1e-12)
+
+      # symmetric
+      expect_equal(I1$multiply_transpose(V), P1, tolerance = 1e-12)
+      expect_equal(sum(V[, 4] * I1$multiply(V[, 3])), sum(V[, 3] * I1$multiply(V[, 4])),
+                   tolerance = 1e-10)
+      # the diagonal of the Hessian of the deviance is twice that of I
+      E <- diag(n)[, 1:10]
+      expect_equal(diag(I1$multiply(E)[1:10, ]), r1$diag_hessian[1:10] / 2, tolerance = 1e-10)
+    }
+  }
 })

@@ -113,3 +113,17 @@ cox_data <- function(n = 150, p = 3, start = FALSE, ties = TRUE) {
 coef_information <- function(cox, X, eta, weight = NULL) {
   crossprod(X, cox$information(eta, weight)$multiply(X))
 }
+
+# a CoxDeviance on a coarse grid of times (many ties), with a linear
+# predictor, as in tests/test_diag_hessian.py
+make_cox <- function(n = 60, start = TRUE, strata = FALSE, weight = "ones", tie_breaking = "efron") {
+  event <- ceiling(stats::rexp(n) * 3) / 3      # a coarse grid: many ties
+  status <- stats::rbinom(n, 1, 0.7)
+  w <- if (weight == "ones") rep(1, n) else stats::runif(n, 0.5, 2)
+  if (weight == "zeros") w[1:5] <- 0
+  entry <- if (start) floor(stats::runif(n, 0, 0.5) * event * 6) / 6
+  list(cox = CoxDeviance$new(event = event, status = status, start = entry,
+                             strata = if (strata) seq_len(n) %% 2,
+                             sample_weight = w, tie_breaking = tie_breaking),
+       eta = stats::rnorm(n) * 0.3, w = w, event = event, status = status, start = entry)
+}
