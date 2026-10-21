@@ -63,3 +63,16 @@ build-backend = "mesonpy"
 
 [tool.setuptools_scm]
 # This will use the latest git tag for the version
+
+[tool.cibuildwheel]
+# no 32-bit builds (no numpy/scipy wheels)
+skip = ["*-win32", "*-manylinux_i686", "*-musllinux_i686"]
+
+[tool.cibuildwheel.windows]
+# build with MSVC: meson may otherwise pick a MinGW gcc on the PATH, whose
+# runtime DLLs (libstdc++, libgcc_s, libwinpthread) the wheel doesn't ship,
+# and Python doesn't look for an extension's DLLs on the PATH: the extension
+# would not import ("DLL load failed while importing coxc"). And check that
+# the wheel's extension loads and computes.
+config-settings = {setup-args = "--vsenv"}
+test-command = "python -c \"import numpy as np; from coxdev import CoxDeviance; r = CoxDeviance(event=np.array([1., 2., 3.]), status=np.array([1, 0, 1]))(np.zeros(3), np.ones(3)); print(r.deviance)\""
