@@ -9,7 +9,9 @@
   MinGW's runtime DLLs (`libstdc++-6.dll`, `libgcc_s_seh-1.dll`,
   `libwinpthread-1.dll`), which the wheels don't ship, so importing coxdev
   failed with "DLL load failed while importing coxc". The wheels are now
-  built with MSVC, and each is tested to import and compute a deviance.
+  built with MSVC, with its C++ runtime linked statically (so they need no
+  Visual C++ redistributable), and each is tested to import and compute a
+  deviance.
   The tests also run on Windows (#59).
 
 ## 0.3.0 (2026-10-15)
