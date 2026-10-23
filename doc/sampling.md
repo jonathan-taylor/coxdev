@@ -148,8 +148,11 @@ pd.DataFrame({'rademacher': np.diag(np.cov(rademacher)), 'sandwich': np.diag(U.T
 
 ## Reproducibility
 
-The same seed gives the same draws on every platform, and from the R
-package. With `seed=None`, a fresh seed is drawn from numpy's entropy.
+The same seed gives the same draws, here and from the R package: the
+random numbers are the same on every platform, and the draws agree to
+rounding, as they go through `exp`, `log`, `sin` and `cos`, whose last bits
+can differ between math libraries. With `seed=None`, a fresh seed is drawn
+from numpy's entropy.
 
 ```{code-cell} ipython3
 np.array_equal(cox.sample_score(eta_hat, method='fisher', seed=7),

@@ -107,7 +107,9 @@ public:
     //   "wild"         sum_i G_i U_i over the score residuals U_i, with
     //                  independent standard normal G_i
     // The model-based methods (all but "wild") need equal positive weights.
-    // Draws depend only on seed, not on the platform.
+    // The random numbers depend only on seed, not on the platform; the draws
+    // are then equal to rounding across platforms (the last bits of exp, log,
+    // sin and cos can differ between math libraries).
     Eigen::MatrixXd sample_score(const std::string& method,
                                    int n_draws,
                                    std::uint64_t seed);

@@ -259,8 +259,11 @@ the score.
   557–572.
 
 The random numbers come from the C++ code, from the bits of
-`std::mt19937_64`, so the same `seed` gives the same draws on every
-platform. With `seed=None`, a fresh seed is drawn.
+`std::mt19937_64`, so the same `seed` gives the same random numbers on
+every platform. The draws are then the same to rounding: they go through
+`exp`, `log`, `sin` and `cos`, whose last bits can differ between math
+libraries (by about `1e-16`), and on one machine R and Python give identical
+draws. With `seed=None`, a fresh seed is drawn.
 
 ### Score Residuals and the Baseline Hazard
 

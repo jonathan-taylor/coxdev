@@ -159,9 +159,11 @@ rbind(rademacher = diag(cov(t(rademacher))), sandwich = diag(sandwich))
 
 ## Reproducibility
 
-The same seed gives the same draws on every platform, and from the Python
-package. With `seed = NULL`, the seed comes from R's generator, so
-`set.seed()` makes the draws reproducible.
+The same seed gives the same draws, here and from the Python package: the
+random numbers are the same on every platform, and the draws agree to
+rounding, as they go through `exp`, `log`, `sin` and `cos`, whose last bits
+can differ between math libraries. With `seed = NULL`, the seed comes from
+R's generator, so `set.seed()` makes the draws reproducible.
 
 ```{code-cell} r
 identical(cox$sample_score(eta_hat, method = "fisher", seed = 7),

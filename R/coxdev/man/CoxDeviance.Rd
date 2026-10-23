@@ -301,9 +301,11 @@ See the package README for references.
       \item{\code{n_draws}}{The number of draws, or \code{NULL} for one draw as a vector.}
       \item{\code{seed}}{The seed of the random numbers: a nonnegative whole number
 (up to \code{2^53}), or a string of decimal digits for any seed below
-\code{2^64}. The same seed gives the same draws on every platform, and from
-Python. If \code{NULL}, a seed is drawn from R's random number generator,
-so that \code{set.seed()} makes the draws reproducible.}
+\code{2^64}. The same seed gives the same draws, here and from Python: the
+same random numbers on every platform, and draws equal to rounding
+(the last bits of \code{exp}, \code{log}, \code{sin} and \code{cos} can differ between
+math libraries). If \code{NULL}, a seed is drawn from R's random number
+generator, so that \code{set.seed()} makes the draws reproducible.}
     }
     \if{html}{\out{</div>}}
   }

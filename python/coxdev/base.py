@@ -469,8 +469,11 @@ class CoxDeviance(object):
             The number of draws. If None, one draw, as a vector.
         seed : int, optional
             Seed of the random number generator (a nonnegative integer below
-            2**64). The same seed gives the same draws on every platform, and
-            from R. If None, a seed is drawn from numpy's random entropy.
+            2**64). The same seed gives the same draws, here and from R: the
+            same random numbers on every platform, and draws equal to
+            rounding (the last bits of ``exp``, ``log``, ``sin`` and ``cos``
+            can differ between math libraries). If None, a seed is drawn from
+            numpy's random entropy.
 
         Returns
         -------

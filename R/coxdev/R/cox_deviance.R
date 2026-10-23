@@ -248,9 +248,11 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @param n_draws The number of draws, or `NULL` for one draw as a vector.
     #' @param seed The seed of the random numbers: a nonnegative whole number
     #'   (up to `2^53`), or a string of decimal digits for any seed below
-    #'   `2^64`. The same seed gives the same draws on every platform, and from
-    #'   Python. If `NULL`, a seed is drawn from R's random number generator,
-    #'   so that `set.seed()` makes the draws reproducible.
+    #'   `2^64`. The same seed gives the same draws, here and from Python: the
+    #'   same random numbers on every platform, and draws equal to rounding
+    #'   (the last bits of `exp`, `log`, `sin` and `cos` can differ between
+    #'   math libraries). If `NULL`, a seed is drawn from R's random number
+    #'   generator, so that `set.seed()` makes the draws reproducible.
     #' @return A vector of length `n` if `n_draws` is `NULL`, else an
     #'   `n` by `n_draws` matrix.
     sample_score = function(linear_predictor,
