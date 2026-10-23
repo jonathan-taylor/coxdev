@@ -228,6 +228,16 @@ private:
     }
 };
 
+// A CoxDeviance per stratum. Possible future work: all the strata in one
+// pass, as coxdev.jax does (see "Strata" in doc/notes_no_ties.md): sort each
+// stratum on its own, stack them with their positions shifted, and keep the
+// start term, which takes out the later strata. With many small strata the
+// per-stratum copies and buffers cost: at n = 100000, 50000 strata (pairs)
+// made the deviance 3.5 times and information products 7 times slower than
+// one stratum (10000 strata: 1.8 and 2.4 times). The core (deviance,
+// gradient, Hessian products) would be simple; baseline_hazard, the
+// residuals, concordance and sample_score (seeded per stratum) would have to
+// run over the strata's segments of the stacked arrays.
 class StratifiedCoxDeviance {
 public:
     StratifiedCoxDeviance(const Eigen::VectorXd& start,

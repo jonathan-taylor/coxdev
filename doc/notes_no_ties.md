@@ -250,6 +250,13 @@ depends only on $n$, not on the number of strata. With a program per
 stratum, compiling for 1000 strata takes minutes, against a fraction of a
 second in one pass.
 
+The C++ code still keeps a model per stratum. That costs little with a few
+strata, but with many small ones (matched pairs, as in conditional logistic
+regression) the per-stratum copies add up: at $n = 100{,}000$, 50,000
+strata of pairs make the deviance about 3.5 times and information products
+about 7 times slower than a single stratum. One pass would remove that, and
+may be done in the future.
+
 ## Probabilistic interpretation
 
 For computing derivatives it is perhaps more helpful to think of
