@@ -111,6 +111,7 @@ Martingale-based residuals for survival models. \emph{Biometrika}, 77(1),
     \item \href{#method-CoxDeviance-compute}{\code{CoxDeviance$compute()}}
     \item \href{#method-CoxDeviance-c_index}{\code{CoxDeviance$c_index()}}
     \item \href{#method-CoxDeviance-information}{\code{CoxDeviance$information()}}
+    \item \href{#method-CoxDeviance-information_derivative}{\code{CoxDeviance$information_derivative()}}
     \item \href{#method-CoxDeviance-sample_score}{\code{CoxDeviance$sample_score()}}
     \item \href{#method-CoxDeviance-wild_score}{\code{CoxDeviance$wild_score()}}
     \item \href{#method-CoxDeviance-score_residuals}{\code{CoxDeviance$score_residuals()}}
@@ -245,6 +246,43 @@ the deviance, as a matrix-free linear operator.
   }
   \subsection{Returns}{
     A \link{CoxInformation} operator.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-information_derivative"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-information_derivative}{}}}
+\subsection{\code{CoxDeviance$information_derivative()}}{
+  The derivative of the information at a linear predictor
+in a direction of the linear predictor,
+\verb{d/dt information(linear_predictor + t * direction)} at \code{t = 0}, as a
+matrix-free linear operator. It is symmetric, and a product costs
+\code{O(n)}, a few times a product with the information.
+\code{crossprod(X, dI \%*\% X)} is the derivative of the information of the
+coefficients of a design \code{X}, as needed for the derivative of a log
+determinant (e.g. in REML or a Laplace approximation), where
+\code{direction} is the derivative of the linear predictor. The derivative
+of the Hessian of the deviance is twice it.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$information_derivative(
+  linear_predictor,
+  direction,
+  sample_weight = NULL
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+      \item{\code{direction}}{The direction of the derivative, one entry per
+observation.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A \link{CoxInformationDerivative} operator.
   }
 }
 

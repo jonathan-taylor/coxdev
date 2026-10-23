@@ -149,3 +149,59 @@ test_that("results and operators are not changed by later calls", {
     }
   }
 })
+
+test_that("the derivative of the information is the derivative of the information", {
+  # against central differences of the information, for every kind of ties,
+  # start times, weights (with zeros) and strata
+  set.seed(6)
+  for (tie_breaking in c("efron", "breslow")) {
+    for (start in c(FALSE, TRUE)) {
+      for (weight in c("ones", "unequal", "zeros")) {
+        for (strata in c(FALSE, TRUE)) {
+          m <- make_cox(start = start, strata = strata, weight = weight,
+                        tie_breaking = tie_breaking)
+          n <- length(m$eta)
+          u <- stats::rnorm(n)
+          v <- stats::rnorm(n)
+          h <- 1e-5
+          fd <- (m$cox$information(m$eta + h * v, m$w) %*% u -
+                 m$cox$information(m$eta - h * v, m$w) %*% u) / (2 * h)
+          dI <- m$cox$information_derivative(m$eta, v, m$w)
+          expect_equal(drop(dI %*% u), drop(fd), tolerance = 1e-6)
+          # symmetric in the direction and the argument
+          expect_equal(dI$multiply(u),
+                       m$cox$information_derivative(m$eta, u, m$w)$multiply(v),
+                       tolerance = 1e-10)
+        }
+      }
+    }
+  }
+})
+
+test_that("the derivative of the information as an operator", {
+  set.seed(7)
+  m <- make_cox(n = 30, strata = TRUE, weight = "zeros")
+  n <- length(m$eta)
+  v <- stats::rnorm(n)
+  dI <- m$cox$information_derivative(m$eta, v, m$w)
+  expect_s3_class(dI, "CoxInformationDerivative")
+  expect_s3_class(dI, "CoxInformation")
+  expect_equal(dim(dI), c(n, n))
+  D <- as.matrix(dI)
+  expect_equal(D, t(D), tolerance = 1e-12)
+  X <- matrix(stats::rnorm(n * 3), n, 3)
+  expect_equal(dI %*% X, D %*% X, tolerance = 1e-12)
+  expect_equal(crossprod(X, dI %*% X), t(X) %*% D %*% X, tolerance = 1e-12)
+  # linear in the direction
+  u <- stats::rnorm(n)
+  expect_equal(m$cox$information_derivative(m$eta, 2 * v + u, m$w)$multiply(u),
+               2 * dI$multiply(u) + m$cox$information_derivative(m$eta, u, m$w)$multiply(u),
+               tolerance = 1e-10)
+  # it keeps its linear predictor after other computations
+  before <- dI$multiply(u)
+  m$cox$compute(stats::rnorm(n), m$w)
+  expect_equal(dI$multiply(u), before, tolerance = 1e-12)
+  expect_error(dI$diagonal(), "not available")
+  expect_error(m$cox$information_derivative(m$eta, v[-1], m$w), "one entry per observation")
+  expect_output(print(dI), "CoxInformationDerivative")
+})

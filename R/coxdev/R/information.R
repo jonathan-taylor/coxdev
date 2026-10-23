@@ -97,6 +97,65 @@ CoxInformation <- R6::R6Class("CoxInformation",
   )
 )
 
+#' The derivative of the information of the Cox model in a direction
+#'
+#' @description
+#' The derivative of the information at a linear predictor in a direction of
+#' the linear predictor, `d/dt I(linear_predictor + t * direction)` at
+#' `t = 0`, as an `n` by `n` symmetric linear operator that is never formed:
+#' a product with a vector costs `O(n)`. Made by
+#' `CoxDeviance$information_derivative()`.
+#'
+#' It works as a [CoxInformation] does, with `%*%`, `dim()`, `t()` and
+#' `as.matrix()`, except that it has no `$diagonal()`.
+#'
+#' @examples
+#' set.seed(1)
+#' n <- 50
+#' X <- matrix(rnorm(n * 2), n, 2)
+#' eta <- drop(X %*% c(0.5, -0.5))
+#' cox <- CoxDeviance$new(event = rexp(n, exp(eta)), status = rbinom(n, 1, 0.7))
+#' # the derivative of the information of the coefficients as they move
+#' # along b
+#' b <- c(1, 0)
+#' dI <- cox$information_derivative(eta, drop(X %*% b))
+#' crossprod(X, dI %*% X)
+#' @export
+CoxInformationDerivative <- R6::R6Class("CoxInformationDerivative",
+  inherit = CoxInformation,
+  cloneable = FALSE,
+  public = list(
+    #' @field direction The direction of the derivative.
+    direction = NULL,
+
+    #' @description Made by `CoxDeviance$information_derivative()`, not
+    #'   directly.
+    #' @param result A `CoxDevianceResult`.
+    #' @param direction The direction of the derivative.
+    #' @param matmat A function multiplying each column of a matrix by the
+    #'   derivative of the information at `result` in the direction
+    #'   `direction`.
+    initialize = function(result, direction, matmat) {
+      super$initialize(result, matmat)
+      self$direction <- direction
+    },
+
+    #' @description Not available in `O(n)`: use `diag(as.matrix(dI))`.
+    diagonal = function() {
+      stop("the diagonal of the derivative of the information is not available; ",
+           "use diag(as.matrix(dI)) for small problems")
+    },
+
+    #' @description Print a summary.
+    #' @param ... Ignored.
+    print = function(...) {
+      n <- self$rows()
+      cat("<CoxInformationDerivative> ", n, " x ", n, " linear operator\n", sep = "")
+      invisible(self)
+    }
+  )
+)
+
 .as_double_matrix <- function(v) {
   v <- as.matrix(v)
   storage.mode(v) <- "double"

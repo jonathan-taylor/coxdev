@@ -1,5 +1,11 @@
 # coxdev (development version)
 
+* `CoxDeviance$information_derivative(linear_predictor, direction,
+  sample_weight)`: the derivative of the information in a direction of the
+  linear predictor, `d/dt I(eta + t direction)`, as a symmetric matrix-free
+  operator (`CoxInformationDerivative`, with `%*%`, `t()`, `dim()` and
+  `as.matrix()`), `O(n)` per product: for the derivatives of log
+  determinants, as in REML.
 * More tests, mirroring the Python package's: the residuals, the baseline
   hazard, the expected events and the risk-set variances against direct
   computations, with zero weights; the C-index against the count of its

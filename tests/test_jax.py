@@ -2,8 +2,8 @@
 coxdev.jax against the C++ code: the preprocessing, the deviance, its
 gradient and Hessian, the information and its derivative in a direction of
 the linear predictor, with Efron's and Breslow's ties, (start, stop] data,
-unequal weights, weights 0 and strata. Also the C++ derivative of the
-information against finite differences of the C++ information.
+unequal weights, weights 0 and strata. (The C++ derivative of the
+information alone is tested in test_information_operator.py.)
 """
 
 import numpy as np
@@ -194,50 +194,3 @@ def test_jax_jit():
     dI = jax.jit(cox_jax.information_derivative_matvec)
     np.testing.assert_allclose(dI(jnp.asarray(eta), jnp.asarray(v), jnp.asarray(u)),
                                cox.information_derivative(eta, v, w) @ u, rtol=1e-10, atol=1e-12)
-
-
-@pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
-@pytest.mark.parametrize('have_start_times', [True, False])
-@pytest.mark.parametrize('stratified', [False, True])
-def test_information_derivative_finite_differences(tie_breaking, have_start_times, stratified):
-    # the C++ derivative of the information, without JAX: against central
-    # differences of the information, symmetric in the direction and the
-    # argument, and as a matrix (matmat) symmetric
-    rng = np.random.default_rng(5)
-    event, status, entry = _grid_data(rng, start=have_start_times)
-    n = event.shape[0]
-    w = _weights('zeros_unequal', n, rng)
-    strata = rng.choice(3, n) if stratified else None
-    cox = CoxDeviance(event=event, status=status, start=entry, strata=strata,
-                      sample_weight=w, tie_breaking=tie_breaking)
-    eta = rng.standard_normal(n) * 0.5
-    u, v = rng.standard_normal((2, n))
-
-    h = 1e-5
-    fd = (cox.information(eta + h * v, w) @ u - cox.information(eta - h * v, w) @ u) / (2 * h)
-    dI_v = cox.information_derivative(eta, v, w)
-    np.testing.assert_allclose(dI_v @ u, fd, rtol=1e-6, atol=1e-8)
-    np.testing.assert_allclose(dI_v @ u, cox.information_derivative(eta, u, w) @ v,
-                               rtol=1e-10, atol=1e-12)
-
-    D = dI_v @ np.eye(n)
-    np.testing.assert_allclose(D, D.T, rtol=1e-10, atol=1e-12)
-    np.testing.assert_allclose(D[:, 3], dI_v @ np.eye(n)[:, 3], rtol=1e-12, atol=1e-14)
-    # the information derivative is linear in the direction
-    dI_2v = cox.information_derivative(eta, 2 * v + u, w) @ u
-    np.testing.assert_allclose(dI_2v, 2 * (dI_v @ u) + cox.information_derivative(eta, u, w) @ u,
-                               rtol=1e-10, atol=1e-12)
-
-
-def test_information_derivative_after_other_calls():
-    # as CoxInformation, the operator brings the C++ object back to its
-    # linear predictor
-    rng = np.random.default_rng(6)
-    event, status, entry = _grid_data(rng)
-    n = event.shape[0]
-    cox = CoxDeviance(event=event, status=status, start=entry)
-    eta, other, u, v = rng.standard_normal((4, n))
-    dI = cox.information_derivative(eta, v)
-    before = dI @ u
-    cox(other)
-    np.testing.assert_allclose(dI @ u, before, rtol=1e-12)

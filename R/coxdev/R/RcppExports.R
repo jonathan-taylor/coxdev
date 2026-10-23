@@ -17,6 +17,10 @@
     .Call(`_coxdev_cox_information_matmat`, ptr, arg)
 }
 
+.cox_information_derivative_matmat <- function(ptr, direction, arg) {
+    .Call(`_coxdev_cox_information_derivative_matmat`, ptr, direction, arg)
+}
+
 .cox_sample_score <- function(ptr, method, n_draws, seed) {
     .Call(`_coxdev_cox_sample_score`, ptr, method, n_draws, seed)
 }

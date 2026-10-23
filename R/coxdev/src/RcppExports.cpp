@@ -64,6 +64,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cox_information_derivative_matmat
+Eigen::MatrixXd cox_information_derivative_matmat(SEXP ptr, const Eigen::VectorXd& direction, const Eigen::MatrixXd& arg);
+RcppExport SEXP _coxdev_cox_information_derivative_matmat(SEXP ptrSEXP, SEXP directionSEXP, SEXP argSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    Rcpp::traits::input_parameter< const Eigen::VectorXd& >::type direction(directionSEXP);
+    Rcpp::traits::input_parameter< const Eigen::MatrixXd& >::type arg(argSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_information_derivative_matmat(ptr, direction, arg));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cox_sample_score
 Eigen::MatrixXd cox_sample_score(SEXP ptr, const std::string& method, int n_draws, const std::string& seed);
 RcppExport SEXP _coxdev_cox_sample_score(SEXP ptrSEXP, SEXP methodSEXP, SEXP n_drawsSEXP, SEXP seedSEXP) {
@@ -167,6 +180,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_cox_valid", (DL_FUNC) &_coxdev_cox_valid, 1},
     {"_coxdev_cox_compute", (DL_FUNC) &_coxdev_cox_compute, 3},
     {"_coxdev_cox_information_matmat", (DL_FUNC) &_coxdev_cox_information_matmat, 2},
+    {"_coxdev_cox_information_derivative_matmat", (DL_FUNC) &_coxdev_cox_information_derivative_matmat, 3},
     {"_coxdev_cox_sample_score", (DL_FUNC) &_coxdev_cox_sample_score, 4},
     {"_coxdev_cox_wild_score", (DL_FUNC) &_coxdev_cox_wild_score, 2},
     {"_coxdev_cox_score_residuals", (DL_FUNC) &_coxdev_cox_score_residuals, 2},
