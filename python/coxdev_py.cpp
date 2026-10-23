@@ -154,6 +154,24 @@ PYBIND11_MODULE(coxc, m) {
           }
           return out;
       })
+      // d/dt I(eta + t direction) arg, and the same for each column of arg
+      .def("compute_information_derivative_matvec", [](CoxDeviance &self, const Eigen::Ref<const Eigen::VectorXd>& direction,
+                                                        const Eigen::Ref<const Eigen::VectorXd>& arg) {
+          Eigen::VectorXd out(arg.size());
+          self.compute_information_derivative_matvec(direction, arg, out);
+          return out;
+      }, py::arg("direction"), py::arg("arg"))
+      .def("compute_information_derivative_matmat", [](CoxDeviance &self, const Eigen::Ref<const Eigen::VectorXd>& direction,
+                                                        const Eigen::Ref<const Eigen::MatrixXd>& arg) {
+          Eigen::MatrixXd out(arg.rows(), arg.cols());
+          Eigen::VectorXd dir = direction, col_in(arg.rows()), col_out(arg.rows());
+          for (Eigen::Index j = 0; j < arg.cols(); ++j) {
+              col_in = arg.col(j);
+              self.compute_information_derivative_matvec(dir, col_in, col_out);
+              out.col(j) = col_out;
+          }
+          return out;
+      }, py::arg("direction"), py::arg("arg"))
       .def("sample_score", &CoxDeviance::sample_score,
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &CoxDeviance::wild_score, py::arg("multipliers"))
@@ -205,6 +223,24 @@ PYBIND11_MODULE(coxc, m) {
           }
           return out;
       })
+      // d/dt I(eta + t direction) arg, and the same for each column of arg
+      .def("compute_information_derivative_matvec", [](StratifiedCoxDeviance &self, const Eigen::Ref<const Eigen::VectorXd>& direction,
+                                                        const Eigen::Ref<const Eigen::VectorXd>& arg) {
+          Eigen::VectorXd out(arg.size());
+          self.compute_information_derivative_matvec(direction, arg, out);
+          return out;
+      }, py::arg("direction"), py::arg("arg"))
+      .def("compute_information_derivative_matmat", [](StratifiedCoxDeviance &self, const Eigen::Ref<const Eigen::VectorXd>& direction,
+                                                        const Eigen::Ref<const Eigen::MatrixXd>& arg) {
+          Eigen::MatrixXd out(arg.rows(), arg.cols());
+          Eigen::VectorXd dir = direction, col_in(arg.rows()), col_out(arg.rows());
+          for (Eigen::Index j = 0; j < arg.cols(); ++j) {
+              col_in = arg.col(j);
+              self.compute_information_derivative_matvec(dir, col_in, col_out);
+              out.col(j) = col_out;
+          }
+          return out;
+      }, py::arg("direction"), py::arg("arg"))
       .def("sample_score", &StratifiedCoxDeviance::sample_score,
            py::arg("method"), py::arg("n_draws"), py::arg("seed"))
       .def("wild_score", &StratifiedCoxDeviance::wild_score, py::arg("multipliers"))

@@ -214,6 +214,33 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
       CoxInformation$new(result, matmat)
     },
 
+    #' @description The derivative of the information at a linear predictor
+    #'   in a direction of the linear predictor,
+    #'   `d/dt information(linear_predictor + t * direction)` at `t = 0`, as a
+    #'   matrix-free linear operator. It is symmetric, and a product costs
+    #'   `O(n)`, a few times a product with the information.
+    #'   `crossprod(X, dI %*% X)` is the derivative of the information of the
+    #'   coefficients of a design `X`, as needed for the derivative of a log
+    #'   determinant (e.g. in REML or a Laplace approximation), where
+    #'   `direction` is the derivative of the linear predictor. The derivative
+    #'   of the Hessian of the deviance is twice it.
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @param direction The direction of the derivative, one entry per
+    #'   observation.
+    #' @return A [CoxInformationDerivative] operator.
+    information_derivative = function(linear_predictor, direction, sample_weight = NULL) {
+      result <- private$prepare(linear_predictor, sample_weight)
+      direction <- as.numeric(direction)
+      if (length(direction) != length(result$linear_predictor)) {
+        stop("direction must have one entry per observation")
+      }
+      matmat <- function(arg) {
+        private$prepare(result$linear_predictor, result$sample_weight)
+        .cox_information_derivative_matmat(private$ptr, direction, arg)
+      }
+      CoxInformationDerivative$new(result, direction, matmat)
+    },
+
     #' @description Draws of the score at a linear predictor: from the Cox
     #'   model with that linear predictor, or (`"wild"`) from its score
     #'   residuals.

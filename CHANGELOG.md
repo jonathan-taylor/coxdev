@@ -11,6 +11,17 @@
   directory; the R package has them in `inst/include`.
   `cpp/src/coxdev.cpp` is kept, compiling nothing, for builds that list it
   (#41).
+- **The derivative of the information in a direction.**
+  `CoxDeviance.information_derivative(linear_predictor, direction)` (and
+  `CoxDeviance$information_derivative()` in R) is
+  `d/dt I(linear_predictor + t * direction)` as a symmetric matrix-free
+  operator, `O(n)` per product, with Efron's and Breslow's ties, start
+  times, zero weights and strata: for the derivatives of log determinants,
+  as in REML (#62).
+- **`coxdev.jax`.** The deviance written in JAX (`pip install coxdev[jax]`),
+  so its derivatives of any order come from automatic differentiation; it
+  matches the C++ code with every kind of ties, start times, zero weights
+  and strata (#62).
 
 ### Fixes
 

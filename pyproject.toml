@@ -30,6 +30,8 @@ maintainers = [
 [project.optional-dependencies]
 test = ['pytest',
         'pandas']
+# coxdev.jax
+jax = ['jax']
 dev = [
     "pytest",
     "scipy",
@@ -46,6 +48,8 @@ doc = [
     "matplotlib",
     "rpy2",
     "glmstar>=0.2.0",
+    # doc/jax_timing.md
+    "jax",
     # API reference (doc/api, Sphinx autodoc)
     "sphinx",
     "sphinx-book-theme"

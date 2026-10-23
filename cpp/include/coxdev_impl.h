@@ -665,6 +665,71 @@ inline void CoxDeviance::compute_hessian_matvec(const Eigen::VectorXd& arg,
     out = hess_matvec_buffer;
 }
 
+// The derivative of the information I (the Hessian of minus the log
+// likelihood, as compute_hessian_matvec) at the last compute_deviance in the
+// direction v of the linear predictor, times u: d/dt I(eta + t v) u at t = 0.
+// For a failure i with risk sum S_i = sum_j c_ij e_j (e_j = w_j exp(eta_j),
+// c_ij = 1 - sigma_i for the failures tied with i under Efron's ties, 1 for
+// the others at risk), -log S_i is a cumulant generating function, so with
+// E_i x = sum_j c_ij e_j x_j / S_i its third derivative gives
+//   (dI[v] u)_k = e_k sum_i c_ik (w_avg_i / S_i)
+//                 [v_k u_k - v_k E_i u - u_k E_i v - E_i (u v) + 2 E_i u E_i v],
+// symmetric in u and v: the risk sums of e u, e v and e u v, and three sums
+// over the failures, all O(n).
+inline void CoxDeviance::compute_information_derivative_matvec(const Eigen::VectorXd& direction,
+                                                        const Eigen::VectorXd& arg,
+                                                        Eigen::VectorXd& out) {
+    int n = arg.size();
+    CoxContext ctx = get_context();
+    const Eigen::VectorXd& risk_sums = risk_sum_buffers[0];
+
+    Eigen::VectorXd event_cumsum(n + 1), start_cumsum(n + 1);
+    Eigen::VectorXd C_arg(n + 1), C_arg_scale(n + 1), scratch(n);
+    Eigen::VectorXd risk_u(n), risk_v(n), risk_uv(n);
+    Eigen::VectorXd sum_u(n), sum_v(n), sum_uv(n);
+
+    Eigen::VectorXd e_u = exp_w_buffer.array() * arg.array();
+    Eigen::VectorXd e_v = exp_w_buffer.array() * direction.array();
+    Eigen::VectorXd e_uv = e_u.array() * direction.array();
+
+    sum_over_risk_set(e_u, ctx, risk_u, event_cumsum, start_cumsum);
+    sum_over_risk_set(e_v, ctx, risk_v, event_cumsum, start_cumsum);
+    sum_over_risk_set(e_uv, ctx, risk_uv, event_cumsum, start_cumsum);
+
+    // sum_i c_ik w_avg_i E_i u / S_i
+    for (int i = 0; i < n; ++i) {
+        scratch(i) = w_avg_buffer(i) > 0 ? w_avg_buffer(i) * risk_u(i) / (risk_sums(i) * risk_sums(i)) : 0.0;
+    }
+    sum_over_events(ctx, C_arg, C_arg_scale, scratch, sum_u);
+
+    // sum_i c_ik w_avg_i E_i v / S_i
+    for (int i = 0; i < n; ++i) {
+        scratch(i) = w_avg_buffer(i) > 0 ? w_avg_buffer(i) * risk_v(i) / (risk_sums(i) * risk_sums(i)) : 0.0;
+    }
+    sum_over_events(ctx, C_arg, C_arg_scale, scratch, sum_v);
+
+    // sum_i c_ik w_avg_i (2 E_i u E_i v - E_i (u v)) / S_i
+    for (int i = 0; i < n; ++i) {
+        if (w_avg_buffer(i) > 0) {
+            double S = risk_sums(i);
+            scratch(i) = w_avg_buffer(i) * (2 * risk_u(i) * risk_v(i) / S - risk_uv(i)) / (S * S);
+        } else {
+            scratch(i) = 0.0;
+        }
+    }
+    sum_over_events(ctx, C_arg, C_arg_scale, scratch, sum_uv);
+
+    to_native_from_event(sum_u, ctx.event_order, scratch);
+    to_native_from_event(sum_v, ctx.event_order, scratch);
+    to_native_from_event(sum_uv, ctx.event_order, scratch);
+
+    // diag_part = e_k sum_i c_ik w_avg_i / S_i
+    out = diag_part_buffer.array() * direction.array() * arg.array()
+        + exp_w_buffer.array() * (sum_uv.array()
+                                  - direction.array() * sum_u.array()
+                                  - arg.array() * sum_v.array());
+}
+
 inline StratifiedCoxDeviance::StratifiedCoxDeviance(const Eigen::VectorXd& start,
                                            const Eigen::VectorXd& event,
                                            const Eigen::VectorXi& status,
@@ -765,6 +830,33 @@ inline void StratifiedCoxDeviance::compute_hessian_matvec(const Eigen::VectorXd&
         }
 
         cox_devs[i]->compute_hessian_matvec(s_arg, s_out);
+
+        for (int j = 0; j < n_stratum; ++j) {
+            int orig_idx = indices[j];
+            out(orig_idx) = s_out(j);
+        }
+    }
+}
+
+inline void StratifiedCoxDeviance::compute_information_derivative_matvec(const Eigen::VectorXd& direction,
+                                                                  const Eigen::VectorXd& arg,
+                                                                  Eigen::VectorXd& out) {
+    out.setZero(arg.size());
+
+    for (size_t i = 0; i < unique_strata.size(); ++i) {
+        const auto& indices = stratum_indices[i];
+        int n_stratum = indices.size();
+        Eigen::VectorXd s_direction(n_stratum);
+        Eigen::VectorXd s_arg(n_stratum);
+        Eigen::VectorXd s_out(n_stratum);
+
+        for (int j = 0; j < n_stratum; ++j) {
+            int orig_idx = indices[j];
+            s_direction(j) = direction(orig_idx);
+            s_arg(j) = arg(orig_idx);
+        }
+
+        cox_devs[i]->compute_information_derivative_matvec(s_direction, s_arg, s_out);
 
         for (int j = 0; j < n_stratum; ++j) {
             int orig_idx = indices[j];

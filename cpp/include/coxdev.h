@@ -86,6 +86,16 @@ public:
     void compute_hessian_matvec(const Eigen::VectorXd& arg,
                                 Eigen::VectorXd& out);
 
+    // The derivative of the information (as in compute_hessian_matvec, the
+    // Hessian of minus the log partial likelihood) at the linear predictor of
+    // the last compute_deviance, in the direction `direction` of the linear
+    // predictor, times arg: d/dt I(eta + t direction) arg at t = 0, in native
+    // order, O(n). Symmetric in direction and arg; the derivative of the
+    // Hessian of the deviance is twice it.
+    void compute_information_derivative_matvec(const Eigen::VectorXd& direction,
+                                               const Eigen::VectorXd& arg,
+                                               Eigen::VectorXd& out);
+
     // Draws of the score from the model at the linear predictor and weights of
     // the last compute_deviance (or, for "wild", from its score residuals). Each column r of the (n x n_draws) result is in native
     // order and on the scale of the score -gradient / 2, so that X^T r is a draw
@@ -220,6 +230,16 @@ private:
     }
 };
 
+// A CoxDeviance per stratum. Possible future work: all the strata in one
+// pass, as coxdev.jax does (see "Strata" in doc/notes_no_ties.md): sort each
+// stratum on its own, stack them with their positions shifted, and keep the
+// start term, which takes out the later strata. With many small strata the
+// per-stratum copies and buffers cost: at n = 100000, 50000 strata (pairs)
+// made the deviance 3.5 times and information products 7 times slower than
+// one stratum (10000 strata: 1.8 and 2.4 times). The core (deviance,
+// gradient, Hessian products) would be simple; baseline_hazard, the
+// residuals, concordance and sample_score (seeded per stratum) would have to
+// run over the strata's segments of the stacked arrays.
 class StratifiedCoxDeviance {
 public:
     StratifiedCoxDeviance(const Eigen::VectorXd& start,
@@ -234,6 +254,10 @@ public:
 
     void compute_hessian_matvec(const Eigen::VectorXd& arg,
                                 Eigen::VectorXd& out);
+
+    void compute_information_derivative_matvec(const Eigen::VectorXd& direction,
+                                               const Eigen::VectorXd& arg,
+                                               Eigen::VectorXd& out);
 
     // As for CoxDeviance, stratum by stratum (each with its own seed derived
     // from seed).

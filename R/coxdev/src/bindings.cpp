@@ -118,6 +118,26 @@ Eigen::MatrixXd cox_information_matmat(SEXP ptr, const Eigen::MatrixXd& arg) {
   return out;
 }
 
+// the derivative of the information in the direction `direction` of the
+// linear predictor, d/dt I(eta + t direction), times each column of arg
+// [[Rcpp::export(.cox_information_derivative_matmat)]]
+Eigen::MatrixXd cox_information_derivative_matmat(SEXP ptr, const Eigen::VectorXd& direction,
+                                                  const Eigen::MatrixXd& arg) {
+  CoxModel* model = get_computed(ptr);
+  if (direction.size() != arg.rows()) Rcpp::stop("direction must have one entry per observation");
+  Eigen::MatrixXd out(arg.rows(), arg.cols());
+  Eigen::VectorXd col_in(arg.rows()), col_out(arg.rows());
+  model->apply([&](auto& cox) {
+    for (Eigen::Index j = 0; j < arg.cols(); ++j) {
+      col_in = arg.col(j);
+      cox.compute_information_derivative_matvec(direction, col_in, col_out);
+      out.col(j) = col_out;
+    }
+    return 0;
+  });
+  return out;
+}
+
 // [[Rcpp::export(.cox_sample_score)]]
 Eigen::MatrixXd cox_sample_score(SEXP ptr,
                                  const std::string& method,
