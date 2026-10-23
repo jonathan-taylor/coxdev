@@ -2,7 +2,7 @@
     CoxDev
 
 Cox proportional hazards deviance, gradient, information and score draws from
-coxdev's C++ library, through its C API (`coxdev/c_api.h`). The same code as
+coxdev's C++ library, through its C API (`coxdev_c_api.h`). The same code as
 coxdev's Python and R packages: the same numbers, and for `sample_score` the
 same draws for the same seed.
 
@@ -60,7 +60,7 @@ end
 """
     CoxDevError(code, msg)
 
-An error reported by the coxdev C library (`code` < 0, see `c_api.h`).
+An error reported by the coxdev C library (`code` < 0, see `coxdev_c_api.h`).
 """
 struct CoxDevError <: Exception
     code::Int

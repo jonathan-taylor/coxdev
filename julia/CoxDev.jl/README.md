@@ -6,7 +6,7 @@ Julia access to [coxdev](https://github.com/jonathan-taylor/coxdev): the devianc
 - strata and weights;
 - the baseline hazard, Harrell's C-index, score residuals and score draws (wild bootstrap and model-based).
 
-It calls coxdev's C++ library through its C API (`cpp/include/coxdev/c_api.h`). That is the same code as the Python and R packages, so it gives the same numbers, and the same draws for the same seed.
+It calls coxdev's C++ library through its C API (`cpp/include/coxdev_c_api.h`). That is the same code as the Python and R packages, so it gives the same numbers, and the same draws for the same seed.
 
 **Status:** an unregistered prototype on coxdev's `julia` branch.
 

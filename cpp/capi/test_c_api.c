@@ -1,4 +1,4 @@
-/* A plain C test of the coxdev C API: compiles as C99 against c_api.h, checks
+/* A plain C test of the coxdev C API: compiles as C99 against coxdev_c_api.h, checks
    basic results, error handling, and many create/free cycles. */
 #include "coxdev_c_api.h"
 #include <math.h>

@@ -27,7 +27,7 @@ cmake -B build \
     -DCOXDEV_C_TESTS=OFF
 cmake --build build --parallel ${nproc}
 install -Dvm 755 build/libcoxdev_c.${dlext} ${libdir}/libcoxdev_c.${dlext}
-install -Dvm 644 ../include/coxdev/c_api.h ${includedir}/coxdev/c_api.h
+install -Dvm 644 ../include/coxdev_c_api.h ${includedir}/coxdev_c_api.h
 install_license ${WORKSPACE}/srcdir/coxdev/LICENSE
 """
 
