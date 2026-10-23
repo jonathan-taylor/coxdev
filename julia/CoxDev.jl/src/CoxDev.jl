@@ -16,7 +16,7 @@ module CoxDev
 using Libdl
 using LinearMaps
 
-export CoxDeviance, deviance, information, baseline_hazard, concordance,
+export CoxDeviance, deviance, information, information_derivative, baseline_hazard, concordance,
        score_residuals, wild_score, sample_score, CoxDevError
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ function _sym(name::Symbol)
             if _lib[] == C_NULL
                 _lib[] = Libdl.dlopen(libpath())
                 v = ccall(Libdl.dlsym(_lib[], :coxdev_api_version), Cint, ())
-                v == 1 || error("libcoxdev_c has C API version $v; CoxDev.jl needs 1")
+                v >= 2 || error("libcoxdev_c has C API version $v; CoxDev.jl needs 2 or later")
             end
             Libdl.dlsym(_lib[], name)
         end
@@ -229,6 +229,36 @@ function information(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
     e, w = copy(_eta(cd, eta)), copy(_weight(cd, weight))
     buf = Vector{Float64}(undef, cd.n)
     f! = (y, v) -> (y isa Vector{Float64} ? _matvec!(y, cd, e, w, v) : copyto!(y, _matvec!(buf, cd, e, w, v)))
+    LinearMap{Float64}(f!, cd.n; issymmetric=true, ismutating=true)
+end
+
+function _dmatvec!(y, cd::CoxDeviance, e, w, d, v)
+    vv = _f64(v)
+    lock(cd.lock) do
+        _check(ccall(_sym(:coxdev_information_derivative_matvec), Cint,
+                     (Ptr{Cvoid}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                     _live(cd), e, w, d, vv, y))
+    end
+    y
+end
+
+"""
+    information_derivative(cd, eta, direction; weight=nothing)
+
+The derivative of the information at `eta` in the direction `direction` of the
+linear predictor, `d/dt information(eta + t * direction)` at `t = 0`, as a
+symmetric, matrix-free `LinearMap` (each product costs `O(n)`):
+`X' * (dI * X)` is the derivative of the information of the coefficients of a
+design `X`, as needed for the derivative of a log determinant (e.g. in REML),
+with `direction` the derivative of the linear predictor. The derivative of the
+Hessian of the deviance is twice it.
+"""
+function information_derivative(cd::CoxDeviance, eta::AbstractVector, direction::AbstractVector;
+                                weight=nothing)
+    length(direction) == cd.n || throw(ArgumentError("direction must have length $(cd.n)"))
+    e, w, d = copy(_eta(cd, eta)), copy(_weight(cd, weight)), Vector{Float64}(direction)
+    buf = Vector{Float64}(undef, cd.n)
+    f! = (y, v) -> (y isa Vector{Float64} ? _dmatvec!(y, cd, e, w, d, v) : copyto!(y, _dmatvec!(buf, cd, e, w, d, v)))
     LinearMap{Float64}(f!, cd.n; issymmetric=true, ismutating=true)
 end
 

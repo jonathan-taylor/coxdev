@@ -17,6 +17,7 @@ using CoxDev
 cd  = CoxDeviance(event, status; start=nothing, weight=nothing, ties=:efron, strata=nothing)
 r   = deviance(cd, eta; weight=w)       # (deviance, gradient, diag_hessian, loglik_sat)
 I   = information(cd, eta; weight=w)    # LinearMap: I * v, X' * (I * X)
+dI  = information_derivative(cd, eta, d; weight=w)   # d/dt I(eta + t d), a LinearMap
 bh  = baseline_hazard(cd, eta; weight=w)
 c   = concordance(cd, eta; weight=w)        # within strata; also concordance(pred, event, status; start, weight)
 U   = score_residuals(cd, eta, X; weight=w)

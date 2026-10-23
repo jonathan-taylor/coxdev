@@ -57,6 +57,7 @@ def case(ties, start_stop, strata, weights, rng):
     V = rng.standard_normal((N, 2))
     X = rng.standard_normal((N, P))
     G = rng.standard_normal(N)
+    D = rng.standard_normal(N)          # a direction, for the information derivative
 
     cox = CoxDeviance(event=event, status=status, start=start, strata=labels,
                       sample_weight=w, tie_breaking=ties)
@@ -66,6 +67,7 @@ def case(ties, start_stop, strata, weights, rng):
     out = dict(deviance=res.deviance, gradient=_list(res.gradient), diag_hessian=_list(res.diag_hessian),
                loglik_sat=res.loglik_sat,
                information_V=_list(np.column_stack([info @ V[:, j] for j in range(V.shape[1])])),
+               information_derivative_V=_list(cox.information_derivative(eta, D, w) @ V),
                bh_time=_list(bh.time), bh_hazard=_list(bh.hazard),
                bh_cumulative_hazard=_list(bh.cumulative_hazard), bh_stratum=_list(bh.stratum),
                c_index=float(cox.c_index(eta, w)),
@@ -79,7 +81,7 @@ def case(ties, start_stop, strata, weights, rng):
                            for m in methods}
     inputs = dict(event=_list(event), status=_list(status), start=None if start is None else _list(start),
                   strata=None if labels is None else _list(labels), weight=None if w is None else _list(w),
-                  ties=ties, eta=_list(eta), V=_list(V), X=_list(X), G=_list(G), seed=SEED, n_draws=NDRAWS)
+                  ties=ties, eta=_list(eta), V=_list(V), X=_list(X), G=_list(G), D=_list(D), seed=SEED, n_draws=NDRAWS)
     name = f'{ties}_{"startstop" if start_stop else "right"}_{strata or "nostrata"}_{weights}'
     return name, dict(name=name, inputs=inputs, outputs=out)
 

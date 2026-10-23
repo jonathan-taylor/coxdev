@@ -168,6 +168,19 @@ int coxdev_hessian_matvec(coxdev_t *h, const double *eta, const double *sample_w
     });
 }
 
+int coxdev_information_derivative_matvec(coxdev_t *h, const double *eta, const double *sample_weight,
+                                         const double *direction, const double *v, double *out) {
+    if (h == nullptr) return fail(COXDEV_ERR_ARGUMENT, "handle must not be NULL");
+    return guarded([&] {
+        require(direction != nullptr && v != nullptr && out != nullptr,
+                "direction, v and out must not be NULL");
+        h->evaluate(eta, sample_weight);
+        Eigen::VectorXd dir = vec(direction, h->n), arg = vec(v, h->n), res(h->n);
+        h->visit([&](auto &c) { c.compute_information_derivative_matvec(dir, arg, res); return 0; });
+        std::memcpy(out, res.data(), h->n * sizeof(double));
+    });
+}
+
 int coxdev_baseline_hazard(coxdev_t *h, const double *eta, const double *sample_weight,
                            size_t *m, double *time, double *hazard, double *cumulative_hazard,
                            int *stratum) {

@@ -51,6 +51,10 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         @test approx(Matrix(I * V), mat(out.information_V))
         @test issymmetric(I)
 
+        dI = information_derivative(cd, eta, fl(inp.D); weight=w)
+        @test approx(Matrix(dI * V), mat(out.information_derivative_V))
+        @test issymmetric(dI)
+
         bh = baseline_hazard(cd, eta; weight=w)
         @test approx(bh.time, fl(out.bh_time))
         @test approx(bh.hazard, fl(out.bh_hazard))
@@ -98,6 +102,13 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         @test isapprox(I * v, fd; rtol=1e-5, atol=1e-6)
         # and its diagonal is half the diagonal Hessian
         @test isapprox(diag(Matrix(I)), r.diag_hessian ./ 2; rtol=1e-10)
+        # the derivative of the information: (I(eta + h d) v - I(eta - h d) v) / (2h),
+        # symmetric in d and v
+        d = fl(inp.D)
+        dI = information_derivative(cd, eta, d; weight=w)
+        fd = (information(cd, eta .+ h .* d; weight=w) * v .- information(cd, eta .- h .* d; weight=w) * v) ./ (2h)
+        @test isapprox(dI * v, fd; rtol=1e-5, atol=1e-6)
+        @test isapprox(dI * v, information_derivative(cd, eta, v; weight=w) * d; rtol=1e-10, atol=1e-12)
     end
 
     @testset "errors" begin

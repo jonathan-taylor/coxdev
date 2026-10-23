@@ -42,6 +42,7 @@ def _lib():
     lib.coxdev_n.restype = C.c_size_t
     lib.coxdev_deviance.argtypes = [C.c_void_p, dp, dp, dp, dp, dp, dp]
     lib.coxdev_hessian_matvec.argtypes = [C.c_void_p, dp, dp, dp, dp]
+    lib.coxdev_information_derivative_matvec.argtypes = [C.c_void_p, dp, dp, dp, dp, dp]
     lib.coxdev_baseline_hazard.argtypes = [C.c_void_p, dp, dp, C.POINTER(C.c_size_t), dp, dp, dp, ip]
     lib.coxdev_handle_concordance.argtypes = [C.c_void_p, dp, dp, dp, dp, dp]
     lib.coxdev_concordance.argtypes = [C.c_size_t, dp, dp, dp, ip, dp, dp, dp, dp]
@@ -140,6 +141,15 @@ def test_against_python(ties, start_times, strata, weights):
         out = np.empty(n)
         check(LIB.coxdev_hessian_matvec(h.h, _d(eta), _d(w), _d(v), out.ctypes.data_as(dp)))
         np.testing.assert_allclose(out, info @ v, **tol)
+
+    # the derivative of the information in a direction, times vectors
+    direction = rng.normal(size=n)
+    dI = cd.information_derivative(eta, direction, w)
+    for v in [np.ones(n), rng.normal(size=n)]:
+        out = np.empty(n)
+        check(LIB.coxdev_information_derivative_matvec(h.h, _d(eta), _d(w), _d(direction), _d(v),
+                                                       out.ctypes.data_as(dp)))
+        np.testing.assert_allclose(out, dI @ v, **tol)
 
     # baseline hazard: size query, then fill
     bh = cd.baseline_hazard(eta, w)

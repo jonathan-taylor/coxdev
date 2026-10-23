@@ -37,6 +37,9 @@
   unchanged (compared by value), as the Python package does: information
   products after `coxdev_deviance` no longer recompute the deviance (4x
   faster), and `eta` and the weights are compared in place rather than copied.
+- **The information derivative in the C API** (C API version 2):
+  `coxdev_information_derivative_matvec`, and in CoxDev.jl
+  `information_derivative(cd, eta, direction)`, a symmetric `LinearMap`.
 - **CoxDev.jl** (`julia/CoxDev.jl`): a Julia package over the C API, with
   the Python package's API (`CoxDeviance`, `deviance`, `information` as a
   `LinearMap`, `baseline_hazard`, `concordance`, `score_residuals`,

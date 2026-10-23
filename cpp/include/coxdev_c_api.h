@@ -44,8 +44,9 @@ extern "C" {
 #  define COXDEV_C_EXPORT __attribute__((visibility("default")))
 #endif
 
-/* Version of this C API (not of coxdev): bumped on incompatible changes. */
-#define COXDEV_C_API_VERSION 1
+/* Version of this C API (not of coxdev): raised when functions are added
+   or changed. 2 adds coxdev_information_derivative_matvec. */
+#define COXDEV_C_API_VERSION 2
 
 enum {
     COXDEV_OK = 0,
@@ -101,6 +102,18 @@ COXDEV_C_EXPORT int coxdev_hessian_matvec(coxdev_t *h,
                                           const double *sample_weight,
                                           const double *v,
                                           double *out);
+
+/* out = dI[direction] v, the derivative of the information at
+   (eta, sample_weight) in the direction `direction` of eta,
+   d/dt I(eta + t direction) at t = 0, times v (n-vectors). Symmetric in
+   direction and v; O(n). For the derivatives of log determinants, as in
+   REML. (C API version 2.) */
+COXDEV_C_EXPORT int coxdev_information_derivative_matvec(coxdev_t *h,
+                                                         const double *eta,
+                                                         const double *sample_weight,
+                                                         const double *direction,
+                                                         const double *v,
+                                                         double *out);
 
 /* The baseline hazard at (eta, sample_weight). Call with time = NULL to get
    the number of entries in *m; then call again with buffers of length *m

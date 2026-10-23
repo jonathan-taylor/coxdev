@@ -39,6 +39,27 @@ int main(void) {
         CHECK(rc == COXDEV_OK && isfinite(hv[0]), "coxdev_hessian_matvec");
     }
 
+    /* the derivative of the information: symmetric in the direction and the
+       argument, and 0 in the direction of all ones (a shift of eta within
+       each stratum leaves the information unchanged) */
+    {
+        double u[N], v[N], ones[N], a[N], b[N], z[N];
+        int i, ok = 1;
+        for (i = 0; i < N; i++) { u[i] = sin(i + 1.0); v[i] = cos(2.0 * i); ones[i] = 1.0; }
+        rc = coxdev_information_derivative_matvec(h, eta, NULL, v, u, a);
+        CHECK(rc == COXDEV_OK, "coxdev_information_derivative_matvec");
+        rc = coxdev_information_derivative_matvec(h, eta, NULL, u, v, b);
+        CHECK(rc == COXDEV_OK, "coxdev_information_derivative_matvec (swapped)");
+        rc = coxdev_information_derivative_matvec(h, eta, NULL, ones, u, z);
+        CHECK(rc == COXDEV_OK, "coxdev_information_derivative_matvec (ones)");
+        for (i = 0; i < N; i++) {
+            if (fabs(a[i] - b[i]) > 1e-12 || fabs(z[i]) > 1e-12) ok = 0;
+        }
+        CHECK(ok, "information derivative: symmetric, and 0 in the direction of ones");
+        CHECK(coxdev_information_derivative_matvec(NULL, eta, NULL, v, u, a) == COXDEV_ERR_ARGUMENT,
+              "information derivative: NULL handle");
+    }
+
     /* baseline hazard: size query then fill */
     {
         size_t m = 0;
