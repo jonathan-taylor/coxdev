@@ -22,6 +22,32 @@
   so its derivatives of any order come from automatic differentiation; it
   matches the C++ code with every kind of ties, start times, zero weights
   and strata (#62).
+- **A C API** (`cpp/include/coxdev_c_api.h`, `cpp/capi/coxdev_c.cpp`): an
+  `extern "C"` interface with an opaque handle over `CoxDeviance` /
+  `StratifiedCoxDeviance`, for foreign-function interfaces (Julia, Rust, the
+  JVM, ctypes). It covers construction (start times, strata, weights, Efron or
+  Breslow ties), the deviance with its gradient and diagonal Hessian,
+  information-vector products, the baseline hazard, the C-index, score
+  residuals, wild scores and `sample_score` (the same draws as Python and R
+  for a seed, to rounding). Errors are returned as codes, with `coxdev_last_error()`.
+  `cpp/capi/build_local.sh` builds `libcoxdev_c` with CMake; `test_c_api.c`
+  checks it from C, and `tests/test_c_api.py` checks every function against
+  the Python package (skipped unless the library is built).
+- **The C API reuses its last evaluation** while `eta` and the weights are
+  unchanged (compared by value), as the Python package does: information
+  products after `coxdev_deviance` no longer recompute the deviance (4x
+  faster), and `eta` and the weights are compared in place rather than copied.
+- **The information derivative in the C API** (C API version 2):
+  `coxdev_information_derivative_matvec`, and in CoxDev.jl
+  `information_derivative(cd, eta, direction)`, a symmetric `LinearMap`.
+- **CoxDev.jl** (`julia/CoxDev.jl`): a Julia package over the C API, with
+  the Python package's API (`CoxDeviance`, `deviance`, `information` as a
+  `LinearMap`, `baseline_hazard`, `concordance`, `score_residuals`,
+  `wild_score`, `sample_score`) and semantics (`weight` defaults to ones;
+  strata by label). Tested against fixtures from the Python package
+  (`tools/make_julia_fixtures.py`): the same values to rounding and the same
+  draws for the same seed. A draft BinaryBuilder recipe for a `coxdev_jll`
+  is in `julia/CoxDev.jl/deps/`.
 
 ### Fixes
 
