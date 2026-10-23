@@ -2,18 +2,27 @@
 
 name: R package
 
+# Linux on pull requests; Linux and macOS on pushes to main (merges) and by
+# hand. Changes only to the docs or Markdown files do not run the checks.
 on:
   push:
     branches: [ main ]
+    paths-ignore: [ 'doc/**', '**.md' ]
   pull_request:
-    branches: [ main ]
+    paths-ignore: [ 'doc/**', '**.md' ]
+  workflow_dispatch:
+
+# a new push to a branch cancels the run still going for it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest"]') }}
 
     steps:
     - uses: actions/checkout@v7
