@@ -3,6 +3,13 @@
 \name{CoxDeviance}
 \alias{CoxDeviance}
 \title{Cox model deviance, gradient and information}
+\value{
+\code{CoxDeviance$new()} returns a \code{CoxDeviance} object, whose methods
+are documented below: \code{compute()} returns a \code{CoxDevianceResult} (a list
+with the deviance, its gradient and the diagonal of its Hessian),
+\code{information()} a \link{CoxInformation} operator and
+\code{information_derivative()} a \link{CoxInformationDerivative} operator.
+}
 \description{
 An R6 class computing the deviance of the Cox proportional hazards model,
 its gradient and the diagonal of its Hessian with respect to the linear

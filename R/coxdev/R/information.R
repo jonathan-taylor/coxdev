@@ -19,6 +19,10 @@
 #' The operator keeps its linear predictor and weights: it gives the
 #' information there even after the [CoxDeviance] has computed at others.
 #'
+#' @return Made by `CoxDeviance$information()`, a `CoxInformation` object, an
+#'   R6 linear operator: `multiply()` returns the product with a vector (a
+#'   vector) or with a matrix (a matrix), `diagonal()` the diagonal (a
+#'   vector), and `to_dense()` the `n` by `n` matrix.
 #' @examples
 #' set.seed(1)
 #' n <- 50
@@ -109,6 +113,10 @@ CoxInformation <- R6::R6Class("CoxInformation",
 #' It works as a [CoxInformation] does, with `%*%`, `dim()`, `t()` and
 #' `as.matrix()`, except that it has no `$diagonal()`.
 #'
+#' @return Made by `CoxDeviance$information_derivative()`, a
+#'   `CoxInformationDerivative` object, an R6 linear operator: `multiply()`
+#'   returns the product with a vector (a vector) or with a matrix (a matrix),
+#'   and `to_dense()` the `n` by `n` matrix.
 #' @examples
 #' set.seed(1)
 #' n <- 50

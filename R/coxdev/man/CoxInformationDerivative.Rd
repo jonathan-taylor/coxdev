@@ -3,6 +3,12 @@
 \name{CoxInformationDerivative}
 \alias{CoxInformationDerivative}
 \title{The derivative of the information of the Cox model in a direction}
+\value{
+Made by \code{CoxDeviance$information_derivative()}, a
+\code{CoxInformationDerivative} object, an R6 linear operator: \code{multiply()}
+returns the product with a vector (a vector) or with a matrix (a matrix),
+and \code{to_dense()} the \code{n} by \code{n} matrix.
+}
 \description{
 The derivative of the information at a linear predictor in a direction of
 the linear predictor, \verb{d/dt I(linear_predictor + t * direction)} at
