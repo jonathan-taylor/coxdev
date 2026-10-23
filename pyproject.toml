@@ -66,7 +66,11 @@ requires = ["meson-python",
 build-backend = "mesonpy"
 
 [tool.setuptools_scm]
-# This will use the latest git tag for the version
+# The version comes from the latest v* tag. Only v* tags: the default pattern
+# also reads tags like CoxDev-v0.1.0 (the Julia package's, from TagBot) as
+# versions, which would make the Python package 0.1.x.
+tag_regex = '^v(?P<version>\d+(?:\.\d+){0,2}[^\+]*)(?:\+.*)?$'
+git_describe_command = "git describe --dirty --tags --long --match 'v[0-9]*'"
 
 [tool.cibuildwheel]
 # no 32-bit builds (no numpy/scipy wheels)

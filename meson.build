@@ -1,5 +1,7 @@
 project('coxdev', 'cpp',
-  version: run_command('python', '-c', 'import setuptools_scm; print(setuptools_scm.get_version())', check: true).stdout().strip(),
+  # python -m setuptools_scm reads [tool.setuptools_scm] in pyproject.toml
+  # (only v* tags); get_version() alone would not
+  version: run_command('python', '-m', 'setuptools_scm', check: true).stdout().strip(),
   default_options: ['cpp_std=c++17', 'warning_level=3'])
 
 py = import('python').find_installation(pure: false)
