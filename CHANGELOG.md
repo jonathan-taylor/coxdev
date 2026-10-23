@@ -2,6 +2,16 @@
 
 ## 0.3.1
 
+### New
+
+- **Header-only C++.** `coxdev.h` includes its implementation,
+  `coxdev_impl.h`, with every definition inline, so another package compiles
+  coxdev by including `coxdev.h` in any of its source files. The Python
+  package installs both headers, and `coxdev.get_include()` returns their
+  directory; the R package has them in `inst/include`.
+  `cpp/src/coxdev.cpp` is kept, compiling nothing, for builds that list it
+  (#41).
+
 ### Fixes
 
 - **Windows wheels import.** 0.3.0's Windows wheels were built with a MinGW

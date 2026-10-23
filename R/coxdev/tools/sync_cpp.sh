@@ -5,4 +5,5 @@
 set -e
 cd "$(dirname "$0")/.."
 cp ../../cpp/include/coxdev.h inst/include/coxdev.h
+cp ../../cpp/include/coxdev_impl.h inst/include/coxdev_impl.h
 cp ../../cpp/src/coxdev.cpp src/coxdev.cpp

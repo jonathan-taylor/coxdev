@@ -32,6 +32,7 @@ jobs:
     - name: Check the C++ copies in the R package are current
       run: |
         diff cpp/include/coxdev.h R/coxdev/inst/include/coxdev.h
+        diff cpp/include/coxdev_impl.h R/coxdev/inst/include/coxdev_impl.h
         diff cpp/src/coxdev.cpp R/coxdev/src/coxdev.cpp
 
     - uses: r-lib/actions/setup-pandoc@v2

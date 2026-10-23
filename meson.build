@@ -28,9 +28,16 @@ py.install_sources(
   subdir: 'coxdev'
 )
 
+# The C++ headers (header-only: coxdev.h includes coxdev_impl.h), for
+# packages that compile against coxdev: see coxdev.get_include()
+py.install_sources(
+  ['cpp/include/coxdev.h', 'cpp/include/coxdev_impl.h'],
+  subdir: 'coxdev/include'
+)
+
 # Extension module
 py.extension_module('coxc',
-  ['cpp/src/coxdev.cpp', 'python/coxdev_py.cpp'],
+  ['python/coxdev_py.cpp'],
   dependencies: pybind11_dep,
   include_directories: inc,
   cpp_args: ['-DPY_INTERFACE=1'],
