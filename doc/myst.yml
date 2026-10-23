@@ -36,6 +36,7 @@ project:
         - file: notes_no_ties.md
         - file: notes_ties.md
         - file: notes_hessian.md
+        - file: jax_timing.md
     - title: API Reference
       url: https://jonathan-taylor.github.io/coxdev/api/
 

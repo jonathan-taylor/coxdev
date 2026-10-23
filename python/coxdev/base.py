@@ -417,6 +417,46 @@ class CoxDeviance(object):
         return CoxInformation(result=result,
                               coxdev=self)
 
+    def information_derivative(self,
+                               linear_predictor,
+                               direction,
+                               sample_weight=None):
+        """
+        The derivative of the information at ``linear_predictor`` in the
+        direction ``direction`` of the linear predictor,
+        ``d/dt information(linear_predictor + t * direction)`` at ``t = 0``,
+        as a matrix-free ``scipy.sparse.linalg.LinearOperator``.
+
+        It is symmetric, and a product costs ``O(n)``, a few times a product
+        with the information. ``X.T @ (dI @ X)`` is the derivative of the
+        information of the coefficients of a design ``X``, as needed for the
+        derivative of a log determinant (e.g. in REML or a Laplace
+        approximation), where ``direction`` is the derivative of the linear
+        predictor. The derivative of the Hessian of the deviance is twice it.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, one entry per observation.
+        direction : np.ndarray
+            The direction of the derivative, one entry per observation.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        CoxInformationDerivative
+            An ``(n, n)`` linear operator.
+        """
+        result = self(linear_predictor,
+                      sample_weight)
+        direction = np.asarray(direction, float).reshape(-1)
+        if direction.shape != result.linear_predictor.shape:
+            raise ValueError('direction should have one entry per observation')
+        return CoxInformationDerivative(result=result,
+                                        coxdev=self,
+                                        direction=direction)
+
     def sample_score(self,
                        linear_predictor,
                        sample_weight=None,
@@ -831,6 +871,49 @@ class CoxInformation(LinearOperator):
         self._prepare()
         arg_arr = np.asarray(arg, float).reshape((self.shape[0], -1))
         return self.coxdev._coxc.compute_hessian_matmat(np.asfortranarray(arg_arr))
+
+    # it is symmetric
+    _rmatvec = _matvec
+    _rmatmat = _matmat
+
+    def _adjoint(self):
+        return self
+
+
+@dataclass
+class CoxInformationDerivative(LinearOperator):
+    """
+    The derivative of the information of a Cox model at a linear predictor
+    in a direction of the linear predictor, as a matrix-free ``(n, n)``
+    linear operator, from :meth:`CoxDeviance.information_derivative`.
+
+    ``dI @ v`` and ``dI @ V`` give products with
+    ``d/dt I(linear_predictor + t * direction)``, each column in ``O(n)``. It
+    is symmetric, so ``dI.T`` is ``dI``.
+    """
+
+    coxdev: CoxDeviance
+    result: CoxDevianceResult
+    direction: np.ndarray
+
+    def __post_init__(self):
+        n = self.result.linear_predictor.shape[0]
+        LinearOperator.__init__(self, dtype=float, shape=(n, n))
+
+    def _prepare(self):
+        # as for CoxInformation
+        self.coxdev(self.result.linear_predictor, self.result.sample_weight)
+
+    def _matvec(self, arg):
+        self._prepare()
+        arg_arr = np.asarray(arg).reshape(-1).astype(float)
+        return self.coxdev._coxc.compute_information_derivative_matvec(self.direction, arg_arr)
+
+    def _matmat(self, arg):
+        self._prepare()
+        arg_arr = np.asarray(arg, float).reshape((self.shape[0], -1))
+        return self.coxdev._coxc.compute_information_derivative_matmat(self.direction,
+                                                                       np.asfortranarray(arg_arr))
 
     # it is symmetric
     _rmatvec = _matvec

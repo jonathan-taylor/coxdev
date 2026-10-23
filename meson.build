@@ -21,6 +21,7 @@ endif
 python_sources = [
   'python/coxdev/__init__.py',
   'python/coxdev/base.py',
+  'python/coxdev/jax.py',
 ]
 
 py.install_sources(

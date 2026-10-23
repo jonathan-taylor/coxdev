@@ -86,6 +86,16 @@ public:
     void compute_hessian_matvec(const Eigen::VectorXd& arg,
                                 Eigen::VectorXd& out);
 
+    // The derivative of the information (as in compute_hessian_matvec, the
+    // Hessian of minus the log partial likelihood) at the linear predictor of
+    // the last compute_deviance, in the direction `direction` of the linear
+    // predictor, times arg: d/dt I(eta + t direction) arg at t = 0, in native
+    // order, O(n). Symmetric in direction and arg; the derivative of the
+    // Hessian of the deviance is twice it.
+    void compute_information_derivative_matvec(const Eigen::VectorXd& direction,
+                                               const Eigen::VectorXd& arg,
+                                               Eigen::VectorXd& out);
+
     // Draws of the score from the model at the linear predictor and weights of
     // the last compute_deviance (or, for "wild", from its score residuals). Each column r of the (n x n_draws) result is in native
     // order and on the scale of the score -gradient / 2, so that X^T r is a draw
@@ -232,6 +242,10 @@ public:
 
     void compute_hessian_matvec(const Eigen::VectorXd& arg,
                                 Eigen::VectorXd& out);
+
+    void compute_information_derivative_matvec(const Eigen::VectorXd& direction,
+                                               const Eigen::VectorXd& arg,
+                                               Eigen::VectorXd& out);
 
     // As for CoxDeviance, stratum by stratum (each with its own seed derived
     // from seed).

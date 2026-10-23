@@ -46,7 +46,7 @@ jobs:
     - name: Install coxdev
       run: |
         pip install --upgrade pip
-        pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas glmstar
+        pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas glmstar jax
         pip install .
 
     - name: Run the notebooks in doc
@@ -87,7 +87,7 @@ jobs:
     - name: Install coxdev
       run: |
         python -m pip install --upgrade pip
-        python -m pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas
+        python -m pip install meson-python ninja meson pybind11 setuptools_scm pytest pandas jax
         python -m pip install . glmstar --no-binary glmstar -Csetup-args=--vsenv
 
     - name: Test coxdev

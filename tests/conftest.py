@@ -67,6 +67,7 @@ def pytest_collection_modifyitems(config, items):
         compare_R = []
         cumsum = []
         zero_weights = []
+        jax_tie_types = []
         new_items = []
 
         for item in items:
@@ -77,6 +78,8 @@ def pytest_collection_modifyitems(config, items):
                 cumsum.append(item)
             elif "test_zero_weights.py" in str(item.fspath):
                 zero_weights.append(item)
+            elif "test_jax_all_tie_types" in item.name:
+                jax_tie_types.append(item)
             else:
                 new_items.append(item)
         if len(compare_R) > 0:
@@ -85,5 +88,7 @@ def pytest_collection_modifyitems(config, items):
             new_items += list(set(rng.choice(cumsum, test_size, replace=True)))
         if len(zero_weights) > 0:
             new_items += list(set(rng.choice(zero_weights, test_size, replace=True)))
+        if len(jax_tie_types) > 0:
+            new_items += list(set(rng.choice(jax_tie_types, test_size, replace=True)))
         items[:] = new_items
 
