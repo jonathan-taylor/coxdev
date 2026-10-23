@@ -4,7 +4,7 @@
 Cox proportional hazards deviance, gradient, information and score draws from
 coxdev's C++ library, through its C API (`coxdev_c_api.h`). The same code as
 coxdev's Python and R packages: the same numbers, and for `sample_score` the
-same draws for the same seed.
+same draws for the same seed (to rounding across platforms).
 
 The shared library `libcoxdev_c` is found from the environment variable
 `COXDEV_C_LIB` (its path), else from a build of `cpp/capi` in the coxdev
@@ -348,8 +348,11 @@ Draws of the score at `eta`, on the scale of `-gradient / 2` (so `X' * r` is
 a draw of the score of the coefficients of `X`). `method` is
 `"multinomial"`, `"bernoulli"`, `"fisher"` (model-based; need equal positive
 weights) or `"wild"`. One draw (a vector) if `n_draws` is `nothing`, else an
-`n × n_draws` matrix. The same `seed` gives the same draws on every platform
-and in coxdev's Python and R packages; `seed = nothing` draws one.
+`n × n_draws` matrix. The same `seed` gives the same draws, here and in
+coxdev's Python and R packages: the same random numbers on every platform, and
+draws that agree to rounding (they go through `exp`, `log`, `sin` and `cos`,
+whose last bits can differ between math libraries); `seed = nothing` draws
+one.
 """
 function sample_score(cd::CoxDeviance, eta::AbstractVector; weight=nothing,
                       method::AbstractString="multinomial", n_draws=nothing, seed=nothing)

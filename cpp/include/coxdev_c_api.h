@@ -155,8 +155,10 @@ COXDEV_C_EXPORT int coxdev_wild_score(coxdev_t *h,
 
 /* n_draws draws of the score at (eta, sample_weight), into out (n x n_draws,
    column-major). method: "multinomial", "bernoulli", "fisher" or "wild". The
-   draws depend only on seed, not on the platform, and equal those of coxdev's
-   Python and R packages for the same seed. */
+   random numbers depend only on seed, not on the platform, so the draws equal
+   those of coxdev's Python and R packages for the same seed, to rounding: they
+   go through exp, log, sin and cos, whose last bits can differ between math
+   libraries. */
 COXDEV_C_EXPORT int coxdev_sample_score(coxdev_t *h,
                                         const double *eta,
                                         const double *sample_weight,

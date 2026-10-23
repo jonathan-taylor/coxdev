@@ -29,7 +29,7 @@
   Breslow ties), the deviance with its gradient and diagonal Hessian,
   information-vector products, the baseline hazard, the C-index, score
   residuals, wild scores and `sample_score` (the same draws as Python and R
-  for a seed). Errors are returned as codes, with `coxdev_last_error()`.
+  for a seed, to rounding). Errors are returned as codes, with `coxdev_last_error()`.
   `cpp/capi/build_local.sh` builds `libcoxdev_c` with CMake; `test_c_api.c`
   checks it from C, and `tests/test_c_api.py` checks every function against
   the Python package (skipped unless the library is built).

@@ -70,8 +70,11 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
 
         for (m, draws) in pairs(out.sample_score)
             S = sample_score(cd, eta; weight=w, method=String(m), n_draws=inp.n_draws, seed=UInt64(inp.seed))
-            # the same seed gives the same draws as Python's (bit-identical)
-            @test S == mat(draws)
+            # the same seed gives the same draws as Python's, to rounding: the
+            # random numbers are the same on every platform, but the draws go
+            # through exp, log, sin and cos, whose last bits differ between
+            # math libraries (the fixtures are from macOS, CI is Linux)
+            @test approx(S, mat(draws))
         end
     end
 
