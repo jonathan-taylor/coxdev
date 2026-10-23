@@ -199,6 +199,57 @@ $$
 
 again cumsummed in event (stop) order.
 
+## Strata
+
+With strata, the partial likelihood is the sum of one per stratum: the risk
+set of a failure holds only the observations of its own stratum. The C++
+code keeps a model per stratum. A single pass over all the strata is also
+possible, with the same risk sums $R_i = E_i - S_i$ and the same cumsums as
+above: only the sort changes.
+
+**Each stratum in a window of its own.** Number the strata $h = 1, \dots,
+H$ and choose $B$ larger than the range of all the times. Add $hB$ to every
+time of stratum $h$, its start times and its event times, and sort as
+usual. Stratum $h$'s times then all lie in a window $[hB, hB + B)$ of their
+own, and the windows follow one another. Consider a failure $i$ in stratum
+$h$, at shifted time $t_i$, and an observation $j$ of another stratum $h'$:
+
+- **An earlier stratum, $h' < h$:** all of $j$'s times are below $hB$, so
+  $t_j < t_i$ and $j$ is not in $E_i$. It is not at risk.
+- **A later stratum, $h' > h$:** all of $j$'s times are above
+  $t_i$. So $t_j \geq t_i$ and $j$ is in $E_i$; but also $s_j \geq t_i$, so
+  $j$ is in $S_i$ as well, and the difference $R_i = E_i - S_i$ takes it out
+  again. It is not at risk, because it has not yet entered.
+
+So $R_i$ is the risk sum of failure $i$ within its own stratum, and every
+other cumsum of these notes (for the gradient, the Hessian and Efron's
+ties) adds up in the same way.
+
+**What makes it work:**
+
+- **The start times.** The later strata are taken out by $S_i$, not by
+  $E_i$, so the trick needs start / stop data. Without start times, each
+  observation has a start of $-\infty$ within its stratum, the start of its
+  window: shifted, these are all below the window's failure times, so $S_i$
+  is then exactly the sum over the later strata. Right-censored data take
+  one more cumsum this way than without strata.
+- **No ties across strata.** As $B$ exceeds the range of the times, no time
+  of one window equals a time of another. Sets of tied failures (and with
+  them Efron's weights, the averaged weights $\bar{w}$ and the saturated
+  log-likelihood, all differences of cumsums over a set
+  $\{\text{first}(i), \dots, \text{last}(i)\}$) never cross a stratum.
+- **No $B$ in practice.** Adding a large $B$ to floating-point times would
+  round them, and could merge or split ties. Sorting by (stratum, time)
+  instead orders the observations exactly as the shifted times would.
+  Equivalently, sort each stratum on its own, concatenate them, and shift
+  each stratum's positions (`first`, `last` and the maps between event and
+  start orders) by the number of observations before it.
+
+This is how `coxdev.jax` handles strata. Its compiled program then
+depends only on $n$, not on the number of strata. With a program per
+stratum, compiling for 1000 strata takes minutes, against a fraction of a
+second in one pass.
+
 ## Probabilistic interpretation
 
 For computing derivatives it is perhaps more helpful to think of

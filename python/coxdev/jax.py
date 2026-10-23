@@ -25,7 +25,7 @@ import jax
 import jax.numpy as jnp
 
 
-def preprocess(event, status, start=None, sample_weight=None):
+def preprocess(event, status, start=None, sample_weight=None, strata=None):
     """
     The sort and the tie structure of (start, event] data, as the C++
     ``setup_preprocess``.
@@ -38,7 +38,44 @@ def preprocess(event, status, start=None, sample_weight=None):
     (the number of starts at or before each event time) and ``start_map``
     (the number of event times before each start), and the flag
     ``have_start_times``.
+
+    With ``strata``, the strata are stacked, in the order of their labels:
+    each is sorted on its own and its positions shifted by the number of
+    observations before it, as if the times of each stratum were moved into
+    a window of their own. The risk sums then need the start times (of -inf
+    within a stratum without them), which take out the later strata: one pass
+    over all the strata (see the Computations notes, "Strata").
     """
+    if strata is None:
+        return _preprocess_one(event, status, start, sample_weight)
+
+    event = np.asarray(event, float).reshape(-1)
+    n = event.shape[0]
+    status = np.asarray(status).reshape(-1)
+    start = -np.inf * np.ones(n) if start is None else np.asarray(start, float).reshape(-1)
+    weight = np.ones(n) if sample_weight is None else np.asarray(sample_weight, float).reshape(-1)
+    strata = np.asarray(strata).reshape(-1)
+
+    parts, offset = [], 0
+    for label in np.unique(strata):
+        idx = np.nonzero(strata == label)[0]
+        prep = _preprocess_one(event[idx], status[idx], start[idx], weight[idx])
+        prep['event_order'] = idx[prep['event_order']]       # native indices
+        prep['start_order'] = idx[prep['start_order']]
+        for key in ['first', 'last', 'event_map', 'start_map']:
+            prep[key] = prep[key] + offset                    # positions
+        parts.append(prep)
+        offset += idx.shape[0]
+
+    stacked = {key: np.concatenate([prep[key] for prep in parts])
+               for key in ['event_order', 'start_order', 'status', 'first', 'last',
+                           'scaling', 'event_map', 'start_map']}
+    stacked['have_start_times'] = True
+    return stacked
+
+
+def _preprocess_one(event, status, start=None, sample_weight=None):
+    # one stratum: the port of setup_preprocess
     event = np.asarray(event, float).reshape(-1)
     status = np.asarray(status).reshape(-1).astype(int)
     n = event.shape[0]
@@ -202,32 +239,19 @@ class CoxDevianceJAX(object):
         self.sample_weight = (np.ones(n) if sample_weight is None
                               else np.asarray(sample_weight, float).reshape(-1))
 
-        if strata is None:
-            self._indices = [np.arange(n)]
-        else:
-            strata = np.asarray(strata).reshape(-1)
-            self._indices = [np.nonzero(strata == s)[0] for s in np.unique(strata)]
-
-        self._preps = [preprocess(event[idx],
-                                  status[idx],
-                                  None if start is None else start[idx],
-                                  self.sample_weight[idx])
-                       for idx in self._indices]
+        # one pass over all the strata: see preprocess
+        self._prep = preprocess(event, status, start, self.sample_weight, strata)
 
     def _weight(self, sample_weight):
         return self.sample_weight if sample_weight is None else sample_weight
 
     def loglik(self, linear_predictor, sample_weight=None):
         """The log partial likelihood, the sum over the strata."""
-        w = self._weight(sample_weight)
-        return sum(_loglik(linear_predictor[idx], w[idx], prep, self.efron)
-                   for idx, prep in zip(self._indices, self._preps))
+        return _loglik(linear_predictor, self._weight(sample_weight), self._prep, self.efron)
 
     def loglik_sat(self, sample_weight=None):
         """The log likelihood of the saturated model."""
-        w = self._weight(sample_weight)
-        return sum(_loglik_sat(w[idx], prep, self.efron)
-                   for idx, prep in zip(self._indices, self._preps))
+        return _loglik_sat(self._weight(sample_weight), self._prep, self.efron)
 
     def deviance(self, linear_predictor, sample_weight=None):
         """``2 * (loglik_sat - loglik)``, as :class:`coxdev.CoxDeviance`."""

@@ -194,3 +194,22 @@ def test_jax_jit():
     dI = jax.jit(cox_jax.information_derivative_matvec)
     np.testing.assert_allclose(dI(jnp.asarray(eta), jnp.asarray(v), jnp.asarray(u)),
                                cox.information_derivative(eta, v, w) @ u, rtol=1e-10, atol=1e-12)
+
+
+@pytest.mark.parametrize('tie_breaking', ['efron', 'breslow'])
+@pytest.mark.parametrize('have_start_times', [True, False])
+def test_jax_many_strata(tie_breaking, have_start_times):
+    # the strata stacked in one pass: many strata, singletons, a stratum with
+    # no failures and one with all weights 0, labels that are not 0, 1, ...
+    rng = np.random.default_rng(8)
+    event, status, entry = _grid_data(rng, n=240, start=have_start_times)
+    n = event.shape[0]
+    strata = rng.choice(60, n) * 7 + 3
+    strata[:3] = [1000, 1001, 1002]               # singletons
+    strata[3:9] = 2000                            # no failures
+    status[3:9] = 0
+    strata[9:15] = 3000                           # all weights 0
+    w = _weights('zeros_unequal', n, rng)
+    w[9:15] = 0
+    cox, cox_jax = _both(event, status, entry, w, tie_breaking, strata=strata)
+    _check_against_cpp(cox, cox_jax, w, rng, hessian=False)
