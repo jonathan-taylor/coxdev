@@ -11,7 +11,8 @@ package coxdev on PyPI.
 ## Test environments
 
 * local macOS 26.6.2 (aarch64), R 4.5.3
-* GitHub Actions: ubuntu-latest and macos-latest, R release
+* GitHub Actions (`.github/workflows/R-CMD-check.yaml`): macOS and Windows with
+  R release; Ubuntu with R-devel, R release and R oldrel-1
 
 ## R CMD check results
 

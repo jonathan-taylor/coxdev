@@ -1,9 +1,9 @@
 Package: coxdev
 Title: Cox Model Deviance, Gradient, Information and Score Sampling
 Version: 0.4.0
-Authors@R: c(person("Jonathan", "Taylor", role = c("aut"), email = "jtaylo@stanford.edu"),
+Authors@R: c(person("Jonathan", "Taylor", role = c("aut", "cre"), email = "jtaylo@stanford.edu"),
              person("Trevor", "Hastie", role = c("aut")),
-             person("Balasubramanian", "Narasimhan", role = c("aut", "cre"),
+             person("Balasubramanian", "Narasimhan", role = c("aut"),
                     email = "naras@stanford.edu"))
 Description: Fast computation of the deviance of the Cox proportional
     hazards model (Cox (1972) <doi:10.1111/j.2517-6161.1972.tb00899.x>), its
