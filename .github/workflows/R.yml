@@ -20,6 +20,9 @@ concurrency:
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.os }}
+    # usually 4-6 minutes; a stalled apt mirror in setup-r otherwise waits
+    # for GitHub's 6-hour limit
+    timeout-minutes: 30
     strategy:
       matrix:
         os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest"]') }}
