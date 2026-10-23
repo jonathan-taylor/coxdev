@@ -1,6 +1,6 @@
 Package: coxdev
 Title: Cox Model Deviance, Gradient, Information and Score Sampling
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: c(person("Jonathan", "Taylor", role = c("aut"), email = "jtaylo@stanford.edu"),
              person("Trevor", "Hastie", role = c("aut")),
              person("Balasubramanian", "Narasimhan", role = c("aut", "cre"),

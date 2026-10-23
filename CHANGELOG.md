@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1
+## 0.4.0
 
 ### New
 
@@ -48,6 +48,8 @@
   (`tools/make_julia_fixtures.py`): the same values to rounding and the same
   draws for the same seed. A draft BinaryBuilder recipe for a `coxdev_jll`
   is in `julia/CoxDev.jl/deps/`.
+
+## 0.3.1 (2026-10-21)
 
 ### Fixes
 

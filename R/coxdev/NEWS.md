@@ -1,4 +1,4 @@
-# coxdev (development version)
+# coxdev 0.4.0
 
 * `CoxDeviance$information_derivative(linear_predictor, direction,
   sample_weight)`: the derivative of the information in a direction of the
@@ -6,6 +6,9 @@
   operator (`CoxInformationDerivative`, with `%*%`, `t()`, `dim()` and
   `as.matrix()`), `O(n)` per product: for the derivatives of log
   determinants, as in REML.
+* The C++ library is header-only: `inst/include` has `coxdev.h` and its
+  implementation `coxdev_impl.h`, all inline, so another package can compile
+  against it with `LinkingTo: coxdev` and `#include <coxdev.h>`.
 * More tests, mirroring the Python package's: the residuals, the baseline
   hazard, the expected events and the risk-set variances against direct
   computations, with zero weights; the C-index against the count of its

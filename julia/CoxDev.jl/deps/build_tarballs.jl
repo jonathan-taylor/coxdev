@@ -8,7 +8,7 @@
 using BinaryBuilder, Pkg
 
 name = "coxdev"
-version = v"0.3.1"   # the coxdev release with the header-only library and the C API
+version = v"0.4.0"   # the coxdev release with the header-only library and the C API
 
 sources = [
     # a tagged coxdev release (fill in the commit of the tag)
