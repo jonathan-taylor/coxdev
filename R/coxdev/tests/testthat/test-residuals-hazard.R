@@ -19,6 +19,7 @@ coxph_at <- function(d, X, beta, weight, ties, strata = NULL) {
 }
 
 test_that("score residuals and the baseline hazard agree with survival", {
+  skip_if_survival_broken()   # see helper-survival.R
   set.seed(30)
   beta <- c(0.3, -0.2, 0.1)
   for (tie_breaking in c("efron", "breslow")) {
@@ -38,12 +39,10 @@ test_that("score residuals and the baseline hazard agree with survival", {
                      tolerance = 1e-10)
 
         H <- cox$baseline_hazard(eta, sample_weight = w)
-        bh <- basehaz_or_null(fit)          # see helper-survival.R
-        if (!is.null(bh)) {
-          at <- match(H$time, bh$time)
-          expect_false(anyNA(at))
-          expect_equal(H$cumulative_hazard, bh$hazard[at], tolerance = 1e-10)
-        }
+        bh <- survival::basehaz(fit, centered = FALSE)
+        at <- match(H$time, bh$time)
+        expect_false(anyNA(at))
+        expect_equal(H$cumulative_hazard, bh$hazard[at], tolerance = 1e-10)
         expect_equal(cumsum(H$hazard), H$cumulative_hazard)
       }
     }
@@ -51,6 +50,7 @@ test_that("score residuals and the baseline hazard agree with survival", {
 })
 
 test_that("with strata, as labels", {
+  skip_if_survival_broken()   # see helper-survival.R
   set.seed(31)
   beta <- c(0.3, -0.2, 0.1)
   d <- cox_data(n = 200, start = TRUE)
@@ -64,13 +64,11 @@ test_that("with strata, as labels", {
 
   H <- cox$baseline_hazard(eta)
   expect_equal(levels(H$stratum), c("north", "south", "west"))
-  bh <- basehaz_or_null(fit)          # see helper-survival.R
-  if (!is.null(bh)) {
-    for (s in levels(H$stratum)) {
-      Hs <- H[H$stratum == s, ]
-      bs <- bh[bh$strata == s, ]
-      expect_equal(Hs$cumulative_hazard, bs$hazard[match(Hs$time, bs$time)], tolerance = 1e-10)
-    }
+  bh <- survival::basehaz(fit, centered = FALSE)
+  for (s in levels(H$stratum)) {
+    Hs <- H[H$stratum == s, ]
+    bs <- bh[bh$strata == s, ]
+    expect_equal(Hs$cumulative_hazard, bs$hazard[match(Hs$time, bs$time)], tolerance = 1e-10)
   }
   # integer strata keep their values
   H2 <- CoxDeviance$new(event = d$event, status = d$status, start = d$start,
@@ -129,6 +127,7 @@ test_that("a sparse X gives the residuals of the dense X", {
 })
 
 test_that("Schoenfeld residuals and expected events agree with survival", {
+  skip_if_survival_broken()   # see helper-survival.R
   set.seed(35)
   beta <- c(0.3, -0.2, 0.1)
   for (tie_breaking in c("efron", "breslow")) {
@@ -167,6 +166,7 @@ test_that("Schoenfeld residuals and expected events agree with survival", {
 })
 
 test_that("Schoenfeld residuals and expected events with strata, sparse X and zero weights", {
+  skip_if_survival_broken()   # see helper-survival.R
   set.seed(36)
   beta <- c(0.3, -0.2, 0.1)
   d <- cox_data(n = 200, start = TRUE)
@@ -207,6 +207,7 @@ test_that("Schoenfeld residuals and expected events with strata, sparse X and ze
 })
 
 test_that("risk-set variances agree with survival's coxph.detail", {
+  skip_if_survival_broken()   # see helper-survival.R
   set.seed(37)
   beta <- c(0.3, -0.2, 0.1)
   for (tie_breaking in c("efron", "breslow")) {
