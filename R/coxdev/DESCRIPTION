@@ -1,6 +1,6 @@
 Package: coxdev
 Title: Cox Model Deviance, Gradient, Information and Score Sampling
-Version: 0.4.0
+Version: 0.4.1
 Authors@R: c(person("Jonathan", "Taylor", role = c("aut", "cre"), email = "jtaylo@stanford.edu"),
              person("Trevor", "Hastie", role = c("aut")),
              person("Balasubramanian", "Narasimhan", role = c("aut"),
@@ -16,7 +16,7 @@ Description: Fast computation of the deviance of the Cox proportional
     strata and sample weights. The 'C++' code is header-only, shared with the
     'Python' package 'coxdev', and installed for packages that use it through
     'LinkingTo'.
-License: GPL (>= 3)
+License: GPL-2
 URL: https://github.com/jonathan-taylor/coxdev
 BugReports: https://github.com/jonathan-taylor/coxdev/issues
 Encoding: UTF-8
