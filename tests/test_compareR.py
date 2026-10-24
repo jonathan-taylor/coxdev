@@ -115,7 +115,7 @@ def get_coxph(event,
             rpy.r('y = Surv(start, event, status)')
         else:
             rpy.r('y = Surv(event, status)')
-        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE, timefix=FALSE)')
+        rpy.r('F = coxph(y ~ X, init=beta, weights=sample_weight, control=coxph.control(iter.max=0, timefix=FALSE), ties=ties, robust=FALSE)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')
@@ -159,7 +159,7 @@ def get_stratified_coxph(event,
         else:
             rpy.r('y = Surv(event, status)')
             
-        rpy.r('F = coxph(y ~ X + strata(strata), init=beta, weights=sample_weight, control=coxph.control(iter.max=0), ties=ties, robust=FALSE, timefix=FALSE)')
+        rpy.r('F = coxph(y ~ X + strata(strata), init=beta, weights=sample_weight, control=coxph.control(iter.max=0, timefix=FALSE), ties=ties, robust=FALSE)')
         rpy.r('score = colSums(coxph.detail(F)$scor)')
         G = rpy.r('score')
         D = rpy.r('F$loglik')
@@ -234,7 +234,12 @@ def test_coxph(tie_types,
                          status=data['status'],
                          tie_breaking=tie_breaking)
 
-    p = n // 2
+    # each failure with positive weight adds at most one dimension to the
+    # information: with p at most half of them (and at most n / 2), random
+    # covariates make it well conditioned with high probability, so that its
+    # inverse can be compared with coxph's
+    n_failures = int(((np.asarray(data['status']) == 1) & (weight > 0)).sum())
+    p = max(1, min(n // 2, n_failures // 2))
     X = rng.standard_normal((n, p))
     beta = rng.standard_normal(p) / np.sqrt(n)
 
