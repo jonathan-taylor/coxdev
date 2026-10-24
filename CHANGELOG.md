@@ -2,6 +2,15 @@
 
 ## 0.4.1
 
+- **The C++ library is in `namespace coxdev`.** `coxdev::CoxDeviance`,
+  `coxdev::StratifiedCoxDeviance`, `coxdev::BaselineHazard`,
+  `coxdev::Concordance`, `coxdev::concordance()` and the helper functions;
+  `coxdev_detail` is now `coxdev::detail`, and the header's macros are
+  `COXDEV_ERROR`, `COXDEV_MAP_Xd` and `COXDEV_MAP_Xi` (`EIGEN_REF` is gone).
+  `coxdev.h` no longer declares `namespace py = pybind11` either. Code that
+  includes `coxdev.h` (new in 0.4.0) qualifies the names, or says
+  `using namespace coxdev;`. The Python, R, C and Julia interfaces are
+  unchanged.
 - The R package is licensed under the GPL-2 (it was GPL (>= 3)). The
   Python package and the C++ library stay BSD-3-Clause.
 

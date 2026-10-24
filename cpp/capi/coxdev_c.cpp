@@ -64,15 +64,15 @@ struct coxdev_s {
     Eigen::VectorXd last_eta;
     double last_deviance = 0.;
     bool have_last = false;
-    std::unique_ptr<CoxDeviance> cox;
-    std::unique_ptr<StratifiedCoxDeviance> scox;
+    std::unique_ptr<coxdev::CoxDeviance> cox;
+    std::unique_ptr<coxdev::StratifiedCoxDeviance> scox;
 
     void build() {
         have_last = false;
         if (stratified) {
-            scox = std::make_unique<StratifiedCoxDeviance>(start, event, status, strata, weight, efron);
+            scox = std::make_unique<coxdev::StratifiedCoxDeviance>(start, event, status, strata, weight, efron);
         } else {
-            cox = std::make_unique<CoxDeviance>(start, event, status, weight, efron);
+            cox = std::make_unique<coxdev::CoxDeviance>(start, event, status, weight, efron);
         }
     }
 
@@ -188,7 +188,7 @@ int coxdev_baseline_hazard(coxdev_t *h, const double *eta, const double *sample_
     return guarded([&] {
         require(m != nullptr, "m must not be NULL");
         h->evaluate(eta, sample_weight);
-        BaselineHazard bh = h->visit([&](auto &c) { return c.baseline_hazard(); });
+        coxdev::BaselineHazard bh = h->visit([&](auto &c) { return c.baseline_hazard(); });
         size_t k = static_cast<size_t>(bh.time.size());
         if (time == nullptr && hazard == nullptr && cumulative_hazard == nullptr && stratum == nullptr) {
             *m = k;
@@ -210,7 +210,7 @@ int coxdev_handle_concordance(const coxdev_t *h, const double *pred, const doubl
         require(pred != nullptr, "pred must not be NULL");
         Eigen::VectorXd p = vec(pred, h->n);
         Eigen::VectorXd w = weight ? vec(weight, h->n) : h->weight;
-        Concordance c = h->cvisit([&](const auto &d) { return d.concordance(p, w); });
+        coxdev::Concordance c = h->cvisit([&](const auto &d) { return d.concordance(p, w); });
         if (numerator) *numerator = c.numerator;
         if (denominator) *denominator = c.denominator;
         if (value) *value = c.value();
@@ -227,7 +227,7 @@ int coxdev_concordance(size_t n, const double *pred, const double *start, const 
                                   : Eigen::VectorXd::Constant(n, -std::numeric_limits<double>::infinity());
         Eigen::VectorXd w = weight ? vec(weight, n) : Eigen::VectorXd::Ones(n);
         Eigen::VectorXi st = MapXi(status, static_cast<Eigen::Index>(n));
-        Concordance c = concordance(vec(pred, n), s, vec(event, n), st, w);
+        coxdev::Concordance c = coxdev::concordance(vec(pred, n), s, vec(event, n), st, w);
         if (numerator) *numerator = c.numerator;
         if (denominator) *denominator = c.denominator;
         if (value) *value = c.value();

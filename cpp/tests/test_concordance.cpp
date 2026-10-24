@@ -9,6 +9,8 @@
 
 #include "coxdev.h"
 
+using namespace coxdev;
+
 #include <cmath>
 #include <cstdio>
 #include <limits>

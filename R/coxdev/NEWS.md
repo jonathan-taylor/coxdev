@@ -1,5 +1,7 @@
 # coxdev 0.4.1
 
+* The C++ library is in `namespace coxdev` (`coxdev::CoxDeviance` etc.), so
+  a package using it with `LinkingTo: coxdev` shares no global names with it.
 * The R package is licensed under the GPL-2 (it was GPL (>= 3)).
 
 # coxdev 0.4.0

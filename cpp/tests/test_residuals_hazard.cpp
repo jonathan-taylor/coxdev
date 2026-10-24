@@ -10,6 +10,8 @@
 
 #include "coxdev.h"
 
+using namespace coxdev;
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
