@@ -44,6 +44,7 @@ check_coxph <- function(data, tie_breaking, weight, have_start, strata = NULL, t
 }
 
 test_that("deviance, score and covariance agree with coxph", {
+  skip_if_survival_broken()   # see helper-survival.R
   set.seed(1)
   for (combo in all_combos[sample(length(all_combos), 25)]) {
     for (tie_breaking in c("efron", "breslow")) {
@@ -58,6 +59,7 @@ test_that("deviance, score and covariance agree with coxph", {
 })
 
 test_that("stratified models agree with coxph", {
+  skip_if_survival_broken()   # see helper-survival.R
   set.seed(2)
   for (tie_breaking in c("efron", "breslow")) {
     for (have_start in c(TRUE, FALSE)) {

@@ -3,6 +3,12 @@
 \name{CoxInformation}
 \alias{CoxInformation}
 \title{The information of the Cox model as a linear operator}
+\value{
+Made by \code{CoxDeviance$information()}, a \code{CoxInformation} object, an
+R6 linear operator: \code{multiply()} returns the product with a vector (a
+vector) or with a matrix (a matrix), \code{diagonal()} the diagonal (a
+vector), and \code{to_dense()} the \code{n} by \code{n} matrix.
+}
 \description{
 The information at a linear predictor (half the Hessian of the deviance
 with respect to the linear predictor, the negative Hessian of the log

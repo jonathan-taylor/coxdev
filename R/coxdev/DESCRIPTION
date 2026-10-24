@@ -1,18 +1,21 @@
 Package: coxdev
 Title: Cox Model Deviance, Gradient, Information and Score Sampling
 Version: 0.4.0
-Authors@R: c(person("Jonathan", "Taylor", role = c("aut"), email = "jtaylo@stanford.edu"),
+Authors@R: c(person("Jonathan", "Taylor", role = c("aut", "cre"), email = "jtaylo@stanford.edu"),
              person("Trevor", "Hastie", role = c("aut")),
-             person("Balasubramanian", "Narasimhan", role = c("aut", "cre"),
+             person("Balasubramanian", "Narasimhan", role = c("aut"),
                     email = "naras@stanford.edu"))
 Description: Fast computation of the deviance of the Cox proportional
-    hazards model, its gradient and the diagonal of its Hessian with respect
-    to the linear predictor, the information as a matrix-free linear
-    operator, and draws of the score (multinomial, Bernoulli, Fisher
-    noncentral hypergeometric or wild), with Efron's or Breslow's ties,
-    start times (left truncation), strata and sample weights. The 'C++' code
-    is shared with the Python package 'coxdev', and the same seed gives the
-    same draws from either.
+    hazards model (Cox (1972) <doi:10.1111/j.2517-6161.1972.tb00899.x>), its
+    gradient and the diagonal of its Hessian with respect to the linear
+    predictor, the information and its derivative in a direction as
+    matrix-free linear operators, and draws of the score (multinomial,
+    Bernoulli, Fisher noncentral hypergeometric or wild), with the ties of
+    Breslow (1974) <doi:10.2307/2529620> or Efron (1977)
+    <doi:10.1080/01621459.1977.10480613>, start times (left truncation),
+    strata and sample weights. The 'C++' code is header-only, shared with the
+    'Python' package 'coxdev', and installed for packages that use it through
+    'LinkingTo'.
 License: GPL (>= 3)
 URL: https://github.com/jonathan-taylor/coxdev
 BugReports: https://github.com/jonathan-taylor/coxdev/issues

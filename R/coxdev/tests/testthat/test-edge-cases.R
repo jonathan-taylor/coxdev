@@ -88,6 +88,7 @@ test_that("one observation, and one failure", {
 })
 
 test_that("ties of every failure, and entries at failure times, agree with coxph", {
+  skip_if_survival_broken()   # see helper-survival.R
   skip_if_not_installed("survival")
   set.seed(71)
   for (ties in c("efron", "breslow")) {
@@ -106,6 +107,7 @@ test_that("ties of every failure, and entries at failure times, agree with coxph
 })
 
 test_that("strata without failures, and of one observation, agree with coxph", {
+  skip_if_survival_broken()   # see helper-survival.R
   skip_if_not_installed("survival")
   set.seed(72)
   n <- 40

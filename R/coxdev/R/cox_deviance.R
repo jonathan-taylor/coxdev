@@ -61,6 +61,11 @@
 #' Martingale-based residuals for survival models. *Biometrika*, 77(1),
 #' 147--160.
 #'
+#' @return `CoxDeviance$new()` returns a `CoxDeviance` object, whose methods
+#'   are documented below: `compute()` returns a `CoxDevianceResult` (a list
+#'   with the deviance, its gradient and the diagonal of its Hessian),
+#'   `information()` a [CoxInformation] operator and
+#'   `information_derivative()` a [CoxInformationDerivative] operator.
 #' @examples
 #' set.seed(1)
 #' n <- 100

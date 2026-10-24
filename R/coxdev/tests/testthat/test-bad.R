@@ -34,6 +34,7 @@ test_that("the information of the coefficients is symmetric positive definite", 
 })
 
 test_that("the problematic case agrees with coxph", {
+  skip_if_survival_broken()   # see helper-survival.R
   skip_if_not_installed("survival")
   d <- problematic_data()
   eta <- drop(d$X %*% d$beta)

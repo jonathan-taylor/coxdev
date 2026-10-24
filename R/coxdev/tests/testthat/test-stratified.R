@@ -170,6 +170,7 @@ test_that("stratified inputs are checked", {
 })
 
 test_that("strata of unequal sizes agree with coxph", {
+  skip_if_survival_broken()   # see helper-survival.R
   skip_if_not_installed("survival")
   # the data of create_stratified_data in tests/test_compareR.py, with
   # continuous times
