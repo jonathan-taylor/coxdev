@@ -113,11 +113,13 @@ test_that("the response can be a Surv object", {
   expect_error(CoxDeviance$new(survival::Surv(event, status, type = "left")), "not left")
 })
 
-test_that("the strata of glmnet::stratifySurv are used", {
+test_that("the strata of a Surv object (as glmnet::stratifySurv sets them) are used", {
   skip_if_not_installed("survival")
-  skip_if_not_installed("glmnet", minimum_version = "5.0")
   strata <- rep(1:3, 4)
-  y <- glmnet::stratifySurv(survival::Surv(event, status), strata)
+  # glmnet::stratifySurv() keeps the strata in the attribute "strata"
+  y <- survival::Surv(event, status)
+  attr(y, "strata") <- strata
+  class(y) <- c("stratifySurv", class(y))
   a <- CoxDeviance$new(y)
   expect_true(a$stratified)
   b <- CoxDeviance$new(event = event, status = status, strata = strata)

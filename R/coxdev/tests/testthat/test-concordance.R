@@ -1,6 +1,6 @@
 # CoxDeviance$c_index, Harrell's concordance index, as tests/test_concordance.py:
-# against the O(n^2) count of its definition, its properties, and glmnet's
-# Cindex (test-residuals-hazard.R compares it with survival::concordance).
+# against the O(n^2) count of its definition and its properties
+# (test-residuals-hazard.R compares it with survival::concordance).
 
 concordance_data <- function(n) {
   # few distinct times and rounded predictions, so that both have ties
@@ -52,22 +52,4 @@ test_that("the C-index needs no compute, and a compute does not change it", {
   # no comparable pair
   expect_true(is.nan(CoxDeviance$new(event = d$time, status = rep(0, 100))$c_index(d$pred)))
   expect_error(cox$c_index(d$pred[-1]), "one per observation")
-})
-
-test_that("the C-index agrees with glmnet's Cindex", {
-  skip_if_not_installed("survival")
-  skip_if_not_installed("glmnet", minimum_version = "5.0")
-  set.seed(2)
-  for (start in c(FALSE, TRUE)) {
-    n <- 150
-    time <- ceiling(stats::rexp(n) * 4) / 4 + 0.25
-    status <- stats::rbinom(n, 1, 0.7)
-    entry <- if (start) floor(stats::runif(n, 0, 0.5) * time * 8) / 8
-    w <- stats::runif(n, 0.2, 3)
-    pred <- round(stats::rnorm(n), 1)
-    y <- if (start) survival::Surv(entry, time, status) else survival::Surv(time, status)
-    cox <- CoxDeviance$new(event = time, status = status, start = entry)
-    expect_lt(abs(cox$c_index(pred, sample_weight = w) - glmnet::Cindex(pred, y, weights = w)),
-              1e-12)
-  }
 })

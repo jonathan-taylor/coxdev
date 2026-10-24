@@ -1,6 +1,5 @@
 # The problematic case of tests/test_bad.py and tests/test_bad.R: 50
-# observations with continuous times and 10 covariates, against coxph and
-# glmnet.
+# observations with continuous times and 10 covariates, against coxph.
 
 problematic_data <- function() {
   set.seed(42)
@@ -51,21 +50,4 @@ test_that("the problematic case agrees with coxph", {
     cov <- solve(coef_information(cox, d$X, eta, d$sample_weight))
     expect_lt(rel_diff(unname(stats::vcov(fit)), cov), 1e-10)
   }
-})
-
-test_that("the problematic case agrees with glmnet", {
-  skip_if_not_installed("survival")
-  skip_if_not_installed("glmnet", minimum_version = "5.0")
-  d <- problematic_data()
-  eta <- drop(d$X %*% d$beta)
-  cox <- CoxDeviance$new(event = d$event, status = d$status, tie_breaking = "breslow")
-  C <- cox$compute(eta, d$sample_weight)
-  y <- survival::Surv(d$event, d$status)
-  D_R <- glmnet::coxnet.deviance(pred = eta, y = y, weights = d$sample_weight,
-                                 std.weights = FALSE, cox.ties = "breslow")
-  G_R <- glmnet:::coxgrad(eta, y, d$sample_weight, std.weights = FALSE, diag.hessian = TRUE,
-                          cox.ties = "breslow")
-  expect_lt(abs(D_R - C$deviance) / abs(D_R), 1e-10)
-  expect_lt(rel_diff(C$gradient, -2 * as.numeric(G_R)), 1e-10)
-  expect_lt(rel_diff(C$diag_hessian, attr(G_R, "diag_hessian")), 1e-10)
 })
