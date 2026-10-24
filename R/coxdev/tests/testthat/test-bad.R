@@ -43,7 +43,7 @@ test_that("the problematic case agrees with coxph", {
     X <- d$X
     fit <- survival::coxph(survival::Surv(d$event, d$status) ~ X, init = d$beta,
                            weights = d$sample_weight, ties = tie_breaking, robust = FALSE,
-                           control = survival::coxph.control(iter.max = 0))
+                           control = survival::coxph.control(iter.max = 0, timefix = FALSE))
     expect_equal(C$deviance - 2 * C$loglik_sat, -2 * fit$loglik[1], tolerance = 1e-10)
     G <- -2 * colSums(survival::coxph.detail(fit)$score)
     expect_lt(rel_diff(drop(crossprod(d$X, C$gradient)), unname(G)), 1e-10)

@@ -83,12 +83,16 @@ def pytest_collection_modifyitems(config, items):
             else:
                 new_items.append(item)
         if len(compare_R) > 0:
-            new_items += list(set(rng.choice(compare_R, test_size, replace=True)))
+            chosen = set(rng.choice(compare_R, test_size, replace=True))
+            new_items += [item for item in compare_R if item in chosen]   # in collection order
         if len(cumsum) > 0:
-            new_items += list(set(rng.choice(cumsum, test_size, replace=True)))
+            chosen = set(rng.choice(cumsum, test_size, replace=True))
+            new_items += [item for item in cumsum if item in chosen]   # in collection order
         if len(zero_weights) > 0:
-            new_items += list(set(rng.choice(zero_weights, test_size, replace=True)))
+            chosen = set(rng.choice(zero_weights, test_size, replace=True))
+            new_items += [item for item in zero_weights if item in chosen]   # in collection order
         if len(jax_tie_types) > 0:
-            new_items += list(set(rng.choice(jax_tie_types, test_size, replace=True)))
+            chosen = set(rng.choice(jax_tie_types, test_size, replace=True))
+            new_items += [item for item in jax_tie_types if item in chosen]   # in collection order
         items[:] = new_items
 
