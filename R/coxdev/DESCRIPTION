@@ -29,7 +29,6 @@ LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
-    glmnet (>= 5.0),
     knitr,
     Matrix,
     rmarkdown,

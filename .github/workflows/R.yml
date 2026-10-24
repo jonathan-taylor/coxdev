@@ -44,12 +44,13 @@ jobs:
       with:
         use-public-rspm: true
 
-    # the Suggests include survival and glmnet, which the Python tests that
-    # compare with R (through rpy2) need as well
+    # the Suggests include survival, which the Python tests that compare with
+    # R (through rpy2) need as well; they also need glmnet, which the R
+    # package no longer suggests
     - uses: r-lib/actions/setup-r-dependencies@v2
       with:
         working-directory: R/coxdev
-        extra-packages: any::rcmdcheck
+        extra-packages: any::rcmdcheck, any::glmnet
         needs: check
 
     - uses: r-lib/actions/check-r-package@v2

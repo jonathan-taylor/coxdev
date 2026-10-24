@@ -76,17 +76,11 @@ b
 ```
 
 These are the estimates of `coxph` from `survival`, with the same standard
-errors, and of `glmnet` with no penalty, `lambda = 0`:
+errors:
 
 ```{r}
 fit <- coxph(y ~ X, ties = "efron")
-estimates <- rbind(coxdev = b, coxph = coef(fit))
-if (requireNamespace("glmnet", quietly = TRUE) &&
-    utils::packageVersion("glmnet") >= "5.0") {
-  fit_glmnet <- glmnet::glmnet(X, y, family = "cox", lambda = 0, cox.ties = "efron")
-  estimates <- rbind(estimates, glmnet = drop(as.matrix(coef(fit_glmnet))))
-}
-estimates
+rbind(coxdev = b, coxph = coef(fit))
 rbind(coxdev = sqrt(diag(solve(info))), coxph = sqrt(diag(vcov(fit))))
 ```
 
@@ -171,13 +165,6 @@ timings <- c(
     for (e in etas) I %*% XN[, 1]
   })
 )
-if (requireNamespace("glmnet", quietly = TRUE) &&
-    utils::packageVersion("glmnet") >= "5.0") {
-  timings["glmnet::coxnet.deviance, then glmnet:::coxgrad"] <- per_call(for (e in etas) {
-    glmnet::coxnet.deviance(pred = e, y = yN, std.weights = FALSE, cox.ties = "efron")
-    glmnet:::coxgrad(e, yN, rep(1, N), std.weights = FALSE, cox.ties = "efron")
-  })
-}
 knitr::kable(data.frame(time = timings), caption = sprintf(
   "Time per call, n = %d. Creating the object (the sort) took %.0f ms.",
   N, 1000 * setup))
@@ -185,7 +172,6 @@ knitr::kable(data.frame(time = timings), caption = sprintf(
 
 The times depend on the machine, but the pattern is stable. Reusing the
 object avoids the sort, which costs several times as much as an evaluation.
-glmnet's functions run the same C++ code, but have to start from scratch on
-every call. The information operator is what makes the Hessian usable at
+The information operator is what makes the Hessian usable at
 this size: as a dense matrix it would take
 `r format(8 * N^2 / 2^30, digits = 3)` GB.

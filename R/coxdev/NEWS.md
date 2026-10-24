@@ -9,6 +9,9 @@
 * The C++ library is header-only: `inst/include` has `coxdev.h` and its
   implementation `coxdev_impl.h`, all inline, so another package can compile
   against it with `LinkingTo: coxdev` and `#include <coxdev.h>`.
+* glmnet is no longer in Suggests: the comparisons with it (and the
+  vignettes' use of it) are removed, as glmnet will depend on coxdev
+  (`LinkingTo: coxdev`). The comparisons with survival remain.
 * More tests, mirroring the Python package's: the residuals, the baseline
   hazard, the expected events and the risk-set variances against direct
   computations, with zero weights; the C-index against the count of its
