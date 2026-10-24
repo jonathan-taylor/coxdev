@@ -11,9 +11,9 @@ name = "coxdev"
 version = v"0.4.0"   # the coxdev release with the header-only library and the C API
 
 sources = [
-    # a tagged coxdev release (fill in the commit of the tag)
+    # the commit of the tag v0.4.0
     GitSource("https://github.com/jonathan-taylor/coxdev.git",
-              "0000000000000000000000000000000000000000"),
+              "f2c9040bb4182a629b54b965d06523e93a498415"),
 ]
 
 # Eigen comes from Eigen_jll (headers only), not coxdev's eigen submodule
@@ -31,7 +31,7 @@ install -Dvm 644 ../include/coxdev_c_api.h ${includedir}/coxdev_c_api.h
 install_license ${WORKSPACE}/srcdir/coxdev/LICENSE
 """
 
-platforms = expand_cxxstring_abis(supported_platforms())
+platforms = supported_platforms()
 
 products = [
     LibraryProduct("libcoxdev_c", :libcoxdev_c),
