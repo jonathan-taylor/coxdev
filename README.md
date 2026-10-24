@@ -494,6 +494,12 @@ compile coxdev into its own extension:
 
 3. `#include <coxdev.h>` where the classes are used.
 
+Everything is in `namespace coxdev`: `coxdev::CoxDeviance`,
+`coxdev::StratifiedCoxDeviance`, `coxdev::BaselineHazard`,
+`coxdev::Concordance` and `coxdev::concordance()` (with its internals in
+`coxdev::detail`), and the header's macros start with `COXDEV_`, so it
+shares no global names with the code that includes it.
+
 The code is compiled into the dependent package's own module, so it doesn't
 link against coxdev's. `tests/test_get_include.py` builds a two-file program
 this way.

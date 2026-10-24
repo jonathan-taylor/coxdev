@@ -14,24 +14,25 @@
 #ifdef PY_INTERFACE
 #include <pybind11/pybind11.h>
 #include <pybind11/eigen.h>
-namespace py = pybind11;
 #endif
 
 #ifdef R_INTERFACE
 #include <RcppEigen.h>
 #endif
 
-#define EIGEN_REF Eigen::Ref
-#define MAKE_MAP_Xd(y) Eigen::Map<Eigen::VectorXd>((y).data(), (y).size())
-#define MAKE_MAP_Xi(y) Eigen::Map<Eigen::VectorXi>((y).data(), (y).size())
+// Everything is in namespace coxdev; the macros are prefixed COXDEV_.
+#define COXDEV_MAP_Xd(y) Eigen::Map<Eigen::VectorXd>((y).data(), (y).size())
+#define COXDEV_MAP_Xi(y) Eigen::Map<Eigen::VectorXi>((y).data(), (y).size())
 
 #if defined(PY_INTERFACE)
-#define ERROR_MSG(x) throw std::runtime_error(x)
+#define COXDEV_ERROR(x) throw std::runtime_error(x)
 #elif defined(R_INTERFACE)
-#define ERROR_MSG(x) Rcpp::stop(x)
+#define COXDEV_ERROR(x) Rcpp::stop(x)
 #else
-#define ERROR_MSG(x) throw std::runtime_error(x)
+#define COXDEV_ERROR(x) throw std::runtime_error(x)
 #endif
+
+namespace coxdev {
 
 // The Breslow (or, with Efron's ties, Efron's) estimate of the baseline
 // hazard at the linear predictor of the last compute_deviance: one entry per
@@ -420,6 +421,8 @@ void setup_preprocess(const Eigen::Ref<const Eigen::VectorXd> start,
                       Eigen::VectorXi& _event_map,
                       Eigen::VectorXi& event_order,
                       Eigen::VectorXi& start_order);
+
+}  // namespace coxdev
 
 // The implementation: header-only, every definition inline
 #include "coxdev_impl.h"

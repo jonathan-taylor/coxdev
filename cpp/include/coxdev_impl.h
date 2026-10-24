@@ -10,11 +10,13 @@
 #include <numeric>
 #include <random>
 
+namespace coxdev {
+
 inline void forward_cumsum(const Eigen::Ref<const Eigen::VectorXd> sequence,
 		    Eigen::Ref<Eigen::VectorXd> output)
 {
   if (sequence.size() + 1 != output.size()) {
-    ERROR_MSG("forward_cumsum: output size must be one longer than input's.");
+    COXDEV_ERROR("forward_cumsum: output size must be one longer than input's.");
   }
       
   double sum = 0.0;
@@ -38,7 +40,7 @@ inline void reverse_cumsums(const Eigen::Ref<const Eigen::VectorXd> sequence,
   int n = sequence.size();
   if (do_event) {
     if (sequence.size() + 1 != event_buffer.size()) {
-      ERROR_MSG("reverse_cumsums: event_buffer size must be one more than input's.");
+      COXDEV_ERROR("reverse_cumsums: event_buffer size must be one more than input's.");
     }
     event_buffer(n) = sum;
     for (int i = n - 1; i >= 0;  --i) {
@@ -49,7 +51,7 @@ inline void reverse_cumsums(const Eigen::Ref<const Eigen::VectorXd> sequence,
 
   if (do_start) {
     if (sequence.size() + 1 != start_buffer.size()) {
-      ERROR_MSG("reverse_cumsums: event_buffer size must be one more than input's.");
+      COXDEV_ERROR("reverse_cumsums: event_buffer size must be one more than input's.");
     }
     sum = 0.0;
     start_buffer(n) = sum;
@@ -124,7 +126,7 @@ inline double compute_sat_loglik(const Eigen::Ref<const Eigen::VectorXi> first,
   for (int i = 0; i < event_order.size(); ++i) {
     weight_event_order_times_status(i) = weight(event_order(i)) * status(i);
   }
-  forward_cumsum(MAKE_MAP_Xd(weight_event_order_times_status), W_status);
+  forward_cumsum(COXDEV_MAP_Xd(weight_event_order_times_status), W_status);
 
   Eigen::VectorXd sums(last.size());
   for (int i = 0; i < last.size(); ++i) {
@@ -355,7 +357,7 @@ inline void hessian_matvec(const Eigen::Ref<const Eigen::VectorXd> arg,
 {
   Eigen::VectorXd exp_w_times_arg = exp_w.array() * arg.array();
 
-  sum_over_risk_set(MAKE_MAP_Xd(exp_w_times_arg),
+  sum_over_risk_set(COXDEV_MAP_Xd(exp_w_times_arg),
                     ctx,
                     risk_sum_arg,
                     event_cumsum,
@@ -565,7 +567,7 @@ inline void setup_preprocess(const Eigen::Ref<const Eigen::VectorXd> start,
     check_ok = (_first[_start_map[i]] == _start_map[i]);
   }
   if (!check_ok) {
-    ERROR_MSG("first_start disagrees with start_map");
+    COXDEV_ERROR("first_start disagrees with start_map");
   }
 }
 
@@ -869,7 +871,7 @@ inline void StratifiedCoxDeviance::compute_information_derivative_matvec(const E
 // ---------------------------------------------------------------------------
 // Sampling the score
 
-namespace coxdev_detail {
+namespace detail {
 
 // Random numbers from the bits of std::mt19937_64, whose output the C++
 // standard specifies exactly. The distributions of <random> differ between
@@ -1022,14 +1024,14 @@ inline double common_weight(const Eigen::VectorXd& w) {
       if (w0 == 0.0) {
         w0 = w(i);
       } else if (std::abs(w(i) - w0) > 1e-12 * w0) {
-        ERROR_MSG("sample_score: the model-based methods need equal positive weights; use method 'wild'");
+        COXDEV_ERROR("sample_score: the model-based methods need equal positive weights; use method 'wild'");
       }
     }
   }
   return w0;
 }
 
-}  // namespace coxdev_detail
+}  // namespace detail
 
 // wild_score and score_residuals reuse what compute_deviance leaves in its
 // buffers, which depend only on the linear predictor and weights:
@@ -1047,10 +1049,10 @@ inline bool failure_term(const CoxContext& ctx, const Eigen::VectorXd& w_ev,
 inline Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   int n = _status.size();
   if (linear_predictor.size() != n) {
-    ERROR_MSG("wild_score: call compute_deviance first");
+    COXDEV_ERROR("wild_score: call compute_deviance first");
   }
   if (multipliers.size() != n) {
-    ERROR_MSG("wild_score: multipliers must have one entry per observation");
+    COXDEV_ERROR("wild_score: multipliers must have one entry per observation");
   }
   CoxContext ctx = get_context();
   const Eigen::VectorXd& S = risk_sum_buffers[0];
@@ -1081,7 +1083,7 @@ inline Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multiplier
       c(t) = (Gwbar - w_avg_buffer(t) * SG(t) / S(t)) / S(t);
     }
   }
-  Eigen::VectorXd T = coxdev_detail::risk_set_accumulate(ctx, c, ctx.efron);
+  Eigen::VectorXd T = detail::risk_set_accumulate(ctx, c, ctx.efron);
 
   Eigen::VectorXd out(n);
   for (int i = 0; i < n; ++i) {
@@ -1094,10 +1096,10 @@ inline Eigen::VectorXd CoxDeviance::wild_score(const Eigen::VectorXd& multiplier
 inline Eigen::VectorXd CoxDeviance::score_residuals(const Eigen::VectorXd& x) const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
-    ERROR_MSG("score_residuals: call compute_deviance first");
+    COXDEV_ERROR("score_residuals: call compute_deviance first");
   }
   if (x.size() != n) {
-    ERROR_MSG("score_residuals: x must have one entry per observation");
+    COXDEV_ERROR("score_residuals: x must have one entry per observation");
   }
   CoxContext ctx = get_context();
   const Eigen::VectorXd& S = risk_sum_buffers[0];
@@ -1122,7 +1124,7 @@ inline Eigen::VectorXd CoxDeviance::score_residuals(const Eigen::VectorXd& x) co
       c(t) = w_avg_buffer(t) * xbar(t) / S(t);
     }
   }
-  Eigen::VectorXd T = coxdev_detail::risk_set_accumulate(ctx, c, ctx.efron);
+  Eigen::VectorXd T = detail::risk_set_accumulate(ctx, c, ctx.efron);
   Eigen::VectorXd Cx(n + 1);
   forward_cumsum(xbar, Cx);
 
@@ -1142,7 +1144,7 @@ inline Eigen::VectorXd CoxDeviance::score_residuals(const Eigen::VectorXd& x) co
 inline BaselineHazard CoxDeviance::baseline_hazard() const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
-    ERROR_MSG("baseline_hazard: call compute_deviance first");
+    COXDEV_ERROR("baseline_hazard: call compute_deviance first");
   }
   CoxContext ctx = get_context();
 
@@ -1191,10 +1193,10 @@ inline BaselineHazard CoxDeviance::baseline_hazard() const {
 inline Eigen::VectorXd CoxDeviance::schoenfeld_residuals(const Eigen::VectorXd& x) const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
-    ERROR_MSG("schoenfeld_residuals: call compute_deviance first");
+    COXDEV_ERROR("schoenfeld_residuals: call compute_deviance first");
   }
   if (x.size() != n) {
-    ERROR_MSG("schoenfeld_residuals: x must have one entry per observation");
+    COXDEV_ERROR("schoenfeld_residuals: x must have one entry per observation");
   }
   CoxContext ctx = get_context();
   const Eigen::VectorXd& S = risk_sum_buffers[0];
@@ -1227,10 +1229,10 @@ inline Eigen::VectorXd CoxDeviance::schoenfeld_residuals(const Eigen::VectorXd& 
 inline Eigen::VectorXd CoxDeviance::risk_set_variance(const Eigen::VectorXd& z) const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
-    ERROR_MSG("risk_set_variance: call compute_deviance first");
+    COXDEV_ERROR("risk_set_variance: call compute_deviance first");
   }
   if (z.size() != n) {
-    ERROR_MSG("risk_set_variance: z must have one entry per observation");
+    COXDEV_ERROR("risk_set_variance: z must have one entry per observation");
   }
   CoxContext ctx = get_context();
   const Eigen::VectorXd& S = risk_sum_buffers[0];
@@ -1270,7 +1272,7 @@ inline Eigen::VectorXd CoxDeviance::risk_set_variance(const Eigen::VectorXd& z) 
 inline Eigen::VectorXd CoxDeviance::expected_events() const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
-    ERROR_MSG("expected_events: call compute_deviance first");
+    COXDEV_ERROR("expected_events: call compute_deviance first");
   }
   CoxContext ctx = get_context();
   const Eigen::VectorXd& S = risk_sum_buffers[0];
@@ -1283,7 +1285,7 @@ inline Eigen::VectorXd CoxDeviance::expected_events() const {
   for (int t = 0; t < n; ++t) {
     if (failure_term(ctx, w_ev, S, t)) c(t) = w_avg_buffer(t) / S(t);
   }
-  Eigen::VectorXd T = coxdev_detail::risk_set_accumulate(ctx, c, ctx.efron);
+  Eigen::VectorXd T = detail::risk_set_accumulate(ctx, c, ctx.efron);
 
   // S is a risk sum of w exp(eta - mean(eta)), so exp(eta - mean(eta)) T is
   // the expected number of events for eta as given
@@ -1301,12 +1303,12 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
                                             std::uint64_t seed) {
   int n = _status.size();
   if (linear_predictor.size() != n) {
-    ERROR_MSG("sample_score: call compute_deviance first");
+    COXDEV_ERROR("sample_score: call compute_deviance first");
   }
   if (n_draws < 0) {
-    ERROR_MSG("sample_score: n_draws must be nonnegative");
+    COXDEV_ERROR("sample_score: n_draws must be nonnegative");
   }
-  coxdev_detail::PortableRNG rng(seed);
+  detail::PortableRNG rng(seed);
   Eigen::MatrixXd out(n, n_draws);
 
   if (method == "wild") {
@@ -1322,12 +1324,12 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
   bool bernoulli = (method == "bernoulli");
   bool fisher = (method == "fisher");
   if (!(multinomial || bernoulli || fisher)) {
-    ERROR_MSG("sample_score: method must be one of 'multinomial', 'bernoulli', "
+    COXDEV_ERROR("sample_score: method must be one of 'multinomial', 'bernoulli', "
               "'fisher' or 'wild'");
   }
 
   CoxContext ctx = get_context();
-  double w0 = coxdev_detail::common_weight(sample_weight);
+  double w0 = detail::common_weight(sample_weight);
 
   // in event order
   Eigen::VectorXd e_ev(n), w_ev(n), start_ev(n);
@@ -1337,7 +1339,7 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     w_ev(i) = sample_weight(k);
     start_ev(i) = raw_start(k);
   }
-  std::vector<coxdev_detail::FailureTime> times = coxdev_detail::failure_times(ctx, w_ev, _event);
+  std::vector<detail::FailureTime> times = detail::failure_times(ctx, w_ev, _event);
 
   // the risk sums without Efron's weights: the draws are from the whole risk set
   CoxContext breslow = ctx;
@@ -1349,10 +1351,10 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     return e_ev(j) > 0 && (!have_start_times || start_ev(j) < t);
   };
 
-  coxdev_detail::WeightTree tree(e_ev);
+  detail::WeightTree tree(e_ev);
 
   // a subject at risk at ft, with probability proportional to its weight in tree
-  auto draw_at_risk = [&](const coxdev_detail::FailureTime& ft) -> int {
+  auto draw_at_risk = [&](const detail::FailureTime& ft) -> int {
     // the tree holds every subject with event time >= t: reject those who
     // entered at t or later
     for (int attempt = 0; attempt < 64; ++attempt) {
@@ -1366,7 +1368,7 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
       if (tree.get(j) > 0 && at_risk(j, ft.time)) total += tree.get(j);
     }
     if (!(total > 0)) {
-      ERROR_MSG("sample_score: a failure time with an empty risk set");
+      COXDEV_ERROR("sample_score: a failure time with an empty risk set");
     }
     double target = rng.uniform() * total;
     int last_eligible = -1;
@@ -1381,7 +1383,7 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
   };
 
   // the failure positions of ft (they carry the per-term values for risk_set_accumulate)
-  auto spread = [&](const coxdev_detail::FailureTime& ft, double value, Eigen::VectorXd& c) {
+  auto spread = [&](const detail::FailureTime& ft, double value, Eigen::VectorXd& c) {
     for (int t = ft.first; t <= ft.last; ++t) {
       if (ctx.status(t) == 1 && w_ev(t) > 0) c(t) = value;
     }
@@ -1404,7 +1406,7 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     Eigen::MatrixXd r_ev = Eigen::MatrixXd::Zero(n, n_draws);
     std::vector<int> risk;
     std::vector<double> loge, suffix, prefix;
-    for (const coxdev_detail::FailureTime& ft : times) {
+    for (const detail::FailureTime& ft : times) {
       risk.clear();
       for (int j = ft.first; j < n; ++j) {
         if (at_risk(j, ft.time)) risk.push_back(j);
@@ -1412,7 +1414,7 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
       int m = risk.size();
       int d = ft.d;
       if (m < d) {
-        ERROR_MSG("sample_score: more failures than subjects at risk");
+        COXDEV_ERROR("sample_score: more failures than subjects at risk");
       }
       loge.resize(m);
       for (int i = 0; i < m; ++i) loge[i] = std::log(e_ev(risk[i]));
@@ -1476,7 +1478,7 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
     c.setZero();
     if (bernoulli) {
       // each subject at risk fails independently with probability min(1, d e_j / S)
-      for (const coxdev_detail::FailureTime& ft : times) {
+      for (const detail::FailureTime& ft : times) {
         double S_k = S(ft.first);
         double D = 0.0;
         for (int j = ft.first; j < n; ++j) {
@@ -1492,12 +1494,12 @@ inline Eigen::MatrixXd CoxDeviance::sample_score(const std::string& method,
       }
     } else {
       // d failures at each time, drawn with replacement
-      for (const coxdev_detail::FailureTime& ft : times) {
+      for (const detail::FailureTime& ft : times) {
         for (int m = 0; m < ft.d; ++m) r(draw_at_risk(ft)) += 1.0;
         spread(ft, 1.0 / S(ft.first), c);
       }
     }
-    Eigen::VectorXd T = coxdev_detail::risk_set_accumulate(ctx, c, false);
+    Eigen::VectorXd T = detail::risk_set_accumulate(ctx, c, false);
     r.array() -= e_ev.array() * T.array();
     r *= w0;
     for (int i = 0; i < n; ++i) out(event_order(i), b) = r(i);
@@ -1513,7 +1515,7 @@ inline Eigen::MatrixXd StratifiedCoxDeviance::sample_score(const std::string& me
   for (size_t s = 0; s < unique_strata.size(); ++s) {
     const auto& indices = stratum_indices[s];
     Eigen::MatrixXd draws = cox_devs[s]->sample_score(method, n_draws,
-                                                        coxdev_detail::mix_seed(seed + coxdev_detail::mix_seed(s + 1)));
+                                                        detail::mix_seed(seed + detail::mix_seed(s + 1)));
     for (size_t j = 0; j < indices.size(); ++j) {
       out.row(indices[j]) = draws.row(j);
     }
@@ -1524,7 +1526,7 @@ inline Eigen::MatrixXd StratifiedCoxDeviance::sample_score(const std::string& me
 inline Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& multipliers) {
   int n = linear_predictor.size();
   if (multipliers.size() != n) {
-    ERROR_MSG("wild_score: multipliers must have one entry per observation");
+    COXDEV_ERROR("wild_score: multipliers must have one entry per observation");
   }
   Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
   for (size_t s = 0; s < unique_strata.size(); ++s) {
@@ -1540,7 +1542,7 @@ inline Eigen::VectorXd StratifiedCoxDeviance::wild_score(const Eigen::VectorXd& 
 inline Eigen::VectorXd StratifiedCoxDeviance::score_residuals(const Eigen::VectorXd& x) const {
   int n = linear_predictor.size();
   if (x.size() != n) {
-    ERROR_MSG("score_residuals: x must have one entry per observation");
+    COXDEV_ERROR("score_residuals: x must have one entry per observation");
   }
   Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
   for (size_t s = 0; s < unique_strata.size(); ++s) {
@@ -1556,7 +1558,7 @@ inline Eigen::VectorXd StratifiedCoxDeviance::score_residuals(const Eigen::Vecto
 inline Eigen::VectorXd StratifiedCoxDeviance::schoenfeld_residuals(const Eigen::VectorXd& x) const {
   int n = linear_predictor.size();
   if (x.size() != n) {
-    ERROR_MSG("schoenfeld_residuals: x must have one entry per observation");
+    COXDEV_ERROR("schoenfeld_residuals: x must have one entry per observation");
   }
   Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
   for (size_t s = 0; s < unique_strata.size(); ++s) {
@@ -1572,7 +1574,7 @@ inline Eigen::VectorXd StratifiedCoxDeviance::schoenfeld_residuals(const Eigen::
 inline Eigen::VectorXd StratifiedCoxDeviance::risk_set_variance(const Eigen::VectorXd& z) const {
   int n = linear_predictor.size();
   if (z.size() != n) {
-    ERROR_MSG("risk_set_variance: z must have one entry per observation");
+    COXDEV_ERROR("risk_set_variance: z must have one entry per observation");
   }
   Eigen::VectorXd out = Eigen::VectorXd::Zero(n);
   for (size_t s = 0; s < unique_strata.size(); ++s) {
@@ -1625,7 +1627,7 @@ inline BaselineHazard StratifiedCoxDeviance::baseline_hazard() const {
 // Harrell's concordance index; see coxdev.h for the definition and the
 // references. Ported from glmstar (src/concordance.cpp), for one predictor.
 
-namespace coxdev_detail {
+namespace detail {
 
 // prefix sums of weights indexed 0, ..., n - 1, under additions, in O(log n)
 // (Fenwick, 1994)
@@ -1645,7 +1647,7 @@ private:
   std::vector<double> tree;
 };
 
-}  // namespace coxdev_detail
+}  // namespace detail
 
 inline Concordance concordance(const Eigen::VectorXd& pred,
                         const Eigen::VectorXd& start,
@@ -1654,7 +1656,7 @@ inline Concordance concordance(const Eigen::VectorXd& pred,
                         const Eigen::VectorXd& weight) {
   const int m = pred.size();
   if (start.size() != m || event.size() != m || status.size() != m || weight.size() != m) {
-    ERROR_MSG("concordance: pred, start, event, status and weight must have the same length");
+    COXDEV_ERROR("concordance: pred, start, event, status and weight must have the same length");
   }
   Concordance out{0.0, 0.0};
   if (m == 0) return out;
@@ -1680,7 +1682,7 @@ inline Concordance concordance(const Eigen::VectorXd& pred,
 
   // the subjects in decreasing time; the tree holds the weights of those
   // at risk at the current time
-  coxdev_detail::FenwickSum tree(r + 1);
+  detail::FenwickSum tree(r + 1);
   double total = 0.0;
   int p_stop = 0, p_start = 0;
   while (p_stop < m) {
@@ -1732,9 +1734,9 @@ inline Concordance concordance(const Eigen::VectorXd& pred,
 inline Concordance CoxDeviance::concordance(const Eigen::VectorXd& pred,
                                      const Eigen::VectorXd& weight) const {
   if (pred.size() != raw_event.size() || weight.size() != raw_event.size()) {
-    ERROR_MSG("concordance: pred and weight must have one entry per observation");
+    COXDEV_ERROR("concordance: pred and weight must have one entry per observation");
   }
-  return ::concordance(pred, raw_start, raw_event, raw_status, weight);
+  return coxdev::concordance(pred, raw_start, raw_event, raw_status, weight);
 }
 
 inline Concordance StratifiedCoxDeviance::concordance(const Eigen::VectorXd& pred,
@@ -1743,7 +1745,7 @@ inline Concordance StratifiedCoxDeviance::concordance(const Eigen::VectorXd& pre
   int total = 0;
   for (const auto& indices : stratum_indices) total += indices.size();
   if (n != total || weight.size() != n) {
-    ERROR_MSG("concordance: pred and weight must have one entry per observation");
+    COXDEV_ERROR("concordance: pred and weight must have one entry per observation");
   }
   Concordance out{0.0, 0.0};
   for (size_t s = 0; s < unique_strata.size(); ++s) {
@@ -1759,5 +1761,7 @@ inline Concordance StratifiedCoxDeviance::concordance(const Eigen::VectorXd& pre
   }
   return out;
 }
+
+}  // namespace coxdev
 
 #endif  // COXDEV_IMPL_H

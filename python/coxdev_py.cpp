@@ -1,5 +1,8 @@
 #include "coxdev.h"
 
+namespace py = pybind11;
+using namespace coxdev;
+
 PYBIND11_MODULE(coxc, m) {
   m.doc() = "Cumsum implementations";
   m.def("forward_cumsum", [](const Eigen::Ref<const Eigen::VectorXd>& sequence, Eigen::Ref<Eigen::VectorXd> output) {

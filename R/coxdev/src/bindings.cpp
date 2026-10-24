@@ -17,8 +17,8 @@ namespace {
 
 // One of the two classes: stratified if strata were given.
 struct CoxModel {
-  std::unique_ptr<CoxDeviance> plain;
-  std::unique_ptr<StratifiedCoxDeviance> strat;
+  std::unique_ptr<coxdev::CoxDeviance> plain;
+  std::unique_ptr<coxdev::StratifiedCoxDeviance> strat;
   bool computed = false;
 
   template <class F>
@@ -74,9 +74,9 @@ SEXP cox_new(const Eigen::VectorXd& start,
              bool efron) {
   std::unique_ptr<CoxModel> model(new CoxModel());
   if (strata.size() == 0) {
-    model->plain.reset(new CoxDeviance(start, event, status, weight, efron));
+    model->plain.reset(new coxdev::CoxDeviance(start, event, status, weight, efron));
   } else {
-    model->strat.reset(new StratifiedCoxDeviance(start, event, status, strata, weight, efron));
+    model->strat.reset(new coxdev::StratifiedCoxDeviance(start, event, status, strata, weight, efron));
   }
   return XPtr<CoxModel>(model.release(), true);
 }
@@ -183,7 +183,7 @@ Eigen::VectorXd cox_expected_events(SEXP ptr) {
 Eigen::VectorXd cox_concordance(SEXP ptr, const Eigen::VectorXd& pred,
                                 const Eigen::VectorXd& weight) {
   CoxModel* model = get_model(ptr);
-  Concordance c = model->apply([&](auto& cox) { return cox.concordance(pred, weight); });
+  coxdev::Concordance c = model->apply([&](auto& cox) { return cox.concordance(pred, weight); });
   Eigen::VectorXd out(2);
   out << c.numerator, c.denominator;
   return out;
@@ -192,7 +192,7 @@ Eigen::VectorXd cox_concordance(SEXP ptr, const Eigen::VectorXd& pred,
 // [[Rcpp::export(.cox_baseline_hazard)]]
 List cox_baseline_hazard(SEXP ptr) {
   CoxModel* model = get_computed(ptr);
-  BaselineHazard h = model->apply([&](auto& cox) { return cox.baseline_hazard(); });
+  coxdev::BaselineHazard h = model->apply([&](auto& cox) { return cox.baseline_hazard(); });
   return List::create(_["time"] = h.time,
                       _["hazard"] = h.hazard,
                       _["cumulative_hazard"] = h.cumulative_hazard,

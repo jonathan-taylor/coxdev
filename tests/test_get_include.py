@@ -24,7 +24,7 @@ OTHER = '''
 double breslow_deviance(const Eigen::VectorXd& start, const Eigen::VectorXd& event,
                         const Eigen::VectorXi& status, const Eigen::VectorXd& w,
                         const Eigen::VectorXd& eta) {
-  StratifiedCoxDeviance cox(start, event, status, Eigen::VectorXi::Zero(event.size()), w, false);
+  coxdev::StratifiedCoxDeviance cox(start, event, status, Eigen::VectorXi::Zero(event.size()), w, false);
   return cox.compute_deviance(eta, w);
 }
 '''
@@ -46,7 +46,7 @@ int main() {
     start(i) = -std::numeric_limits<double>::infinity();
     eta(i) = -1.0 + 2.0 * i / (n - 1);
   }
-  CoxDeviance cox(start, ev, st, w, true);
+  coxdev::CoxDeviance cox(start, ev, st, w, true);
   double deviance = cox.compute_deviance(eta, w);
   std::printf("%%.17g\\n", breslow_deviance(start, ev, st, w, eta));
   std::printf("%%.17g\\n", deviance);
