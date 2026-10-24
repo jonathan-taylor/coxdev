@@ -1,3 +1,7 @@
+# coxdev 0.4.1
+
+* The R package is licensed under the GPL-2 (it was GPL (>= 3)).
+
 # coxdev 0.4.0
 
 * `CoxDeviance$information_derivative(linear_predictor, direction,

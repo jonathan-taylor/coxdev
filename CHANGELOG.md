@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.4.0
+## 0.4.1
+
+- The R package is licensed under the GPL-2 (it was GPL (>= 3)). The
+  Python package and the C++ library stay BSD-3-Clause.
+
+## 0.4.0 (2026-10-23)
 
 ### New
 
