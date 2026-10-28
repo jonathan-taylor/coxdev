@@ -198,3 +198,15 @@ List cox_baseline_hazard(SEXP ptr) {
                       _["cumulative_hazard"] = h.cumulative_hazard,
                       _["stratum"] = h.stratum);
 }
+
+// [[Rcpp::export(.cox_survival_table)]]
+List cox_survival_table(SEXP ptr) {
+  CoxModel* model = get_computed(ptr);
+  coxdev::SurvivalTable t = model->apply([&](auto& cox) { return cox.survival_table(); });
+  return List::create(_["time"] = t.time,
+                      _["n_risk"] = t.n_risk,
+                      _["n_event"] = t.n_event,
+                      _["n_censor"] = t.n_censor,
+                      _["cumulative_hazard"] = t.cumulative_hazard,
+                      _["stratum"] = t.stratum);
+}

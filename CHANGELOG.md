@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Survival curves** (`CoxDeviance.survfit(linear_predictor,
+  sample_weight, new_linear_predictor, new_strata, center)`, and
+  `CoxDeviance$survfit()` in R): R's `survfit.coxph` (`se.fit = FALSE`)
+  at a fixed linear predictor, as `glmnet`'s `survfit.coxnet` computes
+  them. A row per distinct event time (of failures and censorings) in each
+  stratum, with the weight at risk, the weights of the failures and the
+  censorings, and the cumulative hazard of each curve (Breslow's, or
+  Efron's for Efron's ties), NaN outside a subject's stratum. It returns a
+  new `SurvivalCurves`, with `survival` and `predict(times)`. In C++,
+  `survival_table()` (a new `SurvivalTable`) beside `baseline_hazard()`.
+  Moved here from glmstar's `cox_survfit`.
+- **Martingale and deviance residuals** (`martingale_residuals`,
+  `deviance_residuals`, in Python and R): `residuals.coxph`'s
+  `"martingale"` and `"deviance"`, from `expected_events`.
+- **The log partial likelihood** of a result, `loglik` (`loglik_sat -
+  deviance / 2`, `coxph`'s `loglik`): a property in Python, a field in R.
+
 ## 0.4.1
 
 - **The C++ library is in `namespace coxdev`.** `coxdev::CoxDeviance`,

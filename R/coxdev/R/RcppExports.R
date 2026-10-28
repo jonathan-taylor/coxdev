@@ -53,3 +53,7 @@
     .Call(`_coxdev_cox_baseline_hazard`, ptr)
 }
 
+.cox_survival_table <- function(ptr) {
+    .Call(`_coxdev_cox_survival_table`, ptr)
+}
+

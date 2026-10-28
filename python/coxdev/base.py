@@ -49,6 +49,12 @@ class CoxDevianceResult(object):
     diag_hessian: Optional[np.ndarray]
     __hash_args__: Optional[str] = None
 
+    @property
+    def loglik(self):
+        """The (weighted) log partial likelihood, ``loglik_sat - deviance / 2``:
+        R's ``coxph(...)$loglik``."""
+        return self.loglik_sat - self.deviance / 2
+
 
 @dataclass
 class BaselineHazard(object):
@@ -78,6 +84,69 @@ class BaselineHazard(object):
     hazard: np.ndarray
     cumulative_hazard: np.ndarray
     stratum: np.ndarray
+
+
+@dataclass
+class SurvivalCurves(object):
+    """
+    Survival curves of a Cox model, laid out as R's ``survfit.coxph``: from
+    :meth:`CoxDeviance.survfit`.
+
+    The rows are the distinct event times (of failures and censorings) in
+    increasing time within each stratum, stratum by stratum; the columns are
+    the curves. A curve of a subject in one stratum is NaN on the rows of the
+    other strata.
+
+    Attributes
+    ----------
+    time : np.ndarray
+        The times, ``(m,)``.
+    stratum : np.ndarray
+        The stratum label of each row (0 without strata).
+    n_risk, n_event, n_censor : np.ndarray
+        The weight at risk at each time, and the weights of the failures and
+        of the censored observations there.
+    cumulative_hazard : np.ndarray
+        The cumulative hazard of each curve, ``(m, n_curves)``: Breslow's
+        estimate, or Efron's for Efron's ties, constant between failure times.
+    """
+
+    time: np.ndarray
+    stratum: np.ndarray
+    n_risk: np.ndarray
+    n_event: np.ndarray
+    n_censor: np.ndarray
+    cumulative_hazard: np.ndarray
+
+    @property
+    def survival(self):
+        """The survival probabilities ``exp(-cumulative_hazard)``, R's default
+        (``stype = 2``)."""
+        return np.exp(-self.cumulative_hazard)
+
+    def predict(self, times):
+        """
+        The survival probabilities of the curves at ``times``.
+
+        Parameters
+        ----------
+        times : np.ndarray
+            ``(k,)``.
+
+        Returns
+        -------
+        np.ndarray
+            ``(k, n_curves)``. Each curve is a right-continuous step function
+            of its stratum's rows, 1 before its first time.
+        """
+        times = np.atleast_1d(np.asarray(times, float))
+        value = np.empty((times.shape[0], self.cumulative_hazard.shape[1]))
+        for j in range(self.cumulative_hazard.shape[1]):
+            rows = np.nonzero(~np.isnan(self.cumulative_hazard[:, j]))[0]
+            pos = np.searchsorted(self.time[rows], times, side='right') - 1
+            H = np.where(pos >= 0, self.cumulative_hazard[rows[np.maximum(pos, 0)], j], 0)
+            value[:, j] = np.exp(-H)
+        return value
 
 
 @dataclass
@@ -829,6 +898,125 @@ class CoxDeviance(object):
                               hazard=np.asarray(hazard),
                               cumulative_hazard=np.asarray(cumulative_hazard),
                               stratum=stratum)
+
+    def survfit(self,
+                linear_predictor,
+                sample_weight=None,
+                new_linear_predictor=None,
+                new_strata=None,
+                center=None):
+        """
+        Survival curves at a fixed linear predictor: R's ``survfit.coxph``
+        (``se.fit = FALSE``) of ``coxph(y ~ offset(linear_predictor))``, with
+        this object's ties. This is how R's ``survfit.coxnet`` computes the
+        curves of a fitted model.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor of these data, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+        new_linear_predictor : np.ndarray, optional
+            The linear predictors of the subjects to give curves of. If None,
+            one curve (in each stratum) at ``center``, as R does without
+            ``newdata``.
+        new_strata : np.ndarray, optional
+            The stratum labels of the new subjects, needed with
+            ``new_linear_predictor`` when the data have strata.
+        center : float, optional
+            The linear predictor of the curve when ``new_linear_predictor``
+            is None. Defaults to the weighted mean of ``linear_predictor``
+            (R's ``coxph`` means for right-censored data; for (start, stop]
+            data R averages without the weights).
+
+        Returns
+        -------
+        SurvivalCurves
+        """
+        lp = np.asarray(linear_predictor, float)
+        w = np.ones_like(lp) if sample_weight is None else np.asarray(sample_weight, float)
+        self(lp, w)
+        time, n_risk, n_event, n_censor, H, stratum = (np.asarray(v) for v in
+                                                         self._coxc.survival_table())
+        if center is None:
+            center = np.sum(w * lp) / np.sum(w)
+        if new_linear_predictor is None:
+            new_lp = np.array([center], float)
+        else:
+            new_lp = np.atleast_1d(np.asarray(new_linear_predictor, float))
+
+        # the hazard is for lp as given: H exp(new_lp), formed as
+        # (H exp(center)) exp(new_lp - center) to keep both factors moderate
+        cumulative_hazard = (H * np.exp(center))[:, None] * np.exp(new_lp - center)[None, :]
+        if self._strata_labels is not None and new_linear_predictor is not None:
+            if new_strata is None:
+                raise ValueError('new_strata is needed for the curves of a stratified model')
+            new_codes = np.searchsorted(self._strata_labels, np.atleast_1d(np.asarray(new_strata)))
+            new_codes = np.minimum(new_codes, len(self._strata_labels) - 1)
+            if not np.all(self._strata_labels[new_codes] == np.atleast_1d(np.asarray(new_strata))):
+                raise ValueError('new_strata contains labels not seen in the training data')
+            if new_codes.shape[0] != new_lp.shape[0]:
+                raise ValueError('new_strata and new_linear_predictor have different lengths')
+            cumulative_hazard[stratum[:, None] != new_codes[None, :]] = np.nan
+        if self._strata_labels is not None:
+            stratum = self._strata_labels[stratum]
+        return SurvivalCurves(time=time,
+                              stratum=stratum,
+                              n_risk=n_risk,
+                              n_event=n_event,
+                              n_censor=n_censor,
+                              cumulative_hazard=cumulative_hazard)
+
+    def martingale_residuals(self,
+                             linear_predictor,
+                             sample_weight=None):
+        """
+        The martingale residuals at ``linear_predictor``, ``status -
+        expected_events``: R's ``residuals(fit, type = "martingale")`` of a
+        ``coxph`` fit (Barlow and Prentice, 1988; Therneau, Grambsch and
+        Fleming, 1990). See ``expected_events``.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n,)``, in native order.
+        """
+        return self._raw_status - self.expected_events(linear_predictor, sample_weight)
+
+    def deviance_residuals(self,
+                           linear_predictor,
+                           sample_weight=None):
+        """
+        The deviance residuals at ``linear_predictor``, ``sign(M) sqrt(-2 (M +
+        status log(status - M)))`` of the martingale residuals ``M``: R's
+        ``residuals(fit, type = "deviance")`` of a ``coxph`` fit (Therneau,
+        Grambsch and Fleming, 1990).
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to one.
+
+        Returns
+        -------
+        np.ndarray
+            ``(n,)``, in native order.
+        """
+        M = self.martingale_residuals(linear_predictor, sample_weight)
+        status = self._raw_status
+        with np.errstate(divide='ignore', invalid='ignore'):
+            d = -2 * (M + np.where(status > 0, status * np.log(status - M), 0))
+        return np.sign(M) * np.sqrt(np.maximum(d, 0))
 
 
 @dataclass

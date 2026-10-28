@@ -26,7 +26,7 @@ except PackageNotFoundError:
     except (ImportError, LookupError):
         __version__ = "unknown"
 
-from .base import CoxDeviance, BaselineHazard
+from .base import CoxDeviance, BaselineHazard, SurvivalCurves
 
 
 def get_include():

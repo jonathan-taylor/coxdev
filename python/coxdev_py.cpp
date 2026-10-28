@@ -191,6 +191,11 @@ PYBIND11_MODULE(coxc, m) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
       })
+      .def("survival_table", [](const CoxDeviance &self) {
+          SurvivalTable t = self.survival_table();
+          return py::make_tuple(t.time, t.n_risk, t.n_event, t.n_censor,
+                                t.cumulative_hazard, t.stratum);
+      })
       .def_property_readonly("gradient", &CoxDeviance::get_gradient, py::return_value_policy::reference_internal)
       .def_property_readonly("diag_hessian", &CoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)
       .def_property_readonly("linear_predictor", &CoxDeviance::get_linear_predictor, py::return_value_policy::reference_internal)
@@ -259,6 +264,11 @@ PYBIND11_MODULE(coxc, m) {
       .def("baseline_hazard", [](const StratifiedCoxDeviance &self) {
           BaselineHazard h = self.baseline_hazard();
           return py::make_tuple(h.time, h.hazard, h.cumulative_hazard, h.stratum);
+      })
+      .def("survival_table", [](const StratifiedCoxDeviance &self) {
+          SurvivalTable t = self.survival_table();
+          return py::make_tuple(t.time, t.n_risk, t.n_event, t.n_censor,
+                                t.cumulative_hazard, t.stratum);
       })
       .def_property_readonly("gradient", &StratifiedCoxDeviance::get_gradient, py::return_value_policy::reference_internal)
       .def_property_readonly("diag_hessian", &StratifiedCoxDeviance::get_diag_hessian, py::return_value_policy::reference_internal)

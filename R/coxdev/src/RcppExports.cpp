@@ -174,6 +174,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cox_survival_table
+List cox_survival_table(SEXP ptr);
+RcppExport SEXP _coxdev_cox_survival_table(SEXP ptrSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    rcpp_result_gen = Rcpp::wrap(cox_survival_table(ptr));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_cox_new", (DL_FUNC) &_coxdev_cox_new, 6},
@@ -189,6 +200,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_coxdev_cox_expected_events", (DL_FUNC) &_coxdev_cox_expected_events, 1},
     {"_coxdev_cox_concordance", (DL_FUNC) &_coxdev_cox_concordance, 3},
     {"_coxdev_cox_baseline_hazard", (DL_FUNC) &_coxdev_cox_baseline_hazard, 1},
+    {"_coxdev_cox_survival_table", (DL_FUNC) &_coxdev_cox_survival_table, 1},
     {NULL, NULL, 0}
 };
 

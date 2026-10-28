@@ -1190,6 +1190,51 @@ inline BaselineHazard CoxDeviance::baseline_hazard() const {
   return out;
 }
 
+inline SurvivalTable CoxDeviance::survival_table() const {
+  int n = _status.size();
+  if (linear_predictor.size() != n) {
+    COXDEV_ERROR("survival_table: call compute_deviance first");
+  }
+  BaselineHazard h = baseline_hazard();
+
+  // the weight at risk at t is the weight with start < t less that with
+  // event < t: prefix sums, in start and in event order
+  std::vector<double> time, n_risk, n_event, n_censor, cumhaz;
+  double before_event = 0.0, before_start = 0.0, H = 0.0;
+  int s = 0, k = 0;
+  for (int i = 0; i < n; ) {
+    double t = _event(i);
+    while (s < n && raw_start(start_order(s)) < t) {
+      before_start += sample_weight(start_order(s));
+      ++s;
+    }
+    double failed = 0.0, censored = 0.0;
+    int j = i;
+    for (; j < n && _event(j) == t; ++j) {
+      double w = sample_weight(event_order(j));
+      if (_status(j) == 1) failed += w; else censored += w;
+    }
+    while (k < h.time.size() && h.time(k) <= t) H = h.cumulative_hazard(k++);
+    time.push_back(t);
+    n_risk.push_back(before_start - before_event);
+    n_event.push_back(failed);
+    n_censor.push_back(censored);
+    cumhaz.push_back(H);
+    before_event += failed + censored;
+    i = j;
+  }
+
+  SurvivalTable out;
+  int m = time.size();
+  out.time = Eigen::Map<Eigen::VectorXd>(time.data(), m);
+  out.n_risk = Eigen::Map<Eigen::VectorXd>(n_risk.data(), m);
+  out.n_event = Eigen::Map<Eigen::VectorXd>(n_event.data(), m);
+  out.n_censor = Eigen::Map<Eigen::VectorXd>(n_censor.data(), m);
+  out.cumulative_hazard = Eigen::Map<Eigen::VectorXd>(cumhaz.data(), m);
+  out.stratum = Eigen::VectorXi::Zero(m);
+  return out;
+}
+
 inline Eigen::VectorXd CoxDeviance::schoenfeld_residuals(const Eigen::VectorXd& x) const {
   int n = _status.size();
   if (linear_predictor.size() != n) {
@@ -1617,6 +1662,35 @@ inline BaselineHazard StratifiedCoxDeviance::baseline_hazard() const {
     int ms = parts[s].time.size();
     out.time.segment(k, ms) = parts[s].time;
     out.hazard.segment(k, ms) = parts[s].hazard;
+    out.cumulative_hazard.segment(k, ms) = parts[s].cumulative_hazard;
+    out.stratum.segment(k, ms).setConstant(unique_strata[s]);
+    k += ms;
+  }
+  return out;
+}
+
+inline SurvivalTable StratifiedCoxDeviance::survival_table() const {
+  // the strata in turn, as baseline_hazard
+  std::vector<SurvivalTable> parts;
+  int m = 0;
+  for (size_t s = 0; s < unique_strata.size(); ++s) {
+    parts.push_back(cox_devs[s]->survival_table());
+    m += parts.back().time.size();
+  }
+  SurvivalTable out;
+  out.time.resize(m);
+  out.n_risk.resize(m);
+  out.n_event.resize(m);
+  out.n_censor.resize(m);
+  out.cumulative_hazard.resize(m);
+  out.stratum.resize(m);
+  int k = 0;
+  for (size_t s = 0; s < parts.size(); ++s) {
+    int ms = parts[s].time.size();
+    out.time.segment(k, ms) = parts[s].time;
+    out.n_risk.segment(k, ms) = parts[s].n_risk;
+    out.n_event.segment(k, ms) = parts[s].n_event;
+    out.n_censor.segment(k, ms) = parts[s].n_censor;
     out.cumulative_hazard.segment(k, ms) = parts[s].cumulative_hazard;
     out.stratum.segment(k, ms).setConstant(unique_strata[s]);
     k += ms;

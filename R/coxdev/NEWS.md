@@ -1,3 +1,15 @@
+# coxdev (development version)
+
+* `CoxDeviance$survfit(linear_predictor, sample_weight, new_linear_predictor,
+  new_strata, center)`: survival curves at a fixed linear predictor, as
+  `survival::survfit.coxph` (`se.fit = FALSE`) of `coxph(y ~
+  offset(linear_predictor))`: the `time`, `n_risk`, `n_event`, `n_censor`,
+  and the `cumulative_hazard` and `survival` of each curve.
+* `CoxDeviance$martingale_residuals()` and `$deviance_residuals()`:
+  `residuals.coxph`'s `"martingale"` and `"deviance"`.
+* The result of `compute()` has `loglik`, the log partial likelihood
+  (`coxph`'s `loglik`).
+
 # coxdev 0.4.1
 
 * The C++ library is in `namespace coxdev` (`coxdev::CoxDeviance` etc.), so
