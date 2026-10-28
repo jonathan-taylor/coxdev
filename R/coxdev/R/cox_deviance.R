@@ -109,8 +109,11 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @param start Start (entry) times, for left-truncated data, or `NULL`.
     #' @param strata Stratum labels (integers, a factor or character), or
     #'   `NULL` for an unstratified model.
-    #' @param sample_weight Sample weights, or `NULL` for all one. They are
-    #'   needed here only to know which are 0; each computation takes its own.
+    #' @param sample_weight Sample weights, or `NULL` for all one: the
+    #'   object's weights. A method called without `sample_weight` uses the
+    #'   object's current weights: these, or the last ones given to a method
+    #'   (the object is rebuilt, sorting the data again, when a call gives
+    #'   other weights, and keeps them; `c_index()` does not change them).
     #' @param tie_breaking `"efron"` (the default) or `"breslow"`.
     initialize = function(event,
                           status,
@@ -162,10 +165,12 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @description Compute the deviance and its derivatives (the `__call__`
     #'   of the Python class).
     #' @param linear_predictor The linear predictor, one entry per observation.
-    #' @param sample_weight Sample weights, or `NULL` for all one.
+    #' @param sample_weight Sample weights, or `NULL` for the object's
+    #'   current weights (see `new()`).
     #' @return A `CoxDevianceResult`: a list with the `linear_predictor`, the
     #'   `sample_weight`, `loglik_sat` (the saturated log-likelihood), the
-    #'   `deviance`, its `gradient` with respect to the linear predictor and
+    #'   `deviance`, `loglik` (the log partial likelihood, `loglik_sat -
+    #'   deviance / 2`, as `coxph`'s `loglik`), its `gradient` with respect to the linear predictor and
     #'   the diagonal `diag_hessian` of its Hessian.
     compute = function(linear_predictor, sample_weight = NULL) {
       private$prepare(linear_predictor, sample_weight)
@@ -197,8 +202,9 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
         stop(sprintf("linear_predictor must have %d rows (one per observation), not %d",
                      private$n_obs, nrow(pred)))
       }
-      sample_weight <- .as_weight(sample_weight, private$n_obs)
       if (!.cox_valid(private$ptr)) private$rebuild(private$weight)
+      sample_weight <- if (is.null(sample_weight)) private$weight
+                       else .as_weight(sample_weight, private$n_obs)
       values <- apply(pred, 2, function(p) {
         out <- .cox_concordance(private$ptr, as.numeric(p), sample_weight)
         if (out[2] > 0) out[1] / out[2] else NaN
@@ -442,6 +448,86 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
       out
     },
 
+    #' @description Survival curves at a fixed linear predictor: the
+    #'   `survival::survfit.coxph` (with `se.fit = FALSE`) of
+    #'   `coxph(y ~ offset(linear_predictor))`, with this object's ties, as
+    #'   `glmnet`'s `survfit.coxnet` computes the curves of a fitted model.
+    #' @param linear_predictor The linear predictor, as for `compute()`.
+    #' @param sample_weight As for `compute()`: `NULL` for the object's
+    #'   current weights, so that the `CoxDeviance` of a fitted model gives
+    #'   its curves.
+    #' @param new_linear_predictor The linear predictors of the subjects to
+    #'   give curves of, or `NULL` for one curve (in each stratum) at
+    #'   `center`, as `survfit` without `newdata`.
+    #' @param new_strata The strata of the new subjects, needed with
+    #'   `new_linear_predictor` when the data have strata.
+    #' @param center The linear predictor of the curve when
+    #'   `new_linear_predictor` is `NULL`; `NULL` for the weighted mean of
+    #'   `linear_predictor` (`coxph`'s means for right-censored data; for
+    #'   (start, stop] data `coxph` averages without the weights).
+    #' @return A list, laid out as `survfit`'s: one row per distinct event
+    #'   time (of failures and censorings) in increasing time within each
+    #'   stratum, with the `time`, the weight at risk `n_risk`, the weights
+    #'   of the failures and censorings there `n_event` and `n_censor`, with
+    #'   strata the `stratum`, and the `cumulative_hazard` and `survival` of
+    #'   each curve, matrices with a column per curve (`NA` on the rows of
+    #'   the other strata).
+    survfit = function(linear_predictor, sample_weight = NULL, new_linear_predictor = NULL,
+                       new_strata = NULL, center = NULL) {
+      r <- private$prepare(linear_predictor, sample_weight)
+      tab <- .cox_survival_table(private$ptr)
+      lp <- r$linear_predictor
+      w <- r$sample_weight
+      if (is.null(center)) center <- sum(w * lp) / sum(w)
+      new_lp <- if (is.null(new_linear_predictor)) center else as.numeric(new_linear_predictor)
+      # for lp as given, H exp(new_lp), formed as (H exp(center)) exp(new_lp - center)
+      H <- outer(tab$cumulative_hazard * exp(center), exp(new_lp - center))
+      stratum <- tab$stratum
+      if (self$stratified) {
+        labels <- private$strata_labels
+        if (!is.null(labels)) stratum <- factor(labels[stratum], levels = labels)
+        if (!is.null(new_linear_predictor)) {
+          if (is.null(new_strata)) stop("new_strata is needed for the curves of a stratified model")
+          if (length(new_strata) != length(new_lp)) {
+            stop("new_strata and new_linear_predictor have different lengths")
+          }
+          if (!all(as.character(new_strata) %in% as.character(stratum))) {
+            stop("new_strata contains labels not seen in the training data")
+          }
+          H[outer(as.character(stratum), as.character(new_strata), "!=")] <- NA
+        }
+      }
+      out <- list(time = tab$time, n_risk = tab$n_risk, n_event = tab$n_event,
+                  n_censor = tab$n_censor, cumulative_hazard = H, survival = exp(-H))
+      if (self$stratified) out$stratum <- stratum
+      out
+    },
+
+    #' @description The martingale residuals at a linear predictor, `status -
+    #'   expected_events`: the `residuals(fit, type = "martingale")` of a
+    #'   `survival::coxph` fit (Barlow and Prentice, 1988; Therneau, Grambsch
+    #'   and Fleming, 1990).
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @return A vector, one entry per observation.
+    martingale_residuals = function(linear_predictor, sample_weight = NULL) {
+      private$data$status - self$expected_events(linear_predictor, sample_weight)
+    },
+
+    #' @description The deviance residuals at a linear predictor,
+    #'   `sign(M) sqrt(-2 (M + status log(status - M)))` of the martingale
+    #'   residuals `M`: the `residuals(fit, type = "deviance")` of a
+    #'   `survival::coxph` fit (Therneau, Grambsch and Fleming, 1990). A
+    #'   failure of zero weight with no hazard up to its time (its expected
+    #'   events 0, so `M = 1`) has an infinite deviance residual.
+    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @return A vector, one entry per observation.
+    deviance_residuals = function(linear_predictor, sample_weight = NULL) {
+      M <- self$martingale_residuals(linear_predictor, sample_weight)
+      status <- private$data$status
+      d <- -2 * (M + ifelse(status > 0, status * log(pmax(status - M, 0)), 0))
+      sign(M) * sqrt(pmax(d, 0))
+    },
+
     #' @description Print a summary.
     #' @param ... Ignored.
     print = function(...) {
@@ -505,7 +591,8 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
       n <- private$n_obs
       linear_predictor <- as.numeric(.check_length(linear_predictor, n, "linear_predictor"))
       if (!all(is.finite(linear_predictor))) stop("linear_predictor must be finite")
-      sample_weight <- .as_weight(sample_weight, n)
+      # no weights: the object's current ones
+      sample_weight <- if (is.null(sample_weight)) private$weight else .as_weight(sample_weight, n)
       # a new C++ object when the weights change (zero weights change the
       # preprocessing), or when it was lost (e.g. by saveRDS / readRDS)
       if (!identical(sample_weight, private$weight) || !.cox_valid(private$ptr)) {
@@ -522,7 +609,8 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
                loglik_sat = out$loglik_sat,
                deviance = out$deviance,
                gradient = out$gradient,
-               diag_hessian = out$diag_hessian),
+               diag_hessian = out$diag_hessian,
+               loglik = out$loglik_sat - out$deviance / 2),
           class = "CoxDevianceResult")
       }
       private$result

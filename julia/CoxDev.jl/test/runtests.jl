@@ -13,6 +13,7 @@ labels(x) = x === nothing ? nothing : [v isa AbstractString ? String(v) : Int(v)
 
 # the same C++ underneath: agreement to rounding
 approx(a, b) = isapprox(a, b; rtol=1e-12, atol=1e-13)
+approx_nan(a, b) = isapprox(a, b; rtol=1e-12, atol=1e-13, nans=true)
 
 function load(name)
     JSON.parse(read(joinpath(FIXTURES, name), String))
@@ -43,7 +44,7 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         @test approx(r.loglik_sat, out.loglik_sat)
         @test approx(r.gradient, fl(out.gradient))
         @test approx(r.diag_hessian, fl(out.diag_hessian))
-        # weight = nothing means ones, as in Python, whatever the construction weights
+        # weight = nothing means the object's current weights, as in Python
         @test approx(deviance(cd, eta).deviance, out.deviance_default_weight)
 
         I = information(cd, eta; weight=w)
@@ -60,6 +61,28 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         @test approx(bh.hazard, fl(out.bh_hazard))
         @test approx(bh.cumulative_hazard, fl(out.bh_cumulative_hazard))
         @test bh.stratum == labels(out.bh_stratum)
+
+        w1 = w === nothing ? ones(length(eta)) : w
+        new_strata = labels(out.sf_new_strata)
+        sf = survfit(cd, eta; weight=w1, new_eta=[-1., 0., 0.7], new_strata=new_strata)
+        @test approx(sf.time, fl(out.sf_time))
+        @test sf.stratum == labels(out.sf_stratum)
+        @test approx(sf.n_risk, fl(out.sf_n_risk))
+        @test approx(sf.n_event, fl(out.sf_n_event))
+        @test approx(sf.n_censor, fl(out.sf_n_censor))
+        @test approx_nan(sf.cumulative_hazard, mat(out.sf_cumulative_hazard))
+        @test approx_nan(sf.survival, exp.(-sf.cumulative_hazard))
+        @test approx(vec(survfit(cd, eta; weight=w1).cumulative_hazard),
+                     fl(out.sf_default_cumulative_hazard[1]))
+        @test approx(expected_events(cd, eta; weight=w1), fl(out.expected_events))
+        @test approx(martingale_residuals(cd, eta; weight=w1), fl(out.martingale_residuals))
+        # infinite for a zero-weight failure with no hazard before it: null
+        # in the fixtures, with their positions (0-based)
+        D = deviance_residuals(cd, eta; weight=w1)
+        inf = Int[i + 1 for i in out.deviance_residuals_inf]
+        @test all(isinf, D[inf])
+        @test approx_nan(ifelse.(isinf.(D), NaN, D), fl(out.deviance_residuals))
+        @test approx(deviance(cd, eta; weight=w).loglik, out.loglik)
 
         @test approx(concordance(cd, eta; weight=w), out.c_index)
         if inp.strata === nothing
@@ -80,6 +103,29 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
             # math libraries (the fixtures are from macOS, CI is Linux)
             @test approx(S, mat(draws))
         end
+    end
+
+    @testset "the weights default to the object's current weights" begin
+        d = load("efron_startstop_str_random.json")
+        inp = d.inputs
+        cd = build(inp)
+        eta, w = fl(inp.eta), wt(inp)
+        n = length(eta)
+        # built with w: the default is w, not ones
+        @test deviance(cd, eta).deviance == deviance(cd, eta; weight=w).deviance
+        @test expected_events(cd, eta) == expected_events(cd, eta; weight=w)
+        @test concordance(cd, eta) == concordance(cd, eta; weight=w)
+        @test survfit(cd, eta).cumulative_hazard == survfit(cd, eta; weight=w).cumulative_hazard
+        @test !isapprox(survfit(cd, eta; weight=ones(n)).cumulative_hazard,
+                        survfit(cd, eta; weight=w).cumulative_hazard)
+        # after a call with other weights, the default is those (as in Python)
+        deviance(cd, eta; weight=ones(n))
+        @test deviance(cd, eta).deviance == deviance(cd, eta; weight=ones(n)).deviance
+        @test survfit(cd, eta).cumulative_hazard ==
+              survfit(cd, eta; weight=ones(n)).cumulative_hazard
+        @test_throws ArgumentError survfit(cd, eta; new_eta=[0.])
+        @test_throws ArgumentError survfit(cd, eta; new_eta=[0.], new_strata=["z"])
+        @test_throws ArgumentError survfit(cd, eta; new_eta=[0., 1.], new_strata=["a"])
     end
 
     @testset "finite differences" begin
@@ -145,7 +191,9 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         @test r2 === r1
         @test approx(r2.deviance, out.deviance)
         # a different weight, then back: recomputed, same answer
-        @test approx(deviance(cd, eta).deviance, out.deviance_default_weight)
+        n = length(eta)
+        @test approx(deviance(cd, eta; weight=ones(n)).deviance,
+                     deviance(build(inp), eta; weight=ones(n)).deviance)
         @test approx(deviance(cd, eta; weight=w).gradient, fl(out.gradient))
         # eta modified in place: the cache compares contents, so it recomputes
         e = copy(eta)

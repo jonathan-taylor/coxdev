@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.5.0
+
+- **Breaking: a missing `sample_weight` means the object's current
+  weights**, not weights of one, in Python, R and Julia: those it was built
+  with, or the last ones given to a method (the object is rebuilt, sorting
+  the data again, when a call gives other weights, and keeps them; `c_index`
+  does not change them). Before, `CoxDeviance(..., sample_weight=w)(eta)`
+  evaluated with ones, and rebuilt the object for them. This is what a NULL
+  weight already meant in the C API. CoxDev.jl gets the handle's weights
+  from the new `coxdev_weight`.
+- **Survival curves** (`CoxDeviance.survfit(linear_predictor,
+  sample_weight, new_linear_predictor, new_strata, center)`, and
+  `CoxDeviance$survfit()` in R): R's `survfit.coxph` (`se.fit = FALSE`)
+  at a fixed linear predictor, as `glmnet`'s `survfit.coxnet` computes
+  them. A row per distinct event time (of failures and censorings) in each
+  stratum, with the weight at risk, the weights of the failures and the
+  censorings, and the cumulative hazard of each curve (Breslow's, or
+  Efron's for Efron's ties), NaN outside a subject's stratum. It returns a
+  new `SurvivalCurves`, with `survival` and `predict(times)`. With the
+  default weights, the `CoxDeviance` of a fitted model gives its curves from
+  its linear predictor alone. In C++,
+  `survival_table()` (a new `SurvivalTable`) beside `baseline_hazard()`.
+  Moved here from glmstar's `cox_survfit`.
+- **Martingale and deviance residuals** (`martingale_residuals`,
+  `deviance_residuals`, in Python and R): `residuals.coxph`'s
+  `"martingale"` and `"deviance"`, from `expected_events`.
+- **The log partial likelihood** of a result, `loglik` (`loglik_sat -
+  deviance / 2`, `coxph`'s `loglik`): a property in Python, a field in R
+  and in Julia's `deviance`.
+- **The same in the C API and CoxDev.jl** (C API version 3): the C API
+  adds `coxdev_survival_table` (size query, then fill, as
+  `coxdev_baseline_hazard`), `coxdev_expected_events` and `coxdev_weight`
+  (the handle's current weights). CoxDev.jl adds `survfit`,
+  `expected_events`, `martingale_residuals` and `deviance_residuals`, and
+  needs C API version 3. Its test fixtures cover them.
+
 ## 0.4.1
 
 - **The C++ library is in `namespace coxdev`.** `coxdev::CoxDeviance`,

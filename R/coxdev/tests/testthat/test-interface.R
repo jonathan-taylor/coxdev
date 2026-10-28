@@ -28,8 +28,9 @@ test_that("the result has the fields of the Python result", {
   cox <- CoxDeviance$new(event = event, status = status)
   r <- cox$compute(eta)
   expect_s3_class(r, "CoxDevianceResult")
+  # (loglik is a property of the Python result)
   expect_named(r, c("linear_predictor", "sample_weight", "loglik_sat", "deviance",
-                    "gradient", "diag_hessian"))
+                    "gradient", "diag_hessian", "loglik"))
   expect_equal(r$sample_weight, rep(1, 12))
   expect_output(print(r), "deviance")
   expect_output(print(cox), "12 observations, 8 failures, efron ties")

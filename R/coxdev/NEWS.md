@@ -1,3 +1,21 @@
+# coxdev 0.5.0
+
+* **Breaking:** a method called without `sample_weight` uses the object's
+  current weights (those it was built with, or the last ones given to a
+  method), not weights of one. Before, `CoxDeviance$new(...,
+  sample_weight = w)$compute(eta)` evaluated with ones, and rebuilt the
+  object for them. Python and Julia change the same way; it is what a NULL
+  weight already meant in the C API.
+* `CoxDeviance$survfit(linear_predictor, sample_weight, new_linear_predictor,
+  new_strata, center)`: survival curves at a fixed linear predictor, as
+  `survival::survfit.coxph` (`se.fit = FALSE`) of `coxph(y ~
+  offset(linear_predictor))`: the `time`, `n_risk`, `n_event`, `n_censor`,
+  and the `cumulative_hazard` and `survival` of each curve.
+* `CoxDeviance$martingale_residuals()` and `$deviance_residuals()`:
+  `residuals.coxph`'s `"martingale"` and `"deviance"`.
+* The result of `compute()` has `loglik`, the log partial likelihood
+  (`coxph`'s `loglik`).
+
 # coxdev 0.4.1
 
 * The C++ library is in `namespace coxdev` (`coxdev::CoxDeviance` etc.), so

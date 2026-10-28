@@ -49,6 +49,12 @@ class CoxDevianceResult(object):
     diag_hessian: Optional[np.ndarray]
     __hash_args__: Optional[str] = None
 
+    @property
+    def loglik(self):
+        """The (weighted) log partial likelihood, ``loglik_sat - deviance / 2``:
+        R's ``coxph(...)$loglik``."""
+        return self.loglik_sat - self.deviance / 2
+
 
 @dataclass
 class BaselineHazard(object):
@@ -81,6 +87,69 @@ class BaselineHazard(object):
 
 
 @dataclass
+class SurvivalCurves(object):
+    """
+    Survival curves of a Cox model, laid out as R's ``survfit.coxph``: from
+    :meth:`CoxDeviance.survfit`.
+
+    The rows are the distinct event times (of failures and censorings) in
+    increasing time within each stratum, stratum by stratum; the columns are
+    the curves. A curve of a subject in one stratum is NaN on the rows of the
+    other strata.
+
+    Attributes
+    ----------
+    time : np.ndarray
+        The times, ``(m,)``.
+    stratum : np.ndarray
+        The stratum label of each row (0 without strata).
+    n_risk, n_event, n_censor : np.ndarray
+        The weight at risk at each time, and the weights of the failures and
+        of the censored observations there.
+    cumulative_hazard : np.ndarray
+        The cumulative hazard of each curve, ``(m, n_curves)``: Breslow's
+        estimate, or Efron's for Efron's ties, constant between failure times.
+    """
+
+    time: np.ndarray
+    stratum: np.ndarray
+    n_risk: np.ndarray
+    n_event: np.ndarray
+    n_censor: np.ndarray
+    cumulative_hazard: np.ndarray
+
+    @property
+    def survival(self):
+        """The survival probabilities ``exp(-cumulative_hazard)``, R's default
+        (``stype = 2``)."""
+        return np.exp(-self.cumulative_hazard)
+
+    def predict(self, times):
+        """
+        The survival probabilities of the curves at ``times``.
+
+        Parameters
+        ----------
+        times : np.ndarray
+            ``(k,)``.
+
+        Returns
+        -------
+        np.ndarray
+            ``(k, n_curves)``. Each curve is a right-continuous step function
+            of its stratum's rows, 1 before its first time.
+        """
+        times = np.atleast_1d(np.asarray(times, float))
+        value = np.empty((times.shape[0], self.cumulative_hazard.shape[1]))
+        for j in range(self.cumulative_hazard.shape[1]):
+            rows = np.nonzero(~np.isnan(self.cumulative_hazard[:, j]))[0]
+            pos = np.searchsorted(self.time[rows], times, side='right') - 1
+            H = np.where(pos >= 0, self.cumulative_hazard[rows[np.maximum(pos, 0)], j], 0)
+            value[:, j] = np.exp(-H)
+        return value
+
+
+@dataclass
 class CoxDeviance(object):
     """
     Cox Proportional Hazards Model Deviance Calculator.
@@ -104,8 +173,10 @@ class CoxDeviance(object):
     start : np.ndarray, optional
         Start times for left-truncated data. If None, assumes no truncation.
     sample_weight : np.ndarray, optional
-        If None, defaults to one. Necessary at construction only to determine
-        which entries are 0.
+        The object's weights; if None, one. A method called without
+        ``sample_weight`` uses the object's current weights: these, or the
+        last ones given to a method (the object is rebuilt, sorting the data
+        again, when a call gives other weights, and keeps them).
     
     tie_breaking : {'efron', 'breslow'}, default='efron'
         Method for handling tied event times.
@@ -277,15 +348,15 @@ class CoxDeviance(object):
         the coefficients is ``X.T @ (-gradient / 2)``.
 
         The object is rebuilt, sorting the data again, if ``sample_weight``
-        differs from the weights of the last call, and the result is reused if
-        ``linear_predictor`` is also that of the last call.
+        differs from its current weights (which it then keeps), and the result
+        is reused if ``linear_predictor`` is also that of the last call.
 
         Parameters
         ----------
         linear_predictor : np.ndarray
             The linear predictor, one entry per observation.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -294,7 +365,7 @@ class CoxDeviance(object):
             ``loglik_sat``.
         """
         if sample_weight is None:
-            sample_weight = np.ones_like(linear_predictor, float)
+            sample_weight = self._weight
         else:
             sample_weight = np.asarray(sample_weight).astype(float)
 
@@ -348,7 +419,7 @@ class CoxDeviance(object):
             The linear predictor (a risk score), ``(n,)``, or ``(n, k)`` for
             ``k`` predictors, such as those along a path.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -380,7 +451,7 @@ class CoxDeviance(object):
         if pred.shape[0] != n:
             raise ValueError('linear_predictor must have one row per observation')
         if sample_weight is None:
-            sample_weight = np.ones(n)
+            sample_weight = self._weight
         sample_weight = np.asarray(sample_weight, float)
         values = np.empty(pred.shape[1])
         for j in range(pred.shape[1]):
@@ -405,7 +476,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, one entry per observation.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -441,7 +512,7 @@ class CoxDeviance(object):
         direction : np.ndarray
             The direction of the derivative, one entry per observation.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -476,7 +547,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one. The model-based methods (all but ``'wild'``)
+            Defaults to the object's current weights (see ``CoxDeviance``). The model-based methods (all but ``'wild'``)
             need equal positive weights.
         method : {'multinomial', 'bernoulli', 'fisher', 'wild'}
             The model-based methods draw the failures at each event time from
@@ -604,7 +675,7 @@ class CoxDeviance(object):
             The design, one row per observation; a sparse ``X`` is made
             dense a column at a time.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -646,7 +717,7 @@ class CoxDeviance(object):
             The design, one row per observation; a sparse ``X`` is made
             dense a column at a time.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -696,7 +767,7 @@ class CoxDeviance(object):
             The covariates, one row per observation; a sparse ``Z`` is made
             dense a column at a time.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -750,7 +821,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -784,7 +855,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -811,7 +882,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -829,6 +900,128 @@ class CoxDeviance(object):
                               hazard=np.asarray(hazard),
                               cumulative_hazard=np.asarray(cumulative_hazard),
                               stratum=stratum)
+
+    def survfit(self,
+                linear_predictor,
+                sample_weight=None,
+                new_linear_predictor=None,
+                new_strata=None,
+                center=None):
+        """
+        Survival curves at a fixed linear predictor: R's ``survfit.coxph``
+        (``se.fit = FALSE``) of ``coxph(y ~ offset(linear_predictor))``, with
+        this object's ties. This is how R's ``survfit.coxnet`` computes the
+        curves of a fitted model.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor of these data, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to the object's current weights (see ``CoxDeviance``),
+            so that the ``CoxDeviance`` of a fitted model gives its curves.
+        new_linear_predictor : np.ndarray, optional
+            The linear predictors of the subjects to give curves of. If None,
+            one curve (in each stratum) at ``center``, as R does without
+            ``newdata``.
+        new_strata : np.ndarray, optional
+            The stratum labels of the new subjects, needed with
+            ``new_linear_predictor`` when the data have strata.
+        center : float, optional
+            The linear predictor of the curve when ``new_linear_predictor``
+            is None. Defaults to the weighted mean of ``linear_predictor``
+            (R's ``coxph`` means for right-censored data; for (start, stop]
+            data R averages without the weights).
+
+        Returns
+        -------
+        SurvivalCurves
+        """
+        lp = np.asarray(linear_predictor, float)
+        self(lp, sample_weight)
+        w = self._weight
+        time, n_risk, n_event, n_censor, H, stratum = (np.asarray(v) for v in
+                                                         self._coxc.survival_table())
+        if center is None:
+            center = np.sum(w * lp) / np.sum(w)
+        if new_linear_predictor is None:
+            new_lp = np.array([center], float)
+        else:
+            new_lp = np.atleast_1d(np.asarray(new_linear_predictor, float))
+
+        # the hazard is for lp as given: H exp(new_lp), formed as
+        # (H exp(center)) exp(new_lp - center) to keep both factors moderate
+        cumulative_hazard = (H * np.exp(center))[:, None] * np.exp(new_lp - center)[None, :]
+        if self._strata_labels is not None and new_linear_predictor is not None:
+            if new_strata is None:
+                raise ValueError('new_strata is needed for the curves of a stratified model')
+            new_codes = np.searchsorted(self._strata_labels, np.atleast_1d(np.asarray(new_strata)))
+            new_codes = np.minimum(new_codes, len(self._strata_labels) - 1)
+            if not np.all(self._strata_labels[new_codes] == np.atleast_1d(np.asarray(new_strata))):
+                raise ValueError('new_strata contains labels not seen in the training data')
+            if new_codes.shape[0] != new_lp.shape[0]:
+                raise ValueError('new_strata and new_linear_predictor have different lengths')
+            cumulative_hazard[stratum[:, None] != new_codes[None, :]] = np.nan
+        if self._strata_labels is not None:
+            stratum = self._strata_labels[stratum]
+        return SurvivalCurves(time=time,
+                              stratum=stratum,
+                              n_risk=n_risk,
+                              n_event=n_event,
+                              n_censor=n_censor,
+                              cumulative_hazard=cumulative_hazard)
+
+    def martingale_residuals(self,
+                             linear_predictor,
+                             sample_weight=None):
+        """
+        The martingale residuals at ``linear_predictor``, ``status -
+        expected_events``: R's ``residuals(fit, type = "martingale")`` of a
+        ``coxph`` fit (Barlow and Prentice, 1988; Therneau, Grambsch and
+        Fleming, 1990). See ``expected_events``.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to the object's current weights (see ``CoxDeviance``).
+
+        Returns
+        -------
+        np.ndarray
+            ``(n,)``, in native order.
+        """
+        return self._raw_status - self.expected_events(linear_predictor, sample_weight)
+
+    def deviance_residuals(self,
+                           linear_predictor,
+                           sample_weight=None):
+        """
+        The deviance residuals at ``linear_predictor``, ``sign(M) sqrt(-2 (M +
+        status log(status - M)))`` of the martingale residuals ``M``: R's
+        ``residuals(fit, type = "deviance")`` of a ``coxph`` fit (Therneau,
+        Grambsch and Fleming, 1990). A failure of zero weight with no hazard
+        up to its time (its expected events 0, so ``M = 1``) has an infinite
+        deviance residual.
+
+        Parameters
+        ----------
+        linear_predictor : np.ndarray
+            The linear predictor, e.g. of a fitted model.
+        sample_weight : np.ndarray, optional
+            Defaults to the object's current weights (see ``CoxDeviance``).
+
+        Returns
+        -------
+        np.ndarray
+            ``(n,)``, in native order.
+        """
+        M = self.martingale_residuals(linear_predictor, sample_weight)
+        status = self._raw_status
+        with np.errstate(divide='ignore', invalid='ignore'):
+            d = -2 * (M + np.where(status > 0, status * np.log(status - M), 0))
+        return np.sign(M) * np.sqrt(np.maximum(d, 0))
 
 
 @dataclass

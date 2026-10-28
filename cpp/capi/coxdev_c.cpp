@@ -203,6 +203,50 @@ int coxdev_baseline_hazard(coxdev_t *h, const double *eta, const double *sample_
     });
 }
 
+int coxdev_weight(const coxdev_t *h, double *out) {
+    if (h == nullptr) return fail(COXDEV_ERR_ARGUMENT, "handle must not be NULL");
+    return guarded([&] {
+        require(out != nullptr, "out must not be NULL");
+        std::memcpy(out, h->weight.data(), h->n * sizeof(double));
+    });
+}
+
+int coxdev_survival_table(coxdev_t *h, const double *eta, const double *sample_weight,
+                          size_t *m, double *time, double *n_risk, double *n_event,
+                          double *n_censor, double *cumulative_hazard, int *stratum) {
+    if (h == nullptr) return fail(COXDEV_ERR_ARGUMENT, "handle must not be NULL");
+    return guarded([&] {
+        require(m != nullptr, "m must not be NULL");
+        h->evaluate(eta, sample_weight);
+        coxdev::SurvivalTable t = h->visit([&](auto &c) { return c.survival_table(); });
+        size_t k = static_cast<size_t>(t.time.size());
+        if (time == nullptr && n_risk == nullptr && n_event == nullptr && n_censor == nullptr &&
+            cumulative_hazard == nullptr && stratum == nullptr) {
+            *m = k;
+            return;
+        }
+        require(*m >= k, "buffers are shorter than the survival table (query its length first)");
+        if (time) std::memcpy(time, t.time.data(), k * sizeof(double));
+        if (n_risk) std::memcpy(n_risk, t.n_risk.data(), k * sizeof(double));
+        if (n_event) std::memcpy(n_event, t.n_event.data(), k * sizeof(double));
+        if (n_censor) std::memcpy(n_censor, t.n_censor.data(), k * sizeof(double));
+        if (cumulative_hazard) std::memcpy(cumulative_hazard, t.cumulative_hazard.data(), k * sizeof(double));
+        if (stratum) for (size_t i = 0; i < k; ++i) stratum[i] = t.stratum[static_cast<Eigen::Index>(i)];
+        *m = k;
+    });
+}
+
+int coxdev_expected_events(coxdev_t *h, const double *eta, const double *sample_weight,
+                           double *out) {
+    if (h == nullptr) return fail(COXDEV_ERR_ARGUMENT, "handle must not be NULL");
+    return guarded([&] {
+        require(out != nullptr, "out must not be NULL");
+        h->evaluate(eta, sample_weight);
+        Eigen::VectorXd e = h->visit([&](auto &c) { return c.expected_events(); });
+        std::memcpy(out, e.data(), h->n * sizeof(double));
+    });
+}
+
 int coxdev_handle_concordance(const coxdev_t *h, const double *pred, const double *weight,
                               double *numerator, double *denominator, double *value) {
     if (h == nullptr) return fail(COXDEV_ERR_ARGUMENT, "handle must not be NULL");

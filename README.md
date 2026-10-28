@@ -404,8 +404,11 @@ The main class for computing Cox model quantities.
 - **start**: Start times for left-truncated data (optional)
 - **strata**: Stratum labels (optional): integers, strings or any sortable values; `baseline_hazard` reports each stratum by its label
 - **tie_breaking**: Method for handling tied event times ('efron' or 'breslow')
+- **sample_weight**: The object's weights (optional; default one)
 
 #### Methods
+
+A method called without `sample_weight` uses the object's current weights: those it was built with, or the last ones given to a method. The object is rebuilt, sorting the data again, when a call gives other weights, and keeps them; `c_index` does not change them. This is the default in R and Julia too, and what a NULL weight means in the C API.
 
 - **`__call__(linear_predictor, sample_weight=None)`**: Compute deviance and related quantities
 - **`information(linear_predictor, sample_weight=None)`**: Get information matrix as linear operator
@@ -418,6 +421,8 @@ The main class for computing Cox model quantities.
 - **`c_index(linear_predictor, sample_weight=None)`**: Harrell's concordance index (C-index) of a linear predictor, or one per column
 - **`expected_events(linear_predictor, sample_weight=None)`**: The expected number of events of each observation over `(start, event]`
 - **`survival_at_exit(linear_predictor, sample_weight=None)`**: The expected survival probability of each observation at its exit, `exp(-expected_events)`
+- **`martingale_residuals(linear_predictor, sample_weight=None)`** and **`deviance_residuals(...)`**: R's `residuals.coxph` of types `"martingale"` and `"deviance"`
+- **`survfit(linear_predictor, sample_weight=None, new_linear_predictor=None, new_strata=None, center=None)`**: Survival curves at a fixed linear predictor, as R's `survfit.coxph`: a `SurvivalCurves` with `time`, `stratum`, `n_risk`, `n_event`, `n_censor`, `cumulative_hazard`, `survival` and `predict(times)`
 
 ### CoxDevianceResult
 

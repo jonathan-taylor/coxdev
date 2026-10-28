@@ -49,6 +49,24 @@ struct BaselineHazard {
     Eigen::VectorXi stratum;
 };
 
+// The survival table at the linear predictor of the last compute_deviance,
+// laid out as R's survfit.coxph: one row per distinct event time (of a
+// failure or a censoring, whatever its weight) in increasing time within
+// each stratum. n_risk is the weight at risk at that time (start < time <=
+// event), n_event and n_censor the weights of the failures and of the
+// censored observations at it, and cumulative_hazard the baseline cumulative
+// hazard there (as in BaselineHazard, for the linear predictor as given),
+// constant between failure times. stratum is the stratum label (0 without
+// strata).
+struct SurvivalTable {
+    Eigen::VectorXd time;
+    Eigen::VectorXd n_risk;
+    Eigen::VectorXd n_event;
+    Eigen::VectorXd n_censor;
+    Eigen::VectorXd cumulative_hazard;
+    Eigen::VectorXi stratum;
+};
+
 // Harrell's concordance index (C-index) as a ratio: numerator / denominator,
 // NaN when no pair is comparable (denominator 0). See concordance below.
 struct Concordance {
@@ -142,6 +160,9 @@ public:
 
     // The baseline hazard at the last compute_deviance; see BaselineHazard.
     BaselineHazard baseline_hazard() const;
+
+    // The survival table at the last compute_deviance; see SurvivalTable.
+    SurvivalTable survival_table() const;
 
     // Harrell's concordance index of a predictor pred (n-vector, native
     // order; a higher pred means a higher risk) for these data, with
@@ -269,6 +290,7 @@ public:
     Eigen::VectorXd score_residuals(const Eigen::VectorXd& x) const;
     // within each stratum, labelled by its value of strata
     BaselineHazard baseline_hazard() const;
+    SurvivalTable survival_table() const;
     // comparing only pairs within a stratum: the sums of the strata's
     // numerators and denominators
     Concordance concordance(const Eigen::VectorXd& pred,

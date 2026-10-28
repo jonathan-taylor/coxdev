@@ -127,6 +127,9 @@ Martingale-based residuals for survival models. \emph{Biometrika}, 77(1),
     \item \href{#method-CoxDeviance-expected_events}{\code{CoxDeviance$expected_events()}}
     \item \href{#method-CoxDeviance-survival_at_exit}{\code{CoxDeviance$survival_at_exit()}}
     \item \href{#method-CoxDeviance-baseline_hazard}{\code{CoxDeviance$baseline_hazard()}}
+    \item \href{#method-CoxDeviance-survfit}{\code{CoxDeviance$survfit()}}
+    \item \href{#method-CoxDeviance-martingale_residuals}{\code{CoxDeviance$martingale_residuals()}}
+    \item \href{#method-CoxDeviance-deviance_residuals}{\code{CoxDeviance$deviance_residuals()}}
     \item \href{#method-CoxDeviance-print}{\code{CoxDeviance$print()}}
   }
 }
@@ -159,8 +162,11 @@ in place of \code{event}, \code{status} and \code{start}. Strata set on it by
       \item{\code{start}}{Start (entry) times, for left-truncated data, or \code{NULL}.}
       \item{\code{strata}}{Stratum labels (integers, a factor or character), or
 \code{NULL} for an unstratified model.}
-      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for all one. They are
-needed here only to know which are 0; each computation takes its own.}
+      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for all one: the
+object's weights. A method called without \code{sample_weight} uses the
+object's current weights: these, or the last ones given to a method
+(the object is rebuilt, sorting the data again, when a call gives
+other weights, and keeps them; \code{c_index()} does not change them).}
       \item{\code{tie_breaking}}{\code{"efron"} (the default) or \code{"breslow"}.}
     }
     \if{html}{\out{</div>}}
@@ -182,14 +188,15 @@ of the Python class).
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{linear_predictor}}{The linear predictor, one entry per observation.}
-      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for all one.}
+      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for the object's
+current weights (see \code{new()}).}
     }
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
     A \code{CoxDevianceResult}: a list with the \code{linear_predictor}, the
 \code{sample_weight}, \code{loglik_sat} (the saturated log-likelihood), the
-\code{deviance}, its \code{gradient} with respect to the linear predictor and
+\code{deviance}, \code{loglik} (the log partial likelihood, \code{loglik_sat - deviance / 2}, as \code{coxph}'s \code{loglik}), its \code{gradient} with respect to the linear predictor and
 the diagonal \code{diag_hessian} of its Hessian.
   }
 }
@@ -593,6 +600,106 @@ and the \code{cumulative_hazard}, for the linear predictor as given, and
 with strata the \code{stratum}. The cumulative hazard of observation \code{i}
 at time \code{t} is the \code{cumulative_hazard} at the last failure time
 \verb{<= t} (in its stratum) times \code{exp(linear_predictor[i])}.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-survfit"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-survfit}{}}}
+\subsection{\code{CoxDeviance$survfit()}}{
+  Survival curves at a fixed linear predictor: the
+\code{survival::survfit.coxph} (with \code{se.fit = FALSE}) of
+\code{coxph(y ~ offset(linear_predictor))}, with this object's ties, as
+\code{glmnet}'s \code{survfit.coxnet} computes the curves of a fitted model.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$survfit(
+  linear_predictor,
+  sample_weight = NULL,
+  new_linear_predictor = NULL,
+  new_strata = NULL,
+  center = NULL
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor}}{The linear predictor, as for \code{compute()}.}
+      \item{\code{sample_weight}}{As for \code{compute()}: \code{NULL} for the object's
+current weights, so that the \code{CoxDeviance} of a fitted model gives
+its curves.}
+      \item{\code{new_linear_predictor}}{The linear predictors of the subjects to
+give curves of, or \code{NULL} for one curve (in each stratum) at
+\code{center}, as \code{survfit} without \code{newdata}.}
+      \item{\code{new_strata}}{The strata of the new subjects, needed with
+\code{new_linear_predictor} when the data have strata.}
+      \item{\code{center}}{The linear predictor of the curve when
+\code{new_linear_predictor} is \code{NULL}; \code{NULL} for the weighted mean of
+\code{linear_predictor} (\code{coxph}'s means for right-censored data; for
+(start, stop] data \code{coxph} averages without the weights).}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A list, laid out as \code{survfit}'s: one row per distinct event
+time (of failures and censorings) in increasing time within each
+stratum, with the \code{time}, the weight at risk \code{n_risk}, the weights
+of the failures and censorings there \code{n_event} and \code{n_censor}, with
+strata the \code{stratum}, and the \code{cumulative_hazard} and \code{survival} of
+each curve, matrices with a column per curve (\code{NA} on the rows of
+the other strata).
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-martingale_residuals"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-martingale_residuals}{}}}
+\subsection{\code{CoxDeviance$martingale_residuals()}}{
+  The martingale residuals at a linear predictor, \code{status - expected_events}: the \code{residuals(fit, type = "martingale")} of a
+\code{survival::coxph} fit (Barlow and Prentice, 1988; Therneau, Grambsch
+and Fleming, 1990).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$martingale_residuals(linear_predictor, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A vector, one entry per observation.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoxDeviance-deviance_residuals"></a>}}
+\if{latex}{\out{\hypertarget{method-CoxDeviance-deviance_residuals}{}}}
+\subsection{\code{CoxDeviance$deviance_residuals()}}{
+  The deviance residuals at a linear predictor,
+\verb{sign(M) sqrt(-2 (M + status log(status - M)))} of the martingale
+residuals \code{M}: the \code{residuals(fit, type = "deviance")} of a
+\code{survival::coxph} fit (Therneau, Grambsch and Fleming, 1990). A
+failure of zero weight with no hazard up to its time (its expected
+events 0, so \code{M = 1}) has an infinite deviance residual.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoxDeviance$deviance_residuals(linear_predictor, sample_weight = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A vector, one entry per observation.
   }
 }
 

@@ -75,6 +75,39 @@ int main(void) {
         }
     }
 
+    /* survival table: size query then fill; its last cumulative hazard is
+       the baseline hazard's */
+    {
+        size_t m = 0, mb = 0;
+        rc = coxdev_survival_table(h, eta, NULL, &m, NULL, NULL, NULL, NULL, NULL, NULL);
+        CHECK(rc == COXDEV_OK && m > 0, "survival table size");
+        rc = coxdev_baseline_hazard(h, eta, NULL, &mb, NULL, NULL, NULL, NULL);
+        CHECK(rc == COXDEV_OK && m >= mb, "survival table has a row per failure time, at least");
+        {
+            double *t = malloc(m * sizeof(double)), *r = malloc(m * sizeof(double));
+            double *ch = malloc(m * sizeof(double)), *bh = malloc(mb * sizeof(double));
+            size_t m2 = m, mb2 = mb;
+            rc = coxdev_survival_table(h, eta, NULL, &m2, t, r, NULL, NULL, ch, NULL);
+            CHECK(rc == COXDEV_OK && m2 == m, "survival table fill");
+            rc = coxdev_baseline_hazard(h, eta, NULL, &mb2, NULL, NULL, bh, NULL);
+            CHECK(rc == COXDEV_OK && fabs(ch[m - 1] - bh[mb - 1]) < 1e-12,
+                  "survival table: the last cumulative hazard");
+            free(t); free(r); free(ch); free(bh);
+        }
+    }
+
+    /* expected events: they sum to the weighted failures (unit weights) */
+    {
+        double e[N], total = 0, failures = 0;
+        int i;
+        rc = coxdev_expected_events(h, eta, NULL, e);
+        CHECK(rc == COXDEV_OK, "expected events");
+        for (i = 0; i < N; i++) { total += e[i]; failures += status[i]; }
+        CHECK(fabs(total - failures) < 1e-10, "expected events sum to the failures");
+        CHECK(coxdev_expected_events(NULL, eta, NULL, e) == COXDEV_ERR_ARGUMENT,
+              "expected events: NULL handle");
+    }
+
     /* sample_score: same seed, same draws */
     {
         double a[N * 3], b[N * 3];

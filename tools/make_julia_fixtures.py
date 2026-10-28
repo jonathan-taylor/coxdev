@@ -5,7 +5,9 @@ the inputs and the Python package's outputs on a grid of cases, as JSON.
 Grid: Efron/Breslow x right-censored/(start, event] x no strata/strata x
 unit/random/zero weights, with tied times. For each case: the deviance, its
 gradient and diagonal Hessian, information products, the baseline hazard,
-the C-index, score residuals, wild draws and sample_score draws (fixed seed).
+the C-index, score residuals, wild draws and sample_score draws (fixed seed),
+and survfit, the expected events, the martingale and deviance residuals and
+the loglik.
 
 Usage: python tools/make_julia_fixtures.py [outdir]
 """
@@ -23,6 +25,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', 'julia', 'C
 
 SEED = 20261017
 N, P, NDRAWS = 60, 3, 4
+NEW_ETA = [-1., 0., 0.7]       # the subjects of the survival curves
 
 
 def _list(x):
@@ -73,7 +76,29 @@ def case(ties, start_stop, strata, weights, rng):
                c_index=float(cox.c_index(eta, w)),
                score_residuals=_list(cox.score_residuals(eta, X, w)),
                wild_score=_list(cox.wild_score(eta, G, w)))
-    # weight=None means ones, whatever the weights given at construction
+    # survfit, the expected events, residuals and loglik, with the weights
+    # given (the default, the object's current weights, changes with calls)
+    w1 = np.ones(N) if w is None else w
+    new_strata = None
+    if labels is not None:
+        levels = np.unique(labels)
+        new_strata = [levels[0], levels[-1], levels[0]]
+    curves = cox.survfit(eta, w1, new_linear_predictor=NEW_ETA, new_strata=new_strata)
+    out.update(sf_time=_list(curves.time), sf_stratum=_list(curves.stratum),
+               sf_n_risk=_list(curves.n_risk), sf_n_event=_list(curves.n_event),
+               sf_n_censor=_list(curves.n_censor),
+               sf_cumulative_hazard=_list(curves.cumulative_hazard),
+               sf_default_cumulative_hazard=_list(cox.survfit(eta, w1).cumulative_hazard),
+               sf_new_strata=None if new_strata is None else _list(np.asarray(new_strata)),
+               expected_events=_list(cox.expected_events(eta, w1)),
+               martingale_residuals=_list(cox.martingale_residuals(eta, w1)),
+               # infinite for a zero-weight failure with no hazard before it
+               # (JSON has no Inf: null there, and their positions)
+               deviance_residuals=_list(np.where(np.isinf(D_res := cox.deviance_residuals(eta, w1)),
+                                                 np.nan, D_res)),
+               deviance_residuals_inf=np.flatnonzero(np.isinf(D_res)).tolist(),
+               loglik=cox(eta, w).loglik)
+    # weight=None means the object's current weights: those of the call before
     out['deviance_default_weight'] = cox(eta).deviance
     # model-based draws need equal positive weights; wild works with any
     methods = ['wild'] + (['multinomial', 'bernoulli', 'fisher'] if weights == 'unit' else [])
