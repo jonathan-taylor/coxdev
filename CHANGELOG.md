@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.2
+## 0.5.0
 
 - **Breaking: a missing `sample_weight` means the object's current
   weights**, not weights of one, in Python, R and Julia: those it was built
