@@ -20,7 +20,14 @@
   `deviance_residuals`, in Python and R): `residuals.coxph`'s
   `"martingale"` and `"deviance"`, from `expected_events`.
 - **The log partial likelihood** of a result, `loglik` (`loglik_sat -
-  deviance / 2`, `coxph`'s `loglik`): a property in Python, a field in R.
+  deviance / 2`, `coxph`'s `loglik`): a property in Python, a field in R
+  and in Julia's `deviance`.
+- **The same in the C API and CoxDev.jl** (C API version 3): the C API
+  adds `coxdev_survival_table` (size query, then fill, as
+  `coxdev_baseline_hazard`), `coxdev_expected_events` and `coxdev_weight`
+  (the handle's current weights). CoxDev.jl adds `survfit`,
+  `expected_events`, `martingale_residuals` and `deviance_residuals`, and
+  needs C API version 3. Its test fixtures cover them.
 
 ## 0.4.1
 

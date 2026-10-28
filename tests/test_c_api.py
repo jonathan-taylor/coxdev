@@ -44,6 +44,10 @@ def _lib():
     lib.coxdev_hessian_matvec.argtypes = [C.c_void_p, dp, dp, dp, dp]
     lib.coxdev_information_derivative_matvec.argtypes = [C.c_void_p, dp, dp, dp, dp, dp]
     lib.coxdev_baseline_hazard.argtypes = [C.c_void_p, dp, dp, C.POINTER(C.c_size_t), dp, dp, dp, ip]
+    lib.coxdev_survival_table.argtypes = [C.c_void_p, dp, dp, C.POINTER(C.c_size_t),
+                                          dp, dp, dp, dp, dp, ip]
+    lib.coxdev_expected_events.argtypes = [C.c_void_p, dp, dp, dp]
+    lib.coxdev_weight.argtypes = [C.c_void_p, dp]
     lib.coxdev_handle_concordance.argtypes = [C.c_void_p, dp, dp, dp, dp, dp]
     lib.coxdev_concordance.argtypes = [C.c_size_t, dp, dp, dp, ip, dp, dp, dp, dp]
     lib.coxdev_score_residuals.argtypes = [C.c_void_p, dp, dp, dp, C.c_size_t, dp]
@@ -163,6 +167,39 @@ def test_against_python(ties, start_times, strata, weights):
     np.testing.assert_allclose(ch, bh.cumulative_hazard, **tol)
     # the C API reports the strata labels as given, as Python does (0 without strata)
     np.testing.assert_array_equal(st, bh.stratum)
+
+    # survival table (survfit's, at the baseline: center 0): size query, then fill
+    curves = cd.survfit(eta, w, center=0.)
+    m = C.c_size_t(0)
+    check(LIB.coxdev_survival_table(h.h, _d(eta), _d(w), C.byref(m), None, None, None, None, None, None))
+    cols = [np.empty(m.value) for _ in range(5)]
+    st = np.empty(m.value, np.int32)
+    check(LIB.coxdev_survival_table(h.h, _d(eta), _d(w), C.byref(m),
+                                    *[c.ctypes.data_as(dp) for c in cols], st.ctypes.data_as(ip)))
+    t, n_risk, n_event, n_censor, ch = cols
+    np.testing.assert_allclose(t, curves.time, **tol)
+    np.testing.assert_allclose(n_risk, curves.n_risk, **tol)
+    np.testing.assert_allclose(n_event, curves.n_event, **tol)
+    np.testing.assert_allclose(n_censor, curves.n_censor, **tol)
+    np.testing.assert_allclose(ch, curves.cumulative_hazard[:, 0], **tol)
+    np.testing.assert_array_equal(st, curves.stratum)
+    # NULL weights are the handle's
+    m2 = C.c_size_t(m.value)
+    ch2 = np.empty(m.value)
+    check(LIB.coxdev_survival_table(h.h, _d(eta), None, C.byref(m2), None, None, None, None,
+                                    ch2.ctypes.data_as(dp), None))
+    np.testing.assert_allclose(ch2, ch, **tol)
+
+    # the handle's weights
+    hw = np.empty(n)
+    check(LIB.coxdev_weight(h.h, hw.ctypes.data_as(dp)))
+    np.testing.assert_array_equal(hw, w)
+
+    # expected events (status less them: the martingale residuals)
+    out = np.empty(n)
+    check(LIB.coxdev_expected_events(h.h, _d(eta), _d(w), out.ctypes.data_as(dp)))
+    np.testing.assert_allclose(out, cd.expected_events(eta, w), **tol)
+    np.testing.assert_allclose(status - out, cd.martingale_residuals(eta, w), **tol)
 
     # concordance: with the handle (within strata), and the free function (no strata)
     num, den, val = C.c_double(), C.c_double(), C.c_double()

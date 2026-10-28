@@ -17,7 +17,8 @@ using Libdl
 using LinearMaps
 
 export CoxDeviance, deviance, information, information_derivative, baseline_hazard, concordance,
-       score_residuals, wild_score, sample_score, CoxDevError
+       score_residuals, wild_score, sample_score, survfit, expected_events,
+       martingale_residuals, deviance_residuals, CoxDevError
 
 # ---------------------------------------------------------------------------
 # the shared library
@@ -50,7 +51,7 @@ function _sym(name::Symbol)
             if _lib[] == C_NULL
                 _lib[] = Libdl.dlopen(libpath())
                 v = ccall(Libdl.dlsym(_lib[], :coxdev_api_version), Cint, ())
-                v >= 2 || error("libcoxdev_c has C API version $v; CoxDev.jl needs 2 or later")
+                v >= 3 || error("libcoxdev_c has C API version $v; CoxDev.jl needs 3 or later")
             end
             Libdl.dlsym(_lib[], name)
         end
@@ -184,7 +185,8 @@ end
 
 The deviance `2 (loglik_sat - loglik)` at the linear predictor `eta`, with its
 gradient and diagonal Hessian in `eta`: a NamedTuple `(deviance, gradient,
-diag_hessian, loglik_sat)`. `weight` defaults to ones.
+diag_hessian, loglik_sat, loglik)`, with `loglik` the log partial likelihood
+(R's `coxph` `loglik`). `weight` defaults to ones.
 
 The result of the last call is reused while `eta` and `weight` are unchanged,
 as in coxdev's Python package: do not modify its arrays.
@@ -200,7 +202,8 @@ function deviance(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
         _check(ccall(_sym(:coxdev_deviance), Cint,
                      (Ptr{Cvoid}, Ptr{Cdouble}, Ptr{Cdouble}, Ref{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ref{Cdouble}),
                      _live(cd), e, w, dev, g, h, sat))
-        cd.last = (deviance=dev[], gradient=g, diag_hessian=h, loglik_sat=sat[])
+        cd.last = (deviance=dev[], gradient=g, diag_hessian=h, loglik_sat=sat[],
+                   loglik=sat[] - dev[] / 2)
         copyto!(resize!(cd.last_eta, cd.n), e)
         copyto!(resize!(cd.last_weight, cd.n), w)
         cd.last
@@ -286,6 +289,115 @@ function baseline_hazard(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
     end
     labels = cd.strata_labels === nothing ? Int.(stratum) : cd.strata_labels[stratum .+ 1]
     (time=time, hazard=hazard, cumulative_hazard=cum, stratum=labels)
+end
+
+"""
+    survfit(cd, eta; weight=nothing, new_eta=nothing, new_strata=nothing, center=nothing)
+
+Survival curves at the fixed linear predictor `eta`: R's `survfit.coxph`
+(`se.fit = FALSE`) of `coxph(y ~ offset(eta))`, with the ties of `cd`, as
+`glmnet`'s `survfit.coxnet` computes the curves of a fitted model. A
+NamedTuple `(time, stratum, n_risk, n_event, n_censor, cumulative_hazard,
+survival)`, laid out as `survfit`'s: a row per distinct event time (of
+failures and censorings) in increasing time within each stratum, with the
+weight at risk and the weights of the failures and censorings there, and a
+column of `cumulative_hazard` and `survival` per curve (`NaN` on the rows of
+other strata).
+
+`weight` defaults to the weights of `cd` (those it was built with, or of
+its last call), unlike the other functions, whose default is ones, so that
+the `CoxDeviance` of a fitted model gives its curves. `new_eta` are the
+linear predictors of the subjects to give curves of (with `new_strata` when
+`cd` has strata); without it, one curve (in each stratum) at `center`,
+which defaults to the weighted mean of `eta`.
+"""
+function survfit(cd::CoxDeviance, eta::AbstractVector; weight=nothing, new_eta=nothing,
+                 new_strata=nothing, center=nothing)
+    e = _eta(cd, eta)
+    w = Vector{Float64}(undef, cd.n)
+    m = Ref{Csize_t}(0)
+    time = Float64[]; n_risk = Float64[]; n_event = Float64[]; n_censor = Float64[]
+    H = Float64[]; stratum = Cint[]
+    lock(cd.lock) do
+        if weight === nothing
+            _check(ccall(_sym(:coxdev_weight), Cint, (Ptr{Cvoid}, Ptr{Cdouble}), _live(cd), w))
+        else
+            copyto!(w, _weight(cd, weight))
+        end
+        _check(ccall(_sym(:coxdev_survival_table), Cint,
+                     (Ptr{Cvoid}, Ptr{Cdouble}, Ptr{Cdouble}, Ref{Csize_t}, Ptr{Cdouble}, Ptr{Cdouble},
+                      Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cint}),
+                     _live(cd), e, w, m, C_NULL, C_NULL, C_NULL, C_NULL, C_NULL, C_NULL))
+        k = Int(m[])
+        for v in (time, n_risk, n_event, n_censor, H)
+            resize!(v, k)
+        end
+        resize!(stratum, k)
+        _check(ccall(_sym(:coxdev_survival_table), Cint,
+                     (Ptr{Cvoid}, Ptr{Cdouble}, Ptr{Cdouble}, Ref{Csize_t}, Ptr{Cdouble}, Ptr{Cdouble},
+                      Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cint}),
+                     _live(cd), e, w, m, time, n_risk, n_event, n_censor, H, stratum))
+    end
+    c = center === nothing ? sum(w .* e) / sum(w) : Float64(center)
+    new = new_eta === nothing ? [c] : Vector{Float64}(new_eta)
+    # for eta as given, H exp(new_eta), formed as (H exp(c)) exp(new_eta - c)
+    cum = (H .* exp(c)) * transpose(exp.(new .- c))
+    labels = cd.strata_labels === nothing ? Int.(stratum) : cd.strata_labels[stratum .+ 1]
+    if cd.strata_labels !== nothing && new_eta !== nothing
+        new_strata === nothing &&
+            throw(ArgumentError("new_strata is needed for the curves of a stratified model"))
+        length(new_strata) == length(new) ||
+            throw(ArgumentError("new_strata and new_eta have different lengths"))
+        all(s -> s in cd.strata_labels, new_strata) ||
+            throw(ArgumentError("new_strata contains labels not seen in the training data"))
+        for j in eachindex(new), i in eachindex(labels)
+            labels[i] == new_strata[j] || (cum[i, j] = NaN)
+        end
+    end
+    (time=time, stratum=labels, n_risk=n_risk, n_event=n_event, n_censor=n_censor,
+     cumulative_hazard=cum, survival=exp.(-cum))
+end
+
+"""
+    expected_events(cd, eta; weight=nothing)
+
+The expected number of events of each observation at `eta`: R's
+`predict(fit, type = "expected")` of a `coxph` fit. `weight` defaults to
+ones.
+"""
+function expected_events(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
+    e, w = _eta(cd, eta), _weight(cd, weight)
+    out = Vector{Float64}(undef, cd.n)
+    lock(cd.lock) do
+        _check(ccall(_sym(:coxdev_expected_events), Cint,
+                     (Ptr{Cvoid}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                     _live(cd), e, w, out))
+    end
+    out
+end
+
+"""
+    martingale_residuals(cd, eta; weight=nothing)
+
+The martingale residuals at `eta`, `status - expected_events`: R's
+`residuals(fit, type = "martingale")` of a `coxph` fit. `weight` defaults to
+ones.
+"""
+martingale_residuals(cd::CoxDeviance, eta::AbstractVector; weight=nothing) =
+    cd.status .- expected_events(cd, eta; weight=weight)
+
+"""
+    deviance_residuals(cd, eta; weight=nothing)
+
+The deviance residuals at `eta`, `sign(M) sqrt(-2 (M + status log(status -
+M)))` of the martingale residuals `M`: R's `residuals(fit, type =
+"deviance")` of a `coxph` fit. `weight` defaults to ones.
+"""
+function deviance_residuals(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
+    M = martingale_residuals(cd, eta; weight=weight)
+    d = [-2 * (M[i] + (cd.status[i] > 0 ? log(max(cd.status[i] - M[i], 0.0)) : 0.0))
+         for i in eachindex(M)]
+    sign.(M) .* sqrt.(max.(d, 0.0))
 end
 
 """

@@ -45,8 +45,9 @@ extern "C" {
 #endif
 
 /* Version of this C API (not of coxdev): raised when functions are added
-   or changed. 2 adds coxdev_information_derivative_matvec. */
-#define COXDEV_C_API_VERSION 2
+   or changed. 2 adds coxdev_information_derivative_matvec; 3 adds
+   coxdev_weight, coxdev_survival_table and coxdev_expected_events. */
+#define COXDEV_C_API_VERSION 3
 
 enum {
     COXDEV_OK = 0,
@@ -127,6 +128,39 @@ COXDEV_C_EXPORT int coxdev_baseline_hazard(coxdev_t *h,
                                            double *hazard,
                                            double *cumulative_hazard,
                                            int *stratum);
+
+/* The handle's current weights (n-vector): those it was created with, or
+   of the last call that passed weights. A NULL sample_weight in the other
+   functions means these. (C API version 3.) */
+COXDEV_C_EXPORT int coxdev_weight(const coxdev_t *h, double *out);
+
+/* The survival table at (eta, sample_weight), as R's survfit.coxph lays it
+   out: a row per distinct event time (of failures and censorings) in
+   increasing time within each stratum, with the weight at risk, the weights
+   of the failures and of the censorings there, and the baseline cumulative
+   hazard (for eta as given, constant between failure times). The cumulative
+   hazard of a subject with linear predictor e is cumulative_hazard * exp(e).
+   As coxdev_baseline_hazard: call with every buffer NULL to get the number
+   of rows in *m, then again with buffers of length *m (any may be NULL).
+   (C API version 3.) */
+COXDEV_C_EXPORT int coxdev_survival_table(coxdev_t *h,
+                                          const double *eta,
+                                          const double *sample_weight,
+                                          size_t *m,
+                                          double *time,
+                                          double *n_risk,
+                                          double *n_event,
+                                          double *n_censor,
+                                          double *cumulative_hazard,
+                                          int *stratum);
+
+/* The expected number of events of each observation at (eta,
+   sample_weight) (n-vector, native order), survival's predict(type =
+   "expected"): status - out is the martingale residual. (C API version 3.) */
+COXDEV_C_EXPORT int coxdev_expected_events(coxdev_t *h,
+                                           const double *eta,
+                                           const double *sample_weight,
+                                           double *out);
 
 /* Harrell's concordance index of pred for the handle's data (within strata),
    with weights weight (NULL: the handle's): *numerator / *denominator, and

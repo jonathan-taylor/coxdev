@@ -4,7 +4,7 @@ Julia access to [coxdev](https://github.com/jonathan-taylor/coxdev): the devianc
 - Efron's or Breslow's ties;
 - `(start, event]` data;
 - strata and weights;
-- the baseline hazard, Harrell's C-index, score residuals and score draws (wild bootstrap and model-based).
+- the baseline hazard, survival curves (`survfit`), Harrell's C-index, score, martingale and deviance residuals, expected events and score draws (wild bootstrap and model-based).
 
 It calls coxdev's C++ library through its C API (`cpp/include/coxdev_c_api.h`). That is the same code as the Python and R packages, so it gives the same numbers, and the same draws for the same seed (to rounding: across platforms, math libraries can differ in the last bit).
 
@@ -15,10 +15,12 @@ It calls coxdev's C++ library through its C API (`cpp/include/coxdev_c_api.h`). 
 ```julia
 using CoxDev
 cd  = CoxDeviance(event, status; start=nothing, weight=nothing, ties=:efron, strata=nothing)
-r   = deviance(cd, eta; weight=w)       # (deviance, gradient, diag_hessian, loglik_sat)
+r   = deviance(cd, eta; weight=w)       # (deviance, gradient, diag_hessian, loglik_sat, loglik)
 I   = information(cd, eta; weight=w)    # LinearMap: I * v, X' * (I * X)
 dI  = information_derivative(cd, eta, d; weight=w)   # d/dt I(eta + t d), a LinearMap
 bh  = baseline_hazard(cd, eta; weight=w)
+sf  = survfit(cd, eta; new_eta=[0., 1.], new_strata=nothing, center=nothing)   # R's survfit.coxph
+M   = martingale_residuals(cd, eta; weight=w)   # also deviance_residuals, expected_events
 c   = concordance(cd, eta; weight=w)        # within strata; also concordance(pred, event, status; start, weight)
 U   = score_residuals(cd, eta, X; weight=w)
 r   = wild_score(cd, eta, multipliers; weight=w)
@@ -26,7 +28,7 @@ S   = sample_score(cd, eta; weight=w, method="multinomial", n_draws=100, seed=1)
 ```
 
 **API.** The names and meanings mirror coxdev's Python `CoxDeviance`:
-- **`weight` defaults to ones** in every evaluation, whatever the weights given at construction. Construction weights only fix the data.
+- **`weight` defaults to ones** in every evaluation, whatever the weights given at construction. Construction weights only fix the data. The exception is `survfit`, whose weights default to the object's own (those it was built with, or of its last call), as in Python and R, so that the `CoxDeviance` of a fitted model gives its curves.
 - **Strata** may be any labels `sort` can order. `baseline_hazard` reports each stratum by its label.
 - **Caching.** The last `deviance` result is reused while `eta` and `weight` are unchanged; don't modify its arrays. The C library also reuses its last evaluation, so information products at that `eta` cost one product each.
 - **Threads.** A `CoxDeviance` holds a lock, so tasks can share one, but calls are serialized. Use one object per task for parallel work.
