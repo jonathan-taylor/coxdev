@@ -1001,7 +1001,9 @@ class CoxDeviance(object):
         The deviance residuals at ``linear_predictor``, ``sign(M) sqrt(-2 (M +
         status log(status - M)))`` of the martingale residuals ``M``: R's
         ``residuals(fit, type = "deviance")`` of a ``coxph`` fit (Therneau,
-        Grambsch and Fleming, 1990).
+        Grambsch and Fleming, 1990). A failure of zero weight with no hazard
+        up to its time (its expected events 0, so ``M = 1``) has an infinite
+        deviance residual.
 
         Parameters
         ----------

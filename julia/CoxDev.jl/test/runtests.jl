@@ -76,7 +76,12 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
                      fl(out.sf_default_cumulative_hazard[1]))
         @test approx(expected_events(cd, eta; weight=w1), fl(out.expected_events))
         @test approx(martingale_residuals(cd, eta; weight=w1), fl(out.martingale_residuals))
-        @test approx(deviance_residuals(cd, eta; weight=w1), fl(out.deviance_residuals))
+        # infinite for a zero-weight failure with no hazard before it: null
+        # in the fixtures, with their positions (0-based)
+        D = deviance_residuals(cd, eta; weight=w1)
+        inf = Int[i + 1 for i in out.deviance_residuals_inf]
+        @test all(isinf, D[inf])
+        @test approx_nan(ifelse.(isinf.(D), NaN, D), fl(out.deviance_residuals))
         @test approx(deviance(cd, eta; weight=w).loglik, out.loglik)
 
         @test approx(concordance(cd, eta; weight=w), out.c_index)

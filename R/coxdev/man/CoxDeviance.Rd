@@ -680,7 +680,9 @@ and Fleming, 1990).
   The deviance residuals at a linear predictor,
 \verb{sign(M) sqrt(-2 (M + status log(status - M)))} of the martingale
 residuals \code{M}: the \code{residuals(fit, type = "deviance")} of a
-\code{survival::coxph} fit (Therneau, Grambsch and Fleming, 1990).
+\code{survival::coxph} fit (Therneau, Grambsch and Fleming, 1990). A
+failure of zero weight with no hazard up to its time (its expected
+events 0, so \code{M = 1}) has an infinite deviance residual.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{CoxDeviance$deviance_residuals(linear_predictor, sample_weight = NULL)}

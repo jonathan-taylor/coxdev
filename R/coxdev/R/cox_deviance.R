@@ -513,7 +513,9 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @description The deviance residuals at a linear predictor,
     #'   `sign(M) sqrt(-2 (M + status log(status - M)))` of the martingale
     #'   residuals `M`: the `residuals(fit, type = "deviance")` of a
-    #'   `survival::coxph` fit (Therneau, Grambsch and Fleming, 1990).
+    #'   `survival::coxph` fit (Therneau, Grambsch and Fleming, 1990). A
+    #'   failure of zero weight with no hazard up to its time (its expected
+    #'   events 0, so `M = 1`) has an infinite deviance residual.
     #' @param linear_predictor,sample_weight As for `compute()`.
     #' @return A vector, one entry per observation.
     deviance_residuals = function(linear_predictor, sample_weight = NULL) {

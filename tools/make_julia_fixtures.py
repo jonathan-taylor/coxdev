@@ -92,7 +92,11 @@ def case(ties, start_stop, strata, weights, rng):
                sf_new_strata=None if new_strata is None else _list(np.asarray(new_strata)),
                expected_events=_list(cox.expected_events(eta, w1)),
                martingale_residuals=_list(cox.martingale_residuals(eta, w1)),
-               deviance_residuals=_list(cox.deviance_residuals(eta, w1)),
+               # infinite for a zero-weight failure with no hazard before it
+               # (JSON has no Inf: null there, and their positions)
+               deviance_residuals=_list(np.where(np.isinf(D_res := cox.deviance_residuals(eta, w1)),
+                                                 np.nan, D_res)),
+               deviance_residuals_inf=np.flatnonzero(np.isinf(D_res)).tolist(),
                loglik=cox(eta, w).loglik)
     # weight=None means ones, whatever the weights given at construction
     out['deviance_default_weight'] = cox(eta).deviance

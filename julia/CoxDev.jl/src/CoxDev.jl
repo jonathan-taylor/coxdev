@@ -391,7 +391,9 @@ martingale_residuals(cd::CoxDeviance, eta::AbstractVector; weight=nothing) =
 
 The deviance residuals at `eta`, `sign(M) sqrt(-2 (M + status log(status -
 M)))` of the martingale residuals `M`: R's `residuals(fit, type =
-"deviance")` of a `coxph` fit. `weight` defaults to ones.
+"deviance")` of a `coxph` fit. `weight` defaults to ones. A failure of zero
+weight with no hazard up to its time (its expected events 0, so `M = 1`) has
+an infinite deviance residual.
 """
 function deviance_residuals(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
     M = martingale_residuals(cd, eta; weight=weight)
