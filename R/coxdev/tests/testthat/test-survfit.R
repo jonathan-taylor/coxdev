@@ -75,3 +75,28 @@ test_that("survfit with strata: each curve on its own stratum", {
   expect_error(cox$survfit(eta, w, new_linear_predictor = 0), "new_strata is needed")
   expect_error(cox$survfit(eta, w, new_linear_predictor = 0, new_strata = "z"), "not seen")
 })
+
+test_that("without sample_weight, methods use the object's current weights", {
+  set.seed(33)
+  d <- cox_data(n = 120, start = TRUE)
+  n <- length(d$event)
+  w <- stats::runif(n, 0.5, 2)
+  eta <- drop(d$X %*% c(0.3, -0.2, 0.1))
+  cox <- CoxDeviance$new(event = d$event, status = d$status, start = d$start, sample_weight = w)
+  ref <- CoxDeviance$new(event = d$event, status = d$status, start = d$start, sample_weight = w)
+  expect_equal(cox$compute(eta)$deviance, ref$compute(eta, w)$deviance, tolerance = 1e-12)
+  expect_equal(cox$c_index(eta), ref$c_index(eta, w), tolerance = 1e-12)
+  expect_equal(cox$martingale_residuals(eta), ref$martingale_residuals(eta, w), tolerance = 1e-12)
+  expect_equal(cox$survfit(eta)$cumulative_hazard, ref$survfit(eta, w)$cumulative_hazard,
+               tolerance = 1e-12)
+  # other weights become the object's
+  w2 <- w
+  w2[10] <- 3 * w2[10]
+  cox$compute(eta, w2)
+  expect_equal(cox$compute(eta)$deviance, ref$compute(eta, w2)$deviance, tolerance = 1e-12)
+  expect_equal(cox$survfit(eta)$cumulative_hazard, ref$survfit(eta, w2)$cumulative_hazard,
+               tolerance = 1e-12)
+  # built without weights: one
+  plain <- CoxDeviance$new(event = d$event, status = d$status, start = d$start)
+  expect_equal(plain$compute(eta)$deviance, plain$compute(eta, rep(1, n))$deviance)
+})

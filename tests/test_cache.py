@@ -73,7 +73,9 @@ def test_changes(rebuilds, stratified):
     other = w.copy()
     other[10] *= 2
     calls = [(eta, w), (eta, other), (eta, w / w.sum()), (2 * eta, w / w.sum()), (eta, None)]
-    expected = [fresh(weights)(e, weights) for e, weights in calls]
+    # no weights: the object's current weights, those of the call before
+    expected = [fresh(weights)(e, weights) for e, weights in calls[:-1]]
+    expected.append(fresh(w / w.sum())(eta, w / w.sum()))
 
     cox = fresh(w)
     rebuilds[0] = 0
@@ -82,8 +84,8 @@ def test_changes(rebuilds, stratified):
         np.testing.assert_allclose(a.deviance, b.deviance, rtol=1e-12)
         np.testing.assert_allclose(a.gradient, b.gradient, rtol=1e-12, atol=1e-14)
         np.testing.assert_allclose(a.diag_hessian, b.diag_hessian, rtol=1e-12, atol=1e-14)
-    # new weights at each call but the fourth
-    assert rebuilds[0] == 3
+    # new weights at the second and third calls (the fifth keeps the current ones)
+    assert rebuilds[0] == 2
 
 
 def test_modified_in_place():
@@ -100,3 +102,39 @@ def test_modified_in_place():
     np.testing.assert_allclose(cox(e, weights).deviance,
                                CoxDeviance(sample_weight=weights, **data)(2 * eta, weights).deviance,
                                rtol=1e-12)
+
+
+@pytest.mark.parametrize('stratified', [False, True])
+def test_default_weights(rebuilds, stratified):
+    # without sample_weight, every method uses the object's current weights:
+    # those it was built with, then the last ones given (with no rebuild)
+    data, eta, w = _data(seed=3, stratified=stratified)
+    X = np.random.default_rng(4).standard_normal((eta.shape[0], 2))
+    cox = CoxDeviance(sample_weight=w, **data)
+    ref = CoxDeviance(sample_weight=w, **data)
+    np.testing.assert_allclose(cox(eta).deviance, ref(eta, w).deviance, rtol=1e-12)
+    np.testing.assert_allclose(cox.information(eta) @ X, ref.information(eta, w) @ X, rtol=1e-12)
+    np.testing.assert_allclose(cox.score_residuals(eta, X), ref.score_residuals(eta, X, w),
+                               rtol=1e-12, atol=1e-14)
+    np.testing.assert_allclose(cox.martingale_residuals(eta), ref.martingale_residuals(eta, w),
+                               rtol=1e-12, atol=1e-14)
+    np.testing.assert_allclose(cox.c_index(eta), ref.c_index(eta, w), rtol=1e-12)
+    np.testing.assert_allclose(cox.survfit(eta).cumulative_hazard,
+                               ref.survfit(eta, w).cumulative_hazard, rtol=1e-12)
+
+    # other weights become the object's
+    w2 = w.copy()
+    w2[10] *= 3
+    cox(eta, w2)
+    count = rebuilds[0]
+    other = CoxDeviance(sample_weight=w2, **data)
+    np.testing.assert_allclose(cox(eta).deviance, other(eta, w2).deviance, rtol=1e-12)
+    np.testing.assert_allclose(cox.c_index(eta), other.c_index(eta, w2), rtol=1e-12)
+    np.testing.assert_allclose(cox.survfit(eta).cumulative_hazard,
+                               other.survfit(eta, w2).cumulative_hazard, rtol=1e-12)
+    assert rebuilds[0] == count + 1      # only `other`: cox kept w2
+
+    # built without weights: one
+    plain = CoxDeviance(**data)
+    np.testing.assert_allclose(plain(eta).deviance,
+                               CoxDeviance(**data)(eta, np.ones_like(eta)).deviance, rtol=1e-12)

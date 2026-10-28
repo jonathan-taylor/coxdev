@@ -162,8 +162,11 @@ in place of \code{event}, \code{status} and \code{start}. Strata set on it by
       \item{\code{start}}{Start (entry) times, for left-truncated data, or \code{NULL}.}
       \item{\code{strata}}{Stratum labels (integers, a factor or character), or
 \code{NULL} for an unstratified model.}
-      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for all one. They are
-needed here only to know which are 0; each computation takes its own.}
+      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for all one: the
+object's weights. A method called without \code{sample_weight} uses the
+object's current weights: these, or the last ones given to a method
+(the object is rebuilt, sorting the data again, when a call gives
+other weights, and keeps them; \code{c_index()} does not change them).}
       \item{\code{tie_breaking}}{\code{"efron"} (the default) or \code{"breslow"}.}
     }
     \if{html}{\out{</div>}}
@@ -185,7 +188,8 @@ of the Python class).
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{linear_predictor}}{The linear predictor, one entry per observation.}
-      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for all one.}
+      \item{\code{sample_weight}}{Sample weights, or \code{NULL} for the object's
+current weights (see \code{new()}).}
     }
     \if{html}{\out{</div>}}
   }
@@ -622,10 +626,9 @@ at time \code{t} is the \code{cumulative_hazard} at the last failure time
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{linear_predictor}}{The linear predictor, as for \code{compute()}.}
-      \item{\code{sample_weight}}{The weights, or \code{NULL} for this object's weights:
-those it was built with, or of its last call (unlike the other
-methods, whose default is one), so that the \code{CoxDeviance} of a fitted
-model gives its curves.}
+      \item{\code{sample_weight}}{As for \code{compute()}: \code{NULL} for the object's
+current weights, so that the \code{CoxDeviance} of a fitted model gives
+its curves.}
       \item{\code{new_linear_predictor}}{The linear predictors of the subjects to
 give curves of, or \code{NULL} for one curve (in each stratum) at
 \code{center}, as \code{survfit} without \code{newdata}.}

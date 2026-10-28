@@ -109,8 +109,11 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @param start Start (entry) times, for left-truncated data, or `NULL`.
     #' @param strata Stratum labels (integers, a factor or character), or
     #'   `NULL` for an unstratified model.
-    #' @param sample_weight Sample weights, or `NULL` for all one. They are
-    #'   needed here only to know which are 0; each computation takes its own.
+    #' @param sample_weight Sample weights, or `NULL` for all one: the
+    #'   object's weights. A method called without `sample_weight` uses the
+    #'   object's current weights: these, or the last ones given to a method
+    #'   (the object is rebuilt, sorting the data again, when a call gives
+    #'   other weights, and keeps them; `c_index()` does not change them).
     #' @param tie_breaking `"efron"` (the default) or `"breslow"`.
     initialize = function(event,
                           status,
@@ -162,7 +165,8 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #' @description Compute the deviance and its derivatives (the `__call__`
     #'   of the Python class).
     #' @param linear_predictor The linear predictor, one entry per observation.
-    #' @param sample_weight Sample weights, or `NULL` for all one.
+    #' @param sample_weight Sample weights, or `NULL` for the object's
+    #'   current weights (see `new()`).
     #' @return A `CoxDevianceResult`: a list with the `linear_predictor`, the
     #'   `sample_weight`, `loglik_sat` (the saturated log-likelihood), the
     #'   `deviance`, `loglik` (the log partial likelihood, `loglik_sat -
@@ -198,8 +202,9 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
         stop(sprintf("linear_predictor must have %d rows (one per observation), not %d",
                      private$n_obs, nrow(pred)))
       }
-      sample_weight <- .as_weight(sample_weight, private$n_obs)
       if (!.cox_valid(private$ptr)) private$rebuild(private$weight)
+      sample_weight <- if (is.null(sample_weight)) private$weight
+                       else .as_weight(sample_weight, private$n_obs)
       values <- apply(pred, 2, function(p) {
         out <- .cox_concordance(private$ptr, as.numeric(p), sample_weight)
         if (out[2] > 0) out[1] / out[2] else NaN
@@ -448,10 +453,9 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #'   `coxph(y ~ offset(linear_predictor))`, with this object's ties, as
     #'   `glmnet`'s `survfit.coxnet` computes the curves of a fitted model.
     #' @param linear_predictor The linear predictor, as for `compute()`.
-    #' @param sample_weight The weights, or `NULL` for this object's weights:
-    #'   those it was built with, or of its last call (unlike the other
-    #'   methods, whose default is one), so that the `CoxDeviance` of a fitted
-    #'   model gives its curves.
+    #' @param sample_weight As for `compute()`: `NULL` for the object's
+    #'   current weights, so that the `CoxDeviance` of a fitted model gives
+    #'   its curves.
     #' @param new_linear_predictor The linear predictors of the subjects to
     #'   give curves of, or `NULL` for one curve (in each stratum) at
     #'   `center`, as `survfit` without `newdata`.
@@ -470,7 +474,6 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #'   the other strata).
     survfit = function(linear_predictor, sample_weight = NULL, new_linear_predictor = NULL,
                        new_strata = NULL, center = NULL) {
-      if (is.null(sample_weight)) sample_weight <- private$weight
       r <- private$prepare(linear_predictor, sample_weight)
       tab <- .cox_survival_table(private$ptr)
       lp <- r$linear_predictor
@@ -588,7 +591,8 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
       n <- private$n_obs
       linear_predictor <- as.numeric(.check_length(linear_predictor, n, "linear_predictor"))
       if (!all(is.finite(linear_predictor))) stop("linear_predictor must be finite")
-      sample_weight <- .as_weight(sample_weight, n)
+      # no weights: the object's current ones
+      sample_weight <- if (is.null(sample_weight)) private$weight else .as_weight(sample_weight, n)
       # a new C++ object when the weights change (zero weights change the
       # preprocessing), or when it was lost (e.g. by saveRDS / readRDS)
       if (!identical(sample_weight, private$weight) || !.cox_valid(private$ptr)) {

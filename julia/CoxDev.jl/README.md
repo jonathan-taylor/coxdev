@@ -28,7 +28,7 @@ S   = sample_score(cd, eta; weight=w, method="multinomial", n_draws=100, seed=1)
 ```
 
 **API.** The names and meanings mirror coxdev's Python `CoxDeviance`:
-- **`weight` defaults to ones** in every evaluation, whatever the weights given at construction. Construction weights only fix the data. The exception is `survfit`, whose weights default to the object's own (those it was built with, or of its last call), as in Python and R, so that the `CoxDeviance` of a fitted model gives its curves.
+- **`weight` defaults to the object's current weights**: those it was built with, or the last ones given to a function (the C object is rebuilt for other weights, and keeps them; `concordance` does not change them). This is the C API's NULL weight, and the default in Python and R, so that the `CoxDeviance` of a fitted model gives its curves (`survfit`) without its weights.
 - **Strata** may be any labels `sort` can order. `baseline_hazard` reports each stratum by its label.
 - **Caching.** The last `deviance` result is reused while `eta` and `weight` are unchanged; don't modify its arrays. The C library also reuses its last evaluation, so information products at that `eta` cost one product each.
 - **Threads.** A `CoxDeviance` holds a lock, so tasks can share one, but calls are serialized. Use one object per task for parallel work.

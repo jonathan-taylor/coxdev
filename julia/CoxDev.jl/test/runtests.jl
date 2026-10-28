@@ -44,7 +44,7 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         @test approx(r.loglik_sat, out.loglik_sat)
         @test approx(r.gradient, fl(out.gradient))
         @test approx(r.diag_hessian, fl(out.diag_hessian))
-        # weight = nothing means ones, as in Python, whatever the construction weights
+        # weight = nothing means the object's current weights, as in Python
         @test approx(deviance(cd, eta).deviance, out.deviance_default_weight)
 
         I = information(cd, eta; weight=w)
@@ -105,19 +105,24 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         end
     end
 
-    @testset "survfit: the weights default to the object's" begin
+    @testset "the weights default to the object's current weights" begin
         d = load("efron_startstop_str_random.json")
         inp = d.inputs
         cd = build(inp)
         eta, w = fl(inp.eta), wt(inp)
+        n = length(eta)
         # built with w: the default is w, not ones
+        @test deviance(cd, eta).deviance == deviance(cd, eta; weight=w).deviance
+        @test expected_events(cd, eta) == expected_events(cd, eta; weight=w)
+        @test concordance(cd, eta) == concordance(cd, eta; weight=w)
         @test survfit(cd, eta).cumulative_hazard == survfit(cd, eta; weight=w).cumulative_hazard
-        @test !isapprox(survfit(cd, eta; weight=ones(length(eta))).cumulative_hazard,
+        @test !isapprox(survfit(cd, eta; weight=ones(n)).cumulative_hazard,
                         survfit(cd, eta; weight=w).cumulative_hazard)
         # after a call with other weights, the default is those (as in Python)
-        deviance(cd, eta)
+        deviance(cd, eta; weight=ones(n))
+        @test deviance(cd, eta).deviance == deviance(cd, eta; weight=ones(n)).deviance
         @test survfit(cd, eta).cumulative_hazard ==
-              survfit(cd, eta; weight=ones(length(eta))).cumulative_hazard
+              survfit(cd, eta; weight=ones(n)).cumulative_hazard
         @test_throws ArgumentError survfit(cd, eta; new_eta=[0.])
         @test_throws ArgumentError survfit(cd, eta; new_eta=[0.], new_strata=["z"])
         @test_throws ArgumentError survfit(cd, eta; new_eta=[0., 1.], new_strata=["a"])
@@ -186,7 +191,9 @@ wt(inp) = inp.weight === nothing ? nothing : fl(inp.weight)
         @test r2 === r1
         @test approx(r2.deviance, out.deviance)
         # a different weight, then back: recomputed, same answer
-        @test approx(deviance(cd, eta).deviance, out.deviance_default_weight)
+        n = length(eta)
+        @test approx(deviance(cd, eta; weight=ones(n)).deviance,
+                     deviance(build(inp), eta; weight=ones(n)).deviance)
         @test approx(deviance(cd, eta; weight=w).gradient, fl(out.gradient))
         # eta modified in place: the cache compares contents, so it recomputes
         e = copy(eta)

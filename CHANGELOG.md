@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Breaking: a missing `sample_weight` means the object's current
+  weights**, not weights of one, in Python, R and Julia: those it was built
+  with, or the last ones given to a method (the object is rebuilt, sorting
+  the data again, when a call gives other weights, and keeps them; `c_index`
+  does not change them). Before, `CoxDeviance(..., sample_weight=w)(eta)`
+  evaluated with ones, and rebuilt the object for them. This is what a NULL
+  weight already meant in the C API. CoxDev.jl gets the handle's weights
+  from the new `coxdev_weight`.
 - **Survival curves** (`CoxDeviance.survfit(linear_predictor,
   sample_weight, new_linear_predictor, new_strata, center)`, and
   `CoxDeviance$survfit()` in R): R's `survfit.coxph` (`se.fit = FALSE`)
@@ -10,10 +18,9 @@
   stratum, with the weight at risk, the weights of the failures and the
   censorings, and the cumulative hazard of each curve (Breslow's, or
   Efron's for Efron's ties), NaN outside a subject's stratum. It returns a
-  new `SurvivalCurves`, with `survival` and `predict(times)`. Its weights
-  default to the object's own (those it was built with, or of its last
-  call), not to one as for the other methods, so the `CoxDeviance` of a
-  fitted model gives its curves. In C++,
+  new `SurvivalCurves`, with `survival` and `predict(times)`. With the
+  default weights, the `CoxDeviance` of a fitted model gives its curves from
+  its linear predictor alone. In C++,
   `survival_table()` (a new `SurvivalTable`) beside `baseline_hazard()`.
   Moved here from glmstar's `cox_survfit`.
 - **Martingale and deviance residuals** (`martingale_residuals`,

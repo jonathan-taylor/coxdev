@@ -90,9 +90,11 @@ A Cox model's data: failure or censoring times `event`, `status` (1 failure,
 0 censored), optional entry times `start` (for `(start, event]` data), weights
 and strata (any labels `sort` can order). `ties` is `:efron` or `:breslow`.
 
-As in coxdev's Python package, `weight` at construction only fixes the data
-(which entries are zero); every evaluation takes its own `weight`, which
-defaults to **ones** — not to the weights given here.
+`weight` (default ones) are the object's weights. As in coxdev's Python and
+R packages, a function called without `weight` uses the object's current
+weights: these, or the last ones given to a function (the C object is
+rebuilt when a call gives other weights, and keeps them; `concordance` does
+not change them).
 
 A `CoxDeviance` is not safe to use from several tasks at once without the
 lock it holds (all methods take it); distinct objects are independent.
@@ -107,7 +109,6 @@ mutable struct CoxDeviance
     strata_codes::Union{Nothing,Vector{Cint}}
     strata_labels::Union{Nothing,Vector}
     lock::ReentrantLock
-    ones::Vector{Float64}           # the default weight
     # the last deviance call, reused while eta and the weight are unchanged
     # (as coxdev's Python CoxDeviance caches its last call)
     last_eta::Vector{Float64}
@@ -138,7 +139,7 @@ mutable struct CoxDeviance
                      (Csize_t, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cint}, Ptr{Cint}, Ptr{Cdouble}, Cint, Ref{Ptr{Cvoid}}),
                      n, _dptr(sta), ev, st, codes === nothing ? Ptr{Cint}(C_NULL) : codes, _dptr(w),
                      ties == :efron ? 1 : 0, out))
-        cd = new(out[], n, ties, ev, st, sta, codes, labels, ReentrantLock(), ones(n),
+        cd = new(out[], n, ties, ev, st, sta, codes, labels, ReentrantLock(),
                  Float64[], Float64[], nothing)
         finalizer(cd) do x
             if x.ptr != C_NULL
@@ -161,10 +162,17 @@ Base.show(io::IO, cd::CoxDeviance) =
 _f64(x::Vector{Float64}) = x
 _f64(x) = Vector{Float64}(x)
 
-# weight = nothing means ones (as in Python), never the C API's NULL
-# (which would mean the handle's current weights)
+# weight = nothing means the handle's current weights (as in Python and R,
+# and the C API's NULL), copied so that the deviance cache compares them
 function _weight(cd::CoxDeviance, weight)
-    w = weight === nothing ? cd.ones : _f64(weight)
+    if weight === nothing
+        w = Vector{Float64}(undef, cd.n)
+        lock(cd.lock) do
+            _check(ccall(_sym(:coxdev_weight), Cint, (Ptr{Cvoid}, Ptr{Cdouble}), _live(cd), w))
+        end
+        return w
+    end
+    w = _f64(weight)
     length(w) == cd.n || throw(ArgumentError("weight must have length $(cd.n)"))
     w
 end
@@ -186,7 +194,7 @@ end
 The deviance `2 (loglik_sat - loglik)` at the linear predictor `eta`, with its
 gradient and diagonal Hessian in `eta`: a NamedTuple `(deviance, gradient,
 diag_hessian, loglik_sat, loglik)`, with `loglik` the log partial likelihood
-(R's `coxph` `loglik`). `weight` defaults to ones.
+(R's `coxph` `loglik`). `weight` defaults to the object's current weights.
 
 The result of the last call is reused while `eta` and `weight` are unchanged,
 as in coxdev's Python package: do not modify its arrays.
@@ -304,9 +312,8 @@ weight at risk and the weights of the failures and censorings there, and a
 column of `cumulative_hazard` and `survival` per curve (`NaN` on the rows of
 other strata).
 
-`weight` defaults to the weights of `cd` (those it was built with, or of
-its last call), unlike the other functions, whose default is ones, so that
-the `CoxDeviance` of a fitted model gives its curves. `new_eta` are the
+`weight` defaults to the current weights of `cd` (see `CoxDeviance`), so
+that the `CoxDeviance` of a fitted model gives its curves. `new_eta` are the
 linear predictors of the subjects to give curves of (with `new_strata` when
 `cd` has strata); without it, one curve (in each stratum) at `center`,
 which defaults to the weighted mean of `eta`.
@@ -319,11 +326,7 @@ function survfit(cd::CoxDeviance, eta::AbstractVector; weight=nothing, new_eta=n
     time = Float64[]; n_risk = Float64[]; n_event = Float64[]; n_censor = Float64[]
     H = Float64[]; stratum = Cint[]
     lock(cd.lock) do
-        if weight === nothing
-            _check(ccall(_sym(:coxdev_weight), Cint, (Ptr{Cvoid}, Ptr{Cdouble}), _live(cd), w))
-        else
-            copyto!(w, _weight(cd, weight))
-        end
+        copyto!(w, _weight(cd, weight))
         _check(ccall(_sym(:coxdev_survival_table), Cint,
                      (Ptr{Cvoid}, Ptr{Cdouble}, Ptr{Cdouble}, Ref{Csize_t}, Ptr{Cdouble}, Ptr{Cdouble},
                       Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cint}),
@@ -363,7 +366,7 @@ end
 
 The expected number of events of each observation at `eta`: R's
 `predict(fit, type = "expected")` of a `coxph` fit. `weight` defaults to
-ones.
+the object's current weights.
 """
 function expected_events(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
     e, w = _eta(cd, eta), _weight(cd, weight)
@@ -381,7 +384,7 @@ end
 
 The martingale residuals at `eta`, `status - expected_events`: R's
 `residuals(fit, type = "martingale")` of a `coxph` fit. `weight` defaults to
-ones.
+the object's current weights.
 """
 martingale_residuals(cd::CoxDeviance, eta::AbstractVector; weight=nothing) =
     cd.status .- expected_events(cd, eta; weight=weight)
@@ -391,9 +394,9 @@ martingale_residuals(cd::CoxDeviance, eta::AbstractVector; weight=nothing) =
 
 The deviance residuals at `eta`, `sign(M) sqrt(-2 (M + status log(status -
 M)))` of the martingale residuals `M`: R's `residuals(fit, type =
-"deviance")` of a `coxph` fit. `weight` defaults to ones. A failure of zero
-weight with no hazard up to its time (its expected events 0, so `M = 1`) has
-an infinite deviance residual.
+"deviance")` of a `coxph` fit. `weight` defaults to the object's current
+weights. A failure of zero weight with no hazard up to its time (its
+expected events 0, so `M = 1`) has an infinite deviance residual.
 """
 function deviance_residuals(cd::CoxDeviance, eta::AbstractVector; weight=nothing)
     M = martingale_residuals(cd, eta; weight=weight)

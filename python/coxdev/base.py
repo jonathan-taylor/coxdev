@@ -173,8 +173,10 @@ class CoxDeviance(object):
     start : np.ndarray, optional
         Start times for left-truncated data. If None, assumes no truncation.
     sample_weight : np.ndarray, optional
-        If None, defaults to one. Necessary at construction only to determine
-        which entries are 0.
+        The object's weights; if None, one. A method called without
+        ``sample_weight`` uses the object's current weights: these, or the
+        last ones given to a method (the object is rebuilt, sorting the data
+        again, when a call gives other weights, and keeps them).
     
     tie_breaking : {'efron', 'breslow'}, default='efron'
         Method for handling tied event times.
@@ -346,15 +348,15 @@ class CoxDeviance(object):
         the coefficients is ``X.T @ (-gradient / 2)``.
 
         The object is rebuilt, sorting the data again, if ``sample_weight``
-        differs from the weights of the last call, and the result is reused if
-        ``linear_predictor`` is also that of the last call.
+        differs from its current weights (which it then keeps), and the result
+        is reused if ``linear_predictor`` is also that of the last call.
 
         Parameters
         ----------
         linear_predictor : np.ndarray
             The linear predictor, one entry per observation.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -363,7 +365,7 @@ class CoxDeviance(object):
             ``loglik_sat``.
         """
         if sample_weight is None:
-            sample_weight = np.ones_like(linear_predictor, float)
+            sample_weight = self._weight
         else:
             sample_weight = np.asarray(sample_weight).astype(float)
 
@@ -417,7 +419,7 @@ class CoxDeviance(object):
             The linear predictor (a risk score), ``(n,)``, or ``(n, k)`` for
             ``k`` predictors, such as those along a path.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -449,7 +451,7 @@ class CoxDeviance(object):
         if pred.shape[0] != n:
             raise ValueError('linear_predictor must have one row per observation')
         if sample_weight is None:
-            sample_weight = np.ones(n)
+            sample_weight = self._weight
         sample_weight = np.asarray(sample_weight, float)
         values = np.empty(pred.shape[1])
         for j in range(pred.shape[1]):
@@ -474,7 +476,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, one entry per observation.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -510,7 +512,7 @@ class CoxDeviance(object):
         direction : np.ndarray
             The direction of the derivative, one entry per observation.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -545,7 +547,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one. The model-based methods (all but ``'wild'``)
+            Defaults to the object's current weights (see ``CoxDeviance``). The model-based methods (all but ``'wild'``)
             need equal positive weights.
         method : {'multinomial', 'bernoulli', 'fisher', 'wild'}
             The model-based methods draw the failures at each event time from
@@ -673,7 +675,7 @@ class CoxDeviance(object):
             The design, one row per observation; a sparse ``X`` is made
             dense a column at a time.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -715,7 +717,7 @@ class CoxDeviance(object):
             The design, one row per observation; a sparse ``X`` is made
             dense a column at a time.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -765,7 +767,7 @@ class CoxDeviance(object):
             The covariates, one row per observation; a sparse ``Z`` is made
             dense a column at a time.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -819,7 +821,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -853,7 +855,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -880,7 +882,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -916,10 +918,8 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor of these data, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to this object's weights: those it was built with, or
-            of its last call (unlike the other methods, whose default is
-            one), so that the ``CoxDeviance`` of a fitted model gives its
-            curves.
+            Defaults to the object's current weights (see ``CoxDeviance``),
+            so that the ``CoxDeviance`` of a fitted model gives its curves.
         new_linear_predictor : np.ndarray, optional
             The linear predictors of the subjects to give curves of. If None,
             one curve (in each stratum) at ``center``, as R does without
@@ -938,8 +938,8 @@ class CoxDeviance(object):
         SurvivalCurves
         """
         lp = np.asarray(linear_predictor, float)
-        w = self._weight if sample_weight is None else np.asarray(sample_weight, float)
-        self(lp, w)
+        self(lp, sample_weight)
+        w = self._weight
         time, n_risk, n_event, n_censor, H, stratum = (np.asarray(v) for v in
                                                          self._coxc.survival_table())
         if center is None:
@@ -985,7 +985,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------
@@ -1010,7 +1010,7 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to the object's current weights (see ``CoxDeviance``).
 
         Returns
         -------

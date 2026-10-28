@@ -65,7 +65,9 @@ test_that("new weights give a new object, and the results of a fresh one", {
     other[10] <- 2 * other[10]
     calls <- list(list(d$eta, d$w), list(d$eta, other), list(d$eta, d$w / sum(d$w)),
                   list(2 * d$eta, d$w / sum(d$w)), list(d$eta, NULL))
-    expected <- lapply(calls, function(a) new_cox(d, a[[2]])$compute(a[[1]], a[[2]]))
+    expected <- lapply(calls[-5], function(a) new_cox(d, a[[2]])$compute(a[[1]], a[[2]]))
+    # no weights: the object's current weights, those of the call before
+    expected[[5]] <- new_cox(d, d$w / sum(d$w))$compute(d$eta, d$w / sum(d$w))
     cox <- new_cox(d, d$w)
     counts <- local_counts()
     for (k in seq_along(calls)) {
@@ -75,8 +77,8 @@ test_that("new weights give a new object, and the results of a fresh one", {
       expect_equal(a$gradient, b$gradient, tolerance = 1e-12)
       expect_equal(a$diag_hessian, b$diag_hessian, tolerance = 1e-12)
     }
-    # new weights at each call but the first and the fourth
-    expect_equal(counts$new, 3)
+    # new weights at the second and third calls (the fifth keeps the current ones)
+    expect_equal(counts$new, 2)
   }
 })
 

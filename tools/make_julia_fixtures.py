@@ -77,7 +77,7 @@ def case(ties, start_stop, strata, weights, rng):
                score_residuals=_list(cox.score_residuals(eta, X, w)),
                wild_score=_list(cox.wild_score(eta, G, w)))
     # survfit, the expected events, residuals and loglik, with the weights
-    # given (survfit's default, the object's own, changes with each call)
+    # given (the default, the object's current weights, changes with calls)
     w1 = np.ones(N) if w is None else w
     new_strata = None
     if labels is not None:
@@ -98,7 +98,7 @@ def case(ties, start_stop, strata, weights, rng):
                                                  np.nan, D_res)),
                deviance_residuals_inf=np.flatnonzero(np.isinf(D_res)).tolist(),
                loglik=cox(eta, w).loglik)
-    # weight=None means ones, whatever the weights given at construction
+    # weight=None means the object's current weights: those of the call before
     out['deviance_default_weight'] = cox(eta).deviance
     # model-based draws need equal positive weights; wild works with any
     methods = ['wild'] + (['multinomial', 'bernoulli', 'fisher'] if weights == 'unit' else [])
