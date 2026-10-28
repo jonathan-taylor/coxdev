@@ -1,4 +1,4 @@
-# coxdev (development version)
+# coxdev 0.4.2
 
 * **Breaking:** a method called without `sample_weight` uses the object's
   current weights (those it was built with, or the last ones given to a
