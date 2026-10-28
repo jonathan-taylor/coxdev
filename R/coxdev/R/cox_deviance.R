@@ -447,7 +447,11 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #'   `survival::survfit.coxph` (with `se.fit = FALSE`) of
     #'   `coxph(y ~ offset(linear_predictor))`, with this object's ties, as
     #'   `glmnet`'s `survfit.coxnet` computes the curves of a fitted model.
-    #' @param linear_predictor,sample_weight As for `compute()`.
+    #' @param linear_predictor The linear predictor, as for `compute()`.
+    #' @param sample_weight The weights, or `NULL` for this object's weights:
+    #'   those it was built with, or of its last call (unlike the other
+    #'   methods, whose default is one), so that the `CoxDeviance` of a fitted
+    #'   model gives its curves.
     #' @param new_linear_predictor The linear predictors of the subjects to
     #'   give curves of, or `NULL` for one curve (in each stratum) at
     #'   `center`, as `survfit` without `newdata`.
@@ -466,6 +470,7 @@ CoxDeviance <- R6::R6Class("CoxDeviance",
     #'   the other strata).
     survfit = function(linear_predictor, sample_weight = NULL, new_linear_predictor = NULL,
                        new_strata = NULL, center = NULL) {
+      if (is.null(sample_weight)) sample_weight <- private$weight
       r <- private$prepare(linear_predictor, sample_weight)
       tab <- .cox_survival_table(private$ptr)
       lp <- r$linear_predictor

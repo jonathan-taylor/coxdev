@@ -916,7 +916,10 @@ class CoxDeviance(object):
         linear_predictor : np.ndarray
             The linear predictor of these data, e.g. of a fitted model.
         sample_weight : np.ndarray, optional
-            Defaults to one.
+            Defaults to this object's weights: those it was built with, or
+            of its last call (unlike the other methods, whose default is
+            one), so that the ``CoxDeviance`` of a fitted model gives its
+            curves.
         new_linear_predictor : np.ndarray, optional
             The linear predictors of the subjects to give curves of. If None,
             one curve (in each stratum) at ``center``, as R does without
@@ -935,7 +938,7 @@ class CoxDeviance(object):
         SurvivalCurves
         """
         lp = np.asarray(linear_predictor, float)
-        w = np.ones_like(lp) if sample_weight is None else np.asarray(sample_weight, float)
+        w = self._weight if sample_weight is None else np.asarray(sample_weight, float)
         self(lp, w)
         time, n_risk, n_event, n_censor, H, stratum = (np.asarray(v) for v in
                                                          self._coxc.survival_table())

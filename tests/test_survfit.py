@@ -51,6 +51,14 @@ def test_survfit(tie_breaking, start, weights):
                                rtol=1e-10)
     np.testing.assert_allclose(curves.survival, np.exp(-curves.cumulative_hazard))
 
+    # the weights default to the object's (it was built with w)
+    np.testing.assert_allclose(cox.survfit(eta, new_linear_predictor=new_eta).cumulative_hazard,
+                               curves.cumulative_hazard)
+    if weights != 'ones':
+        ones = CoxDeviance(event=event, status=status, start=entry, tie_breaking=tie_breaking)
+        assert not np.allclose(ones.survfit(eta, new_linear_predictor=new_eta).cumulative_hazard,
+                               curves.cumulative_hazard)
+
     # without new subjects, one curve at the weighted mean
     default = cox.survfit(eta, w)
     center = np.sum(w * eta) / np.sum(w)

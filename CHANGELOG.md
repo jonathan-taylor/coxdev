@@ -10,7 +10,10 @@
   stratum, with the weight at risk, the weights of the failures and the
   censorings, and the cumulative hazard of each curve (Breslow's, or
   Efron's for Efron's ties), NaN outside a subject's stratum. It returns a
-  new `SurvivalCurves`, with `survival` and `predict(times)`. In C++,
+  new `SurvivalCurves`, with `survival` and `predict(times)`. Its weights
+  default to the object's own (those it was built with, or of its last
+  call), not to one as for the other methods, so the `CoxDeviance` of a
+  fitted model gives its curves. In C++,
   `survival_table()` (a new `SurvivalTable`) beside `baseline_hazard()`.
   Moved here from glmstar's `cox_survfit`.
 - **Martingale and deviance residuals** (`martingale_residuals`,

@@ -4,7 +4,9 @@
   new_strata, center)`: survival curves at a fixed linear predictor, as
   `survival::survfit.coxph` (`se.fit = FALSE`) of `coxph(y ~
   offset(linear_predictor))`: the `time`, `n_risk`, `n_event`, `n_censor`,
-  and the `cumulative_hazard` and `survival` of each curve.
+  and the `cumulative_hazard` and `survival` of each curve. The weights
+  default to the object's own (those it was built with, or of its last
+  call), not to one as for the other methods.
 * `CoxDeviance$martingale_residuals()` and `$deviance_residuals()`:
   `residuals.coxph`'s `"martingale"` and `"deviance"`.
 * The result of `compute()` has `loglik`, the log partial likelihood

@@ -621,7 +621,11 @@ at time \code{t} is the \code{cumulative_hazard} at the last failure time
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{linear_predictor, sample_weight}}{As for \code{compute()}.}
+      \item{\code{linear_predictor}}{The linear predictor, as for \code{compute()}.}
+      \item{\code{sample_weight}}{The weights, or \code{NULL} for this object's weights:
+those it was built with, or of its last call (unlike the other
+methods, whose default is one), so that the \code{CoxDeviance} of a fitted
+model gives its curves.}
       \item{\code{new_linear_predictor}}{The linear predictors of the subjects to
 give curves of, or \code{NULL} for one curve (in each stratum) at
 \code{center}, as \code{survfit} without \code{newdata}.}

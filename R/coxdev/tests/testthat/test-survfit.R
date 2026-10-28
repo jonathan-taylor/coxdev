@@ -25,6 +25,9 @@ test_that("survfit, the residuals and the loglik agree with survival", {
                                sample_weight = w, tie_breaking = tie_breaking)
 
         curves <- cox$survfit(eta, w, new_linear_predictor = new_eta)
+        # the weights default to the object's (it was built with w)
+        expect_equal(cox$survfit(eta, new_linear_predictor = new_eta)$cumulative_hazard,
+                     curves$cumulative_hazard)
         expect_equal(curves$time, S$time)
         expect_equal(curves$n_risk, S$n.risk, tolerance = 1e-10)
         expect_equal(curves$n_event, S$n.event, tolerance = 1e-10)
